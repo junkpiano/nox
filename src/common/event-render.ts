@@ -962,6 +962,7 @@ export function renderEvent(
   div.dataset.eventId = event.id;
   div.dataset.createdAt = String(event.created_at);
   div.dataset.pubkey = pubkey;
+  div.dataset.timestamp = event.created_at.toString();
   if (imageUrls.length > 0) {
     div.dataset.images = JSON.stringify(imageUrls);
   }
@@ -1001,7 +1002,28 @@ export function renderEvent(
 				      </div>
 				    </div>
 				  `;
-  output.appendChild(div);
+
+  // Insert event in sorted order by timestamp (newest first)
+  const existingEvents: HTMLElement[] = Array.from(
+    output.querySelectorAll('.event-container'),
+  );
+  let inserted: boolean = false;
+
+  for (const existingEvent of existingEvents) {
+    const existingTimestamp: number = parseInt(
+      existingEvent.dataset.timestamp || '0',
+      10,
+    );
+    if (event.created_at > existingTimestamp) {
+      output.insertBefore(div, existingEvent);
+      inserted = true;
+      break;
+    }
+  }
+
+  if (!inserted) {
+    output.appendChild(div);
+  }
   if (parentEventId) {
     const parentContainer: HTMLElement | null = div.querySelector(
       '.parent-event-container',
