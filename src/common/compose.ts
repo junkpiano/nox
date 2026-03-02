@@ -22,6 +22,12 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   const textarea: HTMLTextAreaElement | null = document.getElementById(
     'compose-textarea',
   ) as HTMLTextAreaElement;
+  const contentWarningToggle: HTMLInputElement | null = document.getElementById(
+    'compose-content-warning-toggle',
+  ) as HTMLInputElement | null;
+  const contentWarningReason: HTMLInputElement | null = document.getElementById(
+    'compose-content-warning-reason',
+  ) as HTMLInputElement | null;
   const submitBtn: HTMLButtonElement | null = document.getElementById(
     'compose-submit',
   ) as HTMLButtonElement;
@@ -33,6 +39,8 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
     !backdrop ||
     !closeBtn ||
     !textarea ||
+    !contentWarningToggle ||
+    !contentWarningReason ||
     !submitBtn ||
     !statusEl
   ) {
@@ -40,14 +48,32 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   }
   let isSubmitting: boolean = false;
 
+  const updateContentWarningReasonState = (): void => {
+    const enabled: boolean = contentWarningToggle.checked;
+    contentWarningReason.disabled = !enabled;
+    if (!enabled) {
+      contentWarningReason.value = '';
+      contentWarningReason.classList.add('opacity-60', 'cursor-not-allowed');
+    } else {
+      contentWarningReason.classList.remove(
+        'opacity-60',
+        'cursor-not-allowed',
+      );
+    }
+  };
+
   const openOverlay = (): void => {
     overlay.style.display = '';
+    updateContentWarningReasonState();
     textarea.focus();
   };
 
   const closeOverlay = (): void => {
     overlay.style.display = 'none';
     statusEl.textContent = '';
+    contentWarningToggle.checked = false;
+    contentWarningReason.value = '';
+    updateContentWarningReasonState();
   };
 
   const refreshStatus = (): void => {
@@ -79,6 +105,9 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
 
   backdrop.addEventListener('click', closeOverlay);
   closeBtn.addEventListener('click', closeOverlay);
+  contentWarningToggle.addEventListener('change', (): void => {
+    updateContentWarningReasonState();
+  });
 
   const isTypingContext = (target: EventTarget | null): boolean => {
     if (!(target instanceof HTMLElement)) {
@@ -165,11 +194,23 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
         throw new Error('Not logged in');
       }
 
+      const tags: string[][] = [];
+      if (contentWarningToggle.checked) {
+        const reason: string = contentWarningReason.value.trim();
+        if (reason) {
+          tags.push(['content-warning', reason]);
+          tags.push(['l', reason, 'content-warning']);
+        } else {
+          tags.push(['content-warning']);
+        }
+        tags.push(['L', 'content-warning']);
+      }
+
       const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
         kind: 1,
         pubkey: storedPubkey as PubkeyHex,
         created_at: Math.floor(Date.now() / 1000),
-        tags: [],
+        tags,
         content: textarea.value.trim(),
       };
 
@@ -186,6 +227,9 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
       await options.publishEvent(signedEvent, options.getRelays());
       await storeEvent(signedEvent, { isHomeTimeline: false });
       textarea.value = '';
+      contentWarningToggle.checked = false;
+      contentWarningReason.value = '';
+      updateContentWarningReasonState();
       statusEl.textContent = 'Posted';
       closeOverlay();
       await options.refreshTimeline();

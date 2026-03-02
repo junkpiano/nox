@@ -37,6 +37,11 @@ interface ReactionAggregate {
   imageUrl?: string;
 }
 
+interface ContentWarningInfo {
+  hasWarning: boolean;
+  reason: string;
+}
+
 const reactionCache: Map<
   string,
   Promise<Map<string, ReactionAggregate>>
@@ -83,6 +88,61 @@ function normalizeHttpUrl(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+function isContentWarningNamespace(value: string | undefined): boolean {
+  return (value || '').trim().toLowerCase() === 'content-warning';
+}
+
+function getContentWarningInfo(event: NostrEvent): ContentWarningInfo {
+  let hasContentWarningTag: boolean = false;
+  let hasContentWarningNamespace: boolean = false;
+  let hasScopedWarningLabel: boolean = false;
+  let reason: string = '';
+
+  for (const tag of event.tags) {
+    const tagName: string = (tag[0] || '').trim();
+    if (!tagName) {
+      continue;
+    }
+
+    if (tagName.toLowerCase() === 'content-warning' || tagName === 'cw') {
+      hasContentWarningTag = true;
+      const tagReason: string = (tag[1] || '').trim();
+      if (!reason && tagReason) {
+        reason = tagReason;
+      }
+      continue;
+    }
+
+    if (tagName === 'L' && isContentWarningNamespace(tag[1])) {
+      hasContentWarningNamespace = true;
+      continue;
+    }
+
+    if (tagName === 'l' && isContentWarningNamespace(tag[2])) {
+      hasScopedWarningLabel = true;
+      const labelReason: string = (tag[1] || '').trim();
+      if (!reason && labelReason) {
+        reason = labelReason;
+      }
+    }
+  }
+
+  return {
+    hasWarning:
+      hasContentWarningTag ||
+      hasContentWarningNamespace ||
+      hasScopedWarningLabel,
+    reason,
+  };
+}
+
+function getContentWarningSummary(reason: string): string {
+  if (!reason) {
+    return '⚠️ Content warning';
+  }
+  return `⚠️ Content warning: ${escapeHtmlAttribute(reason)}`;
 }
 
 function getEmojiTagMap(tags: string[][]): Map<string, string> {
@@ -826,6 +886,7 @@ export function renderEvent(
         `;
 
   const contentSource: string = isRepost ? '' : event.content;
+  const contentWarning: ContentWarningInfo = getContentWarningInfo(event);
   const escapedContentSource: string = escapeHtmlAttribute(contentSource);
   const urls: string[] = [];
   const imageUrls: string[] = [];
@@ -954,6 +1015,27 @@ export function renderEvent(
   const contentHtml: string = hasContent
     ? `<div class="whitespace-pre-wrap break-words break-all mb-2 text-sm text-gray-700">${contentWithCustomEmoji}</div>`
     : '';
+  const contentAreaHtml: string = contentWarning.hasWarning
+    ? `
+      <details class="event-cw-details mb-2 rounded-lg border border-amber-300 bg-amber-50">
+        <summary class="cursor-pointer select-none text-xs font-semibold text-amber-900 px-3 py-2">
+          ${getContentWarningSummary(contentWarning.reason)}. Click to reveal.
+        </summary>
+        <div class="px-3 pb-3 pt-2">
+          ${
+            contentHtml ||
+            '<div class="mb-2 text-xs text-gray-600">(Content hidden)</div>'
+          }
+          <div class="referenced-events-container space-y-2"></div>
+          <div class="ogp-container"></div>
+        </div>
+      </details>
+    `
+    : `
+      ${contentHtml}
+      <div class="referenced-events-container space-y-2"></div>
+      <div class="ogp-container"></div>
+    `;
 
   const div: HTMLDivElement = document.createElement('div');
   div.className =
@@ -991,9 +1073,7 @@ export function renderEvent(
 		        ${repostBadgeHtml}
               ${eventPermalink ? `<a class="event-permalink" href="${eventPermalink}" aria-hidden="true" tabindex="-1" style="display:none;"></a>` : ''}
 		            <div class="parent-event-container mb-2"></div>
-					        ${contentHtml}
-		            <div class="referenced-events-container space-y-2"></div>
-		            <div class="ogp-container"></div>
+                  ${contentAreaHtml}
 		            <div class="reactions-container mt-2 flex flex-wrap gap-2 text-xs text-gray-600"></div>
 		            <div class="reactions-details mt-2" style="display: none;"></div>
 		            <div class="mt-2 flex items-center justify-between gap-2">
@@ -1167,6 +1247,8 @@ export function renderEvent(
       if (
         target.closest('a') ||
         target.closest('button') ||
+        target.closest('summary') ||
+        target.closest('details') ||
         target.closest('input') ||
         target.closest('textarea') ||
         target.closest('select') ||
@@ -1368,6 +1450,8 @@ async function renderParentEventCard(
       parentContentWithUnicodeEmoji,
       parentEvent.tags,
     );
+    const parentContentWarning: ContentWarningInfo =
+      getContentWarningInfo(parentEvent);
     const preview: string =
       parentContent.length > 220
         ? `${parentContent.slice(0, 220)}...`
@@ -1389,6 +1473,10 @@ async function renderParentEventCard(
           onerror="this.src='https://placekitten.com/80/80';"
         />`;
 
+    const parentPreviewHtml: string = parentContentWarning.hasWarning
+      ? `<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">${getContentWarningSummary(parentContentWarning.reason)}. Open post to view.</div>`
+      : `<div class="text-sm text-gray-800 whitespace-pre-wrap break-words">${preview || '(no content)'}</div>`;
+
     card.innerHTML = `
       <a href="${safeParentPath}" class="block hover:bg-amber-100 rounded transition-colors p-1">
         <div class="text-xs text-amber-700 font-semibold mb-1">Replying to</div>
@@ -1396,7 +1484,7 @@ async function renderParentEventCard(
           ${parentAvatarHtml}
           <div class="min-w-0">
             <div class="text-xs text-gray-700 font-semibold mb-1 truncate">${safeParentName}</div>
-            <div class="text-sm text-gray-800 whitespace-pre-wrap break-words">${preview || '(no content)'}</div>
+            ${parentPreviewHtml}
           </div>
         </div>
       </a>
@@ -1602,6 +1690,8 @@ async function renderReferencedEventCards(
         referencedContentWithUnicodeEmoji,
         referencedEvent.tags,
       );
+      const referencedContentWarning: ContentWarningInfo =
+        getContentWarningInfo(referencedEvent);
       const referencedText: string =
         referencedContent.length > 180
           ? `${referencedContent.slice(0, 180)}...`
@@ -1623,13 +1713,17 @@ async function renderReferencedEventCards(
             onerror="this.src='https://placekitten.com/80/80';"
           />`;
 
+      const referencedPreviewHtml: string = referencedContentWarning.hasWarning
+        ? `<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">${getContentWarningSummary(referencedContentWarning.reason)}. Open post to view.</div>`
+        : `<div class="text-sm text-gray-800 whitespace-pre-wrap break-words">${referencedText || '(no content)'}</div>`;
+
       card.innerHTML = `
                 <a href="${safeReferencedPath}" class="block hover:bg-indigo-100 rounded transition-colors p-1">
                     <div class="flex items-start gap-2">
                         ${referencedAvatarHtml}
                         <div class="min-w-0">
                             <div class="text-xs text-gray-700 font-semibold mb-1 truncate">${safeReferencedName}</div>
-                            <div class="text-sm text-gray-800 whitespace-pre-wrap break-words">${referencedText || '(no content)'}</div>
+                            ${referencedPreviewHtml}
                         </div>
                     </div>
                 </a>
