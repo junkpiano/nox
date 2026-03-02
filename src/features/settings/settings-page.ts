@@ -6,7 +6,11 @@ import {
   isTimelineCacheEnabled,
   setTimelineCacheEnabled,
 } from '../../common/cache-settings.js';
-import { clearTimelines } from '../../common/db/index.js';
+import {
+  clearEvents,
+  clearProfiles,
+  clearTimelines,
+} from '../../common/db/index.js';
 import type { SetActiveNavFn } from '../../common/types.js';
 import {
   clearProfileCache,
@@ -175,13 +179,21 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
       setTimelineCacheEnabled(isEnabled);
 
       if (!isEnabled) {
-        await clearTimelines();
+        await Promise.all([
+          clearTimelines(),
+          clearEvents(),
+          clearProfiles(),
+          clearEventCache(),
+        ]);
+        clearProfileCache();
       }
+
+      await updateStats();
 
       if (statusEl) {
         statusEl.textContent = isEnabled
           ? 'Timeline cache enabled.'
-          : 'Timeline cache disabled.';
+          : 'Timeline cache disabled. Cached posts and profiles cleared.';
         setTimeout((): void => {
           if (statusEl) {
             statusEl.textContent = '';
@@ -228,6 +240,8 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
         clearEventCache(),
         clearProfileCache(),
         clearTimelines(),
+        clearEvents(),
+        clearProfiles(),
       ]);
       await updateStats();
       if (statusEl) {

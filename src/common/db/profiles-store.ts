@@ -1,4 +1,5 @@
 import type { NostrProfile, PubkeyHex } from '../../../types/nostr.js';
+import { isTimelineCacheEnabled } from '../cache-settings.js';
 import {
   createTransaction,
   isIndexedDBAvailable,
@@ -14,7 +15,7 @@ export async function storeProfile(
   pubkey: PubkeyHex,
   profile: NostrProfile,
 ): Promise<void> {
-  if (!isIndexedDBAvailable()) return;
+  if (!isIndexedDBAvailable() || !isTimelineCacheEnabled()) return;
 
   try {
     const tx = await createTransaction(STORE_NAMES.PROFILES, 'readwrite');
@@ -41,7 +42,12 @@ export async function storeProfile(
 export async function storeProfiles(
   profiles: Array<{ pubkey: PubkeyHex; profile: NostrProfile }>,
 ): Promise<void> {
-  if (!isIndexedDBAvailable() || profiles.length === 0) return;
+  if (
+    !isIndexedDBAvailable() ||
+    !isTimelineCacheEnabled() ||
+    profiles.length === 0
+  )
+    return;
 
   try {
     const tx = await createTransaction(STORE_NAMES.PROFILES, 'readwrite');

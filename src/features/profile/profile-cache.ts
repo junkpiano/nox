@@ -1,4 +1,5 @@
 import type { NostrProfile, PubkeyHex } from '../../../types/nostr';
+import { isTimelineCacheEnabled } from '../../common/cache-settings.js';
 
 interface ProfileCacheStore {
   order: PubkeyHex[];
@@ -6,7 +7,7 @@ interface ProfileCacheStore {
 }
 
 const PROFILE_CACHE_KEY: string = 'nostr_profile_cache_v1';
-const PROFILE_CACHE_LIMIT: number = 100;
+const PROFILE_CACHE_LIMIT: number = 1000;
 
 function readStore(): ProfileCacheStore {
   try {
@@ -40,6 +41,10 @@ function writeStore(store: ProfileCacheStore): void {
 }
 
 export function getCachedProfile(pubkey: PubkeyHex): NostrProfile | null {
+  if (!isTimelineCacheEnabled()) {
+    return null;
+  }
+
   const store: ProfileCacheStore = readStore();
   const profile: NostrProfile | undefined = store.items[pubkey];
   if (!profile) {
@@ -57,6 +62,10 @@ export function setCachedProfile(
   pubkey: PubkeyHex,
   profile: NostrProfile,
 ): void {
+  if (!isTimelineCacheEnabled()) {
+    return;
+  }
+
   const store: ProfileCacheStore = readStore();
 
   store.items[pubkey] = profile;

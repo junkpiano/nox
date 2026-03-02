@@ -1,4 +1,5 @@
 import type { NostrEvent } from '../../types/nostr';
+import { isTimelineCacheEnabled } from './cache-settings.js';
 
 const DB_NAME: string = 'nostr_event_cache_v1';
 const DB_VERSION: number = 1;
@@ -128,7 +129,7 @@ export async function clearEventCache(): Promise<void> {
 export async function getCachedEvent(
   eventId: string,
 ): Promise<NostrEvent | null> {
-  if (typeof indexedDB === 'undefined') {
+  if (typeof indexedDB === 'undefined' || !isTimelineCacheEnabled()) {
     return null;
   }
   try {
@@ -153,7 +154,7 @@ export async function getCachedEvent(
 }
 
 export async function setCachedEvent(event: NostrEvent): Promise<void> {
-  if (typeof indexedDB === 'undefined') {
+  if (typeof indexedDB === 'undefined' || !isTimelineCacheEnabled()) {
     return;
   }
   try {

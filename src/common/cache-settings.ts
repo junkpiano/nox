@@ -1,5 +1,5 @@
 const TIMELINE_CACHE_STORAGE_KEY: string = 'timeline_cache_enabled';
-const TIMELINE_CACHE_DEFAULT: boolean = false;
+const TIMELINE_CACHE_DEFAULT: boolean = true;
 
 export function isTimelineCacheEnabled(): boolean {
   try {

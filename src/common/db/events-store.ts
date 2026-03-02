@@ -1,4 +1,5 @@
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr.js';
+import { isTimelineCacheEnabled } from '../cache-settings.js';
 import {
   createTransaction,
   isIndexedDBAvailable,
@@ -20,7 +21,7 @@ export async function storeEvent(
   event: NostrEvent,
   options?: { isHomeTimeline?: boolean },
 ): Promise<void> {
-  if (!isIndexedDBAvailable()) return;
+  if (!isIndexedDBAvailable() || !isTimelineCacheEnabled()) return;
 
   try {
     const tx = await createTransaction(STORE_NAMES.EVENTS, 'readwrite');
@@ -50,7 +51,12 @@ export async function storeEvents(
   events: NostrEvent[],
   options?: { isHomeTimeline?: boolean },
 ): Promise<void> {
-  if (!isIndexedDBAvailable() || events.length === 0) return;
+  if (
+    !isIndexedDBAvailable() ||
+    !isTimelineCacheEnabled() ||
+    events.length === 0
+  )
+    return;
 
   try {
     const tx = await createTransaction(STORE_NAMES.EVENTS, 'readwrite');
