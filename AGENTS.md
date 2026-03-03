@@ -3,368 +3,242 @@
 This guide provides essential information for agentic coding assistants working on the Nostr SPA TypeScript project.
 
 ## Project Overview
-A single-page application for viewing Nostr profiles and posts, built with Node.js/Express backend and TypeScript frontend using ES6 modules.
+A single-page application for browsing the Nostr network, built with Vite and vanilla TypeScript. No backend server — the app runs entirely in the browser, connects directly to Nostr relays via WebSocket, and caches data in IndexedDB.
 
-## Build/Lint/Test Commands
+## Build & Development Commands
 
-### Running the Application
 ```bash
-# Build TypeScript and start the server
-npm start
-
-# Server runs on http://localhost:3000 by default
-# Uses environment variable PORT if set
-```
-
-### Development Mode
-```bash
-# Watch mode for TypeScript compilation (if nodemon is installed)
+# Development server (http://localhost:3000)
 npm run dev
-```
 
-### Building
-```bash
-# Compile TypeScript to JavaScript in dist/
+# Type-check and build for production (output: dist/)
 npm run build
+
+# Preview production build locally
+npm run preview
+
+# Docker (multi-stage: Bun build + nginx:alpine serve)
+docker build -t nostr-app .
+docker run -p 8080:80 nostr-app
 ```
 
-### Testing
-Currently no test framework is configured. To add testing:
+## Code Quality
 
 ```bash
-# Recommended: Add Jest for unit testing
-npm install --save-dev jest @types/jest
-
-# Run all tests (after setup)
-npm test
-
-# Run single test file
-npm test -- path/to/test/file.test.ts
-
-# Run tests in watch mode
-npm test -- --watch
-
-# Run specific test by name
-npm test -- --testNamePattern="test name"
-```
-
-### Linting & Formatting
-Currently no linting/formatting tools configured. Recommended setup:
-
-```bash
-# Install ESLint and Prettier for TypeScript
-npm install --save-dev eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin prettier eslint-config-prettier eslint-plugin-prettier
-
-# Lint TypeScript code
+# Lint check
 npm run lint
 
-# Format code
+# Format check
 npm run format
 
-# Fix linting issues automatically
-npm run lint:fix
+# Auto-format files
+npm run format:write
+
+# Full Biome check (lint + format)
+npm run check
 ```
 
-### Docker
+Biome (`biome.json`) handles both linting and formatting — there is no ESLint or Prettier.
+
+## Testing
+
 ```bash
-# Build Docker image (compiles TypeScript during build)
-docker build -t nostr-app-ts .
-
-# Run Docker container
-docker run -p 3000:3000 nostr-app-ts
+npm test
 ```
+
+Uses Node's built-in test runner. Test files live in `tests/` and compile to `.tmp/test-dist/`.
+
+## Package Manager
+
+Both npm and Bun are in use. `bun.lock` is committed. Prefer `bun` for installing packages; `npm run <script>` for running scripts.
+
+## Architecture Overview
+
+### Module Structure
+
+```
+src/
+├── app/                     # Entry point, routing, global state
+│   ├── main.ts              # Vite entry (imports styles + app.ts)
+│   ├── app.ts               # App orchestration
+│   ├── app-state.ts         # Global app state definitions
+│   └── app-routes.ts        # Route handlers
+│
+├── common/                  # Shared utilities
+│   ├── event-render.ts      # Event card HTML generation
+│   ├── events-queries.ts    # Follow list, event fetch, delete checks
+│   ├── relay-socket.ts      # Raw WebSocket relay communication + NIP-42 AUTH
+│   ├── compose.ts           # Post composition overlay
+│   ├── reply.ts             # Reply compose
+│   ├── search.ts            # Search functionality
+│   ├── session.ts           # NIP-07 session & private key handling
+│   ├── navigation.ts        # Client-side routing helpers
+│   ├── overlays.ts          # Image gallery overlay
+│   ├── event-cache.ts       # In-memory event deduplication
+│   ├── timeline-cache.ts    # Profile cache for timeline rendering
+│   ├── deletion-targets.ts  # Deleted event tracking
+│   ├── meta.ts              # Dynamic OG meta tags
+│   ├── nip05.ts             # NIP-05 verification
+│   ├── promise-utils.ts     # Promise utility helpers
+│   ├── cache-settings.ts    # Cache configuration UI
+│   ├── sync/                # Service worker & background sync
+│   └── db/                  # IndexedDB abstraction layer
+│       ├── index.ts         # Public DB API
+│       ├── indexeddb.ts     # DB initialization & connection pooling
+│       ├── events-store.ts  # Event persistence
+│       ├── profiles-store.ts
+│       ├── timelines-store.ts
+│       ├── timeline-builder.ts
+│       ├── timeline-queries.ts
+│       ├── event-writer.ts
+│       ├── metadata-store.ts
+│       └── types.ts
+│
+├── features/                # Feature modules
+│   ├── event/               # Single event page (nevent / note)
+│   ├── global/              # Global timeline
+│   ├── home/                # Home timeline (follows)
+│   ├── profile/             # Profile view + follow/unfollow
+│   ├── reactions/           # Liked posts view
+│   ├── relays/              # Relay config, NIP-65, rx-nostr client
+│   ├── notifications/       # New post notifications
+│   ├── search/              # Search results page
+│   ├── settings/            # Settings UI
+│   ├── about/               # About / supported NIPs page
+│   └── broadcast/           # Broadcast mode (relay stress test)
+│
+├── utils/
+│   └── utils.ts             # Display names, avatars, OGP, Twitter embeds, emoji
+│
+├── index.html               # SPA template
+└── styles.css               # Tailwind CSS directives
+```
+
+### Key Libraries
+
+| Library | Purpose |
+|---------|---------|
+| `nostr-tools` ^2.23.0 | Nostr signing, verification, nip19 encoding/decoding |
+| `rx-nostr` ^3.6.2 | Reactive relay client (RxJS-based) |
+| `rxjs` ^7.8.2 | Reactive programming (observables) |
+| `emoji-dictionary` ^1.0.12 | Emoji shortcode → Unicode |
+| `tailwindcss` ^3.4.19 | Utility-first CSS |
+| `vite` ^6.4.1 | Build tool & dev server |
+| `@biomejs/biome` ^2.3.15 | Linter + formatter |
+
+### Data Flow
+
+**Home timeline (logged-in users):**
+1. NIP-07 browser extension (Alby, nos2x) provides pubkey
+2. `fetchFollowList()` fetches kind 3 event from relays
+3. `loadHomeTimeline()` fetches kind 1 posts from followed pubkeys
+4. Events deduplicated via `Set<string>`, stored in IndexedDB
+5. `renderEvent()` generates HTML cards
+
+**Global timeline:**
+1. `loadGlobalTimeline()` subscribes to all kind 1 events via rx-nostr
+2. Author profiles fetched on-demand and cached in IndexedDB
+3. Background polling checks for new posts every 30 seconds
+
+**Event page (`/nevent1...` / `/note1...`):**
+1. Decode nevent with nip19, extract event ID + relay hints
+2. Fetch event from relays (relay hints intersected with user's relay list)
+3. Render event card, then in parallel: fetch profile, check deletion, load reactions
+4. Build ancestor chain by walking `e` tags (reply → root → legacy positional)
+5. Fetch replies and render as threaded tree
+
+### Relay Communication
+
+Two relay communication patterns coexist:
+
+- **`relay-socket.ts`**: Low-level `WebSocket` wrapper used for follow list, event fetch, deletion checks, replies. Opens a socket, sends REQ, waits for EOSE, closes.
+- **`rx-nostr-client.ts`**: RxNostr wrapper used for timeline streaming. Reactive observable pipeline; supports NIP-42 AUTH challenge-response.
+
+Default relays are defined in `src/features/relays/relays.ts`.
+
+### IndexedDB Schema
+
+- **events** — kind 1 posts; indexed by pubkey, kind, created_at, storedAt
+- **profiles** — kind 0 metadata; LRU-evicted by accessedAt
+- **timelines** — oldest/newest timestamps per timeline (for pagination)
+- **metadata** — miscellaneous key-value storage
+
+Pruning limits: 10,000 events max; 14-day TTL general, 30-day TTL home timeline.
+
+### URL Routing
+
+Client-side routing via History API (`pushState` / `popstate`):
+
+| Route | View |
+|-------|------|
+| `/`, `/home` | Home timeline or welcome screen |
+| `/global` | Global timeline |
+| `/notifications` | Notifications |
+| `/reactions` | Liked posts |
+| `/search` | Search |
+| `/relays` | Relay settings |
+| `/settings` | App settings |
+| `/about` | About / supported NIPs |
+| `/{npub}` | Profile view |
+| `/nevent1…`, `/note1…` | Single event view |
+
+nginx is configured to serve `index.html` for all routes (SPA behavior).
 
 ## Code Style Guidelines
 
-### TypeScript/JavaScript Standards
+### TypeScript
 
-#### Imports and Exports
-- Use ES6 modules exclusively (`import`/`export`)
-- Group imports: external libraries first, then internal modules, then types
-- Use named exports for utilities, default exports for main components
+- Strict mode enabled: `strict`, `noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`
+- All functions must have explicit return types
+- Use `const` for immutable values, `let` for mutable
+- Use branded types for domain strings: `PubkeyHex`, `Npub`, `EventId`
 - Import types with `import type` when possible
-- Example:
+- Module resolution: `"bundler"` (Vite-style); `.js` extensions not required in imports
+
+### Imports
+
 ```typescript
-import { nip19 } from "https://esm.sh/nostr-tools";
-import express, { Request, Response } from "express";
-import { fetchProfile, renderProfile } from "./profile.js";
-import type { NostrProfile, PubkeyHex, Npub } from "../types/nostr.js";
+import { nip19 } from 'nostr-tools';
+import type { NostrEvent, PubkeyHex, Npub } from '../../types/nostr';
+import { renderEvent } from '../common/event-render.js';
 ```
 
-#### Variables and Constants
-- Use explicit type annotations for all variables
-- Use `const` for immutable values, `let` for mutable variables
-- Use descriptive, camelCase naming: `userProfile`, `eventList`, `relayConnection`
-- Initialize variables at declaration when possible
-- Example:
-```typescript
-const relays: string[] = ["wss://nos.lol", "wss://relay.damus.io"];
-let seenEventIds: Set<string> = new Set();
-let profile: NostrProfile | null = null;
-```
+### Error Handling
 
-#### Functions and Classes
-- Use explicit return types for all functions
-- Use arrow functions for concise expressions and callbacks
-- Use `async/await` for asynchronous operations over Promises
-- Name functions descriptively: `fetchProfile`, `renderEvent`, `validateNpub`
-- Keep functions focused on single responsibilities
-- Example:
-```typescript
-export async function fetchProfile(pubkeyHex: PubkeyHex, relays: string[]): Promise<NostrProfile | null> {
-  // Implementation
-}
+- Use try/catch for all async operations
+- Relay errors are logged but must not block other relays
+- Null-check all DOM element references before use
+- Return `null` (not throw) when a relay misses an event
 
-export function renderEvent(event: NostrEvent, profile: NostrProfile | null, npub: Npub, pubkey: PubkeyHex, output: HTMLElement): void {
-  // Implementation
-}
-```
+### DOM & HTML
 
-#### Type Definitions
-- Define comprehensive interfaces for complex data structures
-- Use union types for optional/null values
-- Use branded types for domain-specific strings (PubkeyHex, Npub)
-- Export all types from a central types file
-- Example:
-```typescript
-export interface NostrEvent {
-  id: string;
-  pubkey: string;
-  created_at: number;
-  kind: number;
-  tags: string[][];
-  content: string;
-  sig: string;
-}
+- Use `querySelector` / `getElementById` with explicit null checks
+- Generate HTML via template literals; sanitize user content before rendering
+- Use Tailwind CSS utility classes for styling
 
-export type PubkeyHex = string;
-export type Npub = string;
-```
+### Coding Practices
 
-#### Error Handling
-- Use try/catch blocks for async operations
-- Provide meaningful error messages
-- Log errors to console for debugging
-- Return appropriate HTTP status codes in API endpoints
-- Use proper error types and interfaces
-- Example:
-```typescript
-try {
-  const response = await fetch(url);
-  const data = await response.json();
-  return data;
-} catch (error) {
-  console.error("Error fetching data:", error);
-  throw new Error("Failed to fetch data");
-}
-```
+- When making changes, always ensure they are corrected to avoid any side effects (e.g. update all call sites when renaming a function)
 
-#### Code Formatting
-- Use 2-space indentation
-- Use single quotes for strings
-- Add trailing commas in multi-line objects/arrays
-- Use template literals for string interpolation
-- Break long lines appropriately (aim for <100 characters)
-- Use explicit type annotations
-- Example:
-```typescript
-const userCard: string = `
-  <div class="user-profile">
-    <img src="${avatar}" alt="Avatar" />
-    <h3>${name}</h3>
-  </div>
-`;
-```
+## Nostr Protocol Reference
 
-### Frontend-Specific Guidelines
+| Kind | Meaning |
+|------|---------|
+| 0 | Profile metadata |
+| 1 | Text note |
+| 3 | Follow list (contact list) |
+| 5 | Deletion request |
+| 6 | Repost |
+| 7 | Reaction |
+| 10002 | Relay list metadata (NIP-65) |
 
-#### DOM Manipulation
-- Use modern DOM APIs (`querySelector`, `addEventListener`)
-- Cache DOM element references with explicit types
-- Use event delegation when appropriate
-- Clean up event listeners when components are removed
-- Use null checks for DOM elements
-- Example:
-```typescript
-const output: HTMLElement | null = document.getElementById("nostr-output");
-const loadMoreBtn: HTMLElement | null = document.getElementById("load-more");
+**Supported NIPs:** NIP-01, NIP-02, NIP-03 (OGP), NIP-05, NIP-07, NIP-10 (reply threading), NIP-19, NIP-25 (reactions), NIP-36 (content warnings), NIP-42 (AUTH), NIP-65
 
-if (loadMoreBtn) {
-  loadMoreBtn.addEventListener("click", handleLoadMore);
-}
-```
+## TypeScript Configuration
 
-#### HTML Generation
-- Use template literals for dynamic HTML generation
-- Include proper semantic HTML structure
-- Add accessibility attributes (alt, aria-labels)
-- Use Tailwind CSS classes consistently
-- Sanitize user input before rendering
-- Example:
-```typescript
-const eventHTML: string = `
-  <div class="bg-white rounded-lg p-4 shadow">
-    <div class="flex items-start space-x-4">
-      <img src="${avatar}" alt="User avatar" class="w-12 h-12 rounded-full" />
-      <div class="flex-1">
-        <div class="font-semibold">${name}</div>
-        <div class="text-gray-700">${content}</div>
-      </div>
-    </div>
-  </div>
-`;
-```
-
-#### CSS/Styling
-- Use Tailwind CSS utility classes
-- Follow mobile-first responsive design principles
-- Use semantic color classes (text-gray-700, bg-blue-500)
-- Maintain consistent spacing with Tailwind's space scale
-- Example:
-```html
-<div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-  <h2 class="text-xl sm:text-2xl font-semibold mb-4">Posts</h2>
-</div>
-```
-
-### Backend/API Guidelines
-
-#### Express Server Setup
-- Use ES6 import syntax for modules
-- Set up proper middleware for static file serving
-- Handle CORS if needed for API endpoints
-- Use environment variables for configuration
-- Use explicit types for request/response objects
-- Example:
-```typescript
-import express, { Request, Response } from "express";
-import path from "path";
-
-const app = express();
-const port: string | number = process.env.PORT || 3000;
-
-// Middleware
-app.use(express.static(path.join(__dirname, "public")));
-
-// Routes
-app.get("/api/data", async (req: Request, res: Response): Promise<void> => {
-  // Implementation
-});
-```
-
-#### API Response Format
-- Return JSON for API endpoints with explicit types
-- Include proper HTTP status codes
-- Provide consistent error response format
-- Use generic types for flexible responses
-- Example:
-```typescript
-// Success response
-res.json({ data: result, success: true });
-
-// Error response
-res.status(400).json({ error: "Invalid input", success: false });
-```
-
-### Nostr Protocol Integration
-
-#### Key Management
-- Use nostr-tools library for key operations
-- Handle npub encoding/decoding properly with type safety
-- Validate pubkey formats before use
-- Use branded types for better type safety
-- Example:
-```typescript
-import { nip19 } from "https://esm.sh/nostr-tools";
-
-try {
-  const decoded = nip19.decode(npub);
-  const pubkeyHex: PubkeyHex = decoded.data;
-} catch (error) {
-  throw new Error("Invalid npub format");
-}
-```
-
-#### Relay Connections
-- Use WebSocket connections for relay communication
-- Handle connection errors gracefully
-- Implement reconnection logic if needed
-- Close connections when no longer needed
-- Use proper error handling and typing
-- Example:
-```typescript
-const socket: WebSocket = new WebSocket(relayUrl);
-socket.onmessage = (msg: MessageEvent): void => {
-  try {
-    const data = JSON.parse(msg.data);
-    // Process data
-  } catch (error) {
-    console.error("Failed to parse relay message:", error);
-  }
-};
-```
-
-### File Organization
-- Keep server code in root (`server.ts`)
-- Frontend TypeScript code in `/src/` directory
-- Compiled JavaScript in `/dist/` directory
-- Type definitions in `/types/` directory
-- HTML template in `/src/` directory
-- Follow naming conventions: `app.ts`, `utils.ts`, `events.ts`
-
-### Security Best Practices
-- Validate all user inputs with explicit type checking
-- Sanitize HTML content before rendering
-- Use HTTPS in production
-- Avoid exposing sensitive data in client-side code
-- Implement proper error handling without leaking internal details
-- Use branded types to prevent type confusion
-
-### Performance Considerations
-- Minimize DOM manipulations
-- Use efficient data structures (Sets for unique IDs)
-- Implement pagination for large data sets
-- Lazy load images and content
-- Cache API responses when appropriate
-- Use proper TypeScript compilation targets for browser compatibility
-
-### TypeScript Configuration
-- Use strict mode with all strict checks enabled
-- Target ES2020 for modern browser support
-- Use ESNext modules for tree shaking
-- Enable exact optional property types
-- Skip library checking for faster compilation
-- Include only necessary files in compilation
-
-### Git Workflow
-- Write clear, descriptive commit messages
-- Commit related changes together
-- Use feature branches for new functionality
-- Test changes before committing
-- Example commit messages:
-  - `feat: add profile fetching functionality`
-  - `fix: handle WebSocket connection errors`
-  - `refactor: convert JavaScript to TypeScript`
-
-## Development Workflow
-1. Edit TypeScript files in `src/` directory
-2. Run `npm run build` to compile to `dist/`
-3. Run `npm start` to build and run the server
-4. Test in browser at localhost:3000
-5. Add tests for new functionality
-6. Run linting/formatting before committing
-
-## Dependencies
-- `express`: Web server framework
-- `typescript`: TypeScript compiler
-- `@types/node`: Node.js type definitions
-- `@types/express`: Express type definitions
-- `nostr-tools`: Nostr protocol utilities (loaded via ESM)
-
-## Future Improvements
-- Add testing framework (Jest + Testing Library)
-- Add linting/formatting (ESLint + Prettier for TypeScript)
-- Add build optimizations (Webpack/Vite for bundling)
-- Add error monitoring and logging
-- Add caching layer for performance
-- Consider adding React/Vue for better component structure
+- `target`: ES2020
+- `module`: ESNext
+- `moduleResolution`: bundler
+- `lib`: ES2020, DOM, DOM.Iterable
+- `baseUrl`: `.`
+- Path aliases: `@/` → `src/`, `@types/` → `types/`

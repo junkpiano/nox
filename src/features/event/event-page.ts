@@ -431,7 +431,7 @@ async function renderReplyTree(
   const roots: NostrEvent[] = [];
 
   replies.forEach((event: NostrEvent): void => {
-    const parentId: string | null = resolveReplyParentId(event);
+    const parentId: string | null = resolveReplyParent(event)?.id ?? null;
     const attachTo: string =
       parentId && (parentId === rootEvent.id || byId.has(parentId))
         ? parentId
