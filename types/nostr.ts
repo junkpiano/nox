@@ -15,6 +15,8 @@ export interface NostrProfile {
   about?: string;
   picture?: string;
   banner?: string;
+  website?: string;
+  url?: string;
   nip05?: string;
   lud16?: string;
   emojiTags?: string[][];

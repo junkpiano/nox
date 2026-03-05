@@ -19,6 +19,35 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
+function normalizeHttpUrl(url: string): string | null {
+  try {
+    const parsed: URL = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeProfileWebsiteUrl(profile: NostrProfile | null): string | null {
+  const websiteRaw: unknown = profile?.website ?? profile?.url;
+  if (typeof websiteRaw !== 'string') {
+    return null;
+  }
+
+  const trimmed: string = websiteRaw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const withProtocol: string = /^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  return normalizeHttpUrl(withProtocol);
+}
+
 function isValidEmojiImageUrl(url: string): boolean {
   try {
     const parsed: URL = new URL(url);
@@ -317,6 +346,9 @@ export function renderProfile(
   const emojiTags: string[][] = profile?.emojiTags || [];
   const nip05: string | undefined = profile?.nip05?.trim();
   const hasNip05: boolean = !!nip05 && isNip05Identifier(nip05);
+  const websiteUrl: string | null = normalizeProfileWebsiteUrl(profile);
+  const websiteLabel: string =
+    websiteUrl?.replace(/^https?:\/\//i, '').replace(/\/$/, '') || '';
   const isEnergySavingMode: boolean =
     localStorage.getItem('energy_saving_mode') === 'true';
 
@@ -353,6 +385,7 @@ export function renderProfile(
           <span id="nip05-verified" class="hidden inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[10px]" aria-label="NIP-05 verified" title="NIP-05 verified">✔</span>
         </h2>
         ${bioHtml ? `<p class="${banner && !isEnergySavingMode ? 'text-white/90 drop-shadow' : 'text-gray-600'} text-sm mt-1 text-center max-w-2xl break-words px-4 w-full whitespace-pre-wrap">${bioHtml}</p>` : ''}
+        ${websiteUrl ? `<p class="text-sm mt-2 text-center ${banner && !isEnergySavingMode ? 'text-blue-100 drop-shadow' : 'text-blue-600'}"><a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener noreferrer" class="underline break-all">${escapeHtml(websiteLabel)}</a></p>` : ''}
         <div id="follow-action" class="mt-4"></div>
       </div>
     </div>
