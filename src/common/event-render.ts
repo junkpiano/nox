@@ -98,6 +98,24 @@ function normalizeHttpUrl(url: string): string | null {
   }
 }
 
+function hasTextSelectionWithin(container: HTMLElement): boolean {
+  const selection: Selection | null = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return false;
+  }
+
+  const selectedText: string = selection.toString().trim();
+  if (!selectedText) {
+    return false;
+  }
+
+  const range: Range = selection.getRangeAt(0);
+  return (
+    container.contains(range.startContainer) ||
+    container.contains(range.endContainer)
+  );
+}
+
 function isContentWarningNamespace(value: string | undefined): boolean {
   return (value || '').trim().toLowerCase() === 'content-warning';
 }
@@ -1425,6 +1443,9 @@ export function renderEvent(
         target.closest('.reactions-container') ||
         target.closest('.reactions-details')
       ) {
+        return;
+      }
+      if (hasTextSelectionWithin(div)) {
         return;
       }
       const permalinkAnchor: HTMLAnchorElement | null = div.querySelector(
