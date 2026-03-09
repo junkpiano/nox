@@ -264,16 +264,24 @@ function isReferencedEventNullCached(eventId: string): boolean {
 async function fetchEventByIdCached(
   eventId: string,
   relays: string[],
+  options: { bypassNullCache?: boolean; forceRefresh?: boolean } = {},
 ): Promise<NostrEvent | null> {
-  if (isReferencedEventNullCached(eventId)) {
+  const bypassNullCache: boolean = options.bypassNullCache === true;
+  const forceRefresh: boolean = options.forceRefresh === true;
+
+  if (!bypassNullCache && isReferencedEventNullCached(eventId)) {
     return null;
   }
 
-  const cached: Promise<NostrEvent | null> | undefined =
-    referencedEventCache.get(eventId);
-  if (cached) {
-    setReferencedEventCache(eventId, cached);
-    return cached;
+  if (forceRefresh) {
+    referencedEventCache.delete(eventId);
+  } else {
+    const cached: Promise<NostrEvent | null> | undefined =
+      referencedEventCache.get(eventId);
+    if (cached) {
+      setReferencedEventCache(eventId, cached);
+      return cached;
+    }
   }
 
   const request: Promise<NostrEvent | null> =
@@ -290,7 +298,9 @@ async function fetchEventByIdCached(
         return event;
       }
       referencedEventCache.delete(eventId);
-      setReferencedEventNullCache(eventId);
+      if (!bypassNullCache) {
+        setReferencedEventNullCache(eventId);
+      }
       return null;
     })();
   setReferencedEventCache(eventId, request);
@@ -605,23 +615,25 @@ async function delay(ms: number): Promise<void> {
 async function fetchEventWithRetry(
   eventId: string,
   relays: string[],
-  attempts: number = 4,
+  attempts: number = 5,
 ): Promise<NostrEvent | null> {
   for (let i = 0; i < attempts; i += 1) {
     const event: NostrEvent | null = await fetchEventByIdCached(
       eventId,
       relays,
+      {
+        bypassNullCache: i > 0,
+        forceRefresh: i > 0,
+      },
     );
     if (event) {
       return event;
     }
-    if (isReferencedEventNullCached(eventId)) {
-      return null;
-    }
     if (i < attempts - 1) {
-      await delay(800 + i * 600);
+      await delay(700 + i * 900);
     }
   }
+  setReferencedEventNullCache(eventId);
   return null;
 }
 
@@ -1756,12 +1768,12 @@ async function renderReferencedEventCards(
         continue;
       }
 
-      const relaysToUse: string[] = filterRelaysToUserList(
-        relayHints.length > 0 ? relayHints : currentRelays,
-        currentRelays,
-      );
+      const relaysToUse: string[] = normalizeRelayList([
+        ...relayHints,
+        ...currentRelays,
+      ]);
       if (relaysToUse.length === 0) {
-        card.textContent = 'Referenced event is not on your relay list.';
+        card.textContent = 'No relays available for referenced event.';
         continue;
       }
       if (referencedAuthorPubkey) {
@@ -1785,7 +1797,7 @@ async function renderReferencedEventCards(
       const referencedEvent: NostrEvent | null = await fetchEventWithRetry(
         eventId,
         relaysToUse,
-        3,
+        5,
       );
       if (!referencedEvent) {
         card.textContent = 'Failed to load referenced event.';
