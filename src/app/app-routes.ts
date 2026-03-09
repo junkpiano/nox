@@ -1,6 +1,9 @@
 import { nip19 } from 'nostr-tools';
 import type { NostrProfile, Npub, PubkeyHex } from '../../types/nostr';
-import { deleteTimeline, getTimelineNewestTimestamp } from '../common/db/index.js';
+import {
+  deleteTimeline,
+  getTimelineNewestTimestamp,
+} from '../common/db/index.js';
 import { setActiveNav } from '../common/navigation.js';
 import { isNip05Identifier, resolveNip05 } from '../common/nip05.js';
 import {
@@ -16,21 +19,25 @@ import { loadUserHomeTimeline } from '../features/home/home-loader.js';
 import { loadHomeTimeline } from '../features/home/home-timeline.js';
 import { showInputForm } from '../features/home/welcome.js';
 import { loadNotificationsPage } from '../features/notifications/notifications.js';
-import { loadReactionsPage } from '../features/reactions/reactions-page.js';
 import {
   publishEventToRelays,
   setupFollowToggle,
 } from '../features/profile/follow.js';
-import { fetchProfile, renderProfile } from '../features/profile/profile.js';
+import {
+  fetchProfile,
+  renderProfile,
+  setupProfileEditor,
+} from '../features/profile/profile.js';
 import { loadEvents } from '../features/profile/profile-events.js';
+import { loadReactionsPage } from '../features/reactions/reactions-page.js';
 import {
   getAllRelays,
   normalizeRelayUrl,
   setRelays,
 } from '../features/relays/relays.js';
 import { loadRelaysPage } from '../features/relays/relays-page.js';
-import { loadSettingsPage } from '../features/settings/settings-page.js';
 import { loadSearchPage } from '../features/search/search-page.js';
+import { loadSettingsPage } from '../features/settings/settings-page.js';
 import {
   appState,
   closeAllWebSockets,
@@ -819,6 +826,13 @@ async function startAppCore(
   if (profileSection) {
     if (!isRouteActive()) return; // Guard before DOM update
     renderProfile(pubkeyHex, npub, appState.profile, profileSection);
+    setupProfileEditor(pubkeyHex, npub, appState.profile, profileSection, {
+      getRelays: (): string[] => appState.relays,
+      publishEvent: publishEventToRelays,
+      onProfileUpdated: (profile: NostrProfile): void => {
+        appState.profile = profile;
+      },
+    });
   }
 
   try {
