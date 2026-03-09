@@ -8,6 +8,7 @@ import type {
 import { storeProfile } from '../../common/db/index.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
+import { openZapComposer } from '../../common/zap.js';
 import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
 import { recordRelayFailure } from '../relays/relays.js';
 import { getCachedProfile, setCachedProfile } from './profile-cache.js';
@@ -529,6 +530,7 @@ export function renderProfile(
         <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
           <div id="profile-owner-action"></div>
           <div id="follow-action"></div>
+          <div id="profile-zap-action"></div>
         </div>
         <div id="profile-edit-panel" class="hidden mt-4 w-full max-w-2xl"></div>
       </div>
@@ -553,6 +555,52 @@ export function renderProfile(
       }
     })();
   }
+}
+
+export function setupProfileZapButton(
+  pubkey: PubkeyHex,
+  npub: Npub,
+  profile: NostrProfile | null,
+  profileSection: HTMLElement,
+): void {
+  const zapAction: HTMLElement | null = profileSection.querySelector(
+    '#profile-zap-action',
+  );
+  if (!zapAction) {
+    return;
+  }
+
+  const zapIdentifier: string | undefined = profile?.lud16 || profile?.lud06;
+  if (!zapIdentifier) {
+    zapAction.innerHTML = '';
+    return;
+  }
+
+  zapAction.innerHTML = `
+    <button
+      id="profile-zap-trigger"
+      class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+      title="Zap via Lightning"
+    >
+      ⚡ Zap
+    </button>
+  `;
+
+  const trigger: HTMLButtonElement | null = profileSection.querySelector(
+    '#profile-zap-trigger',
+  );
+  if (!trigger) {
+    return;
+  }
+
+  trigger.addEventListener('click', (): void => {
+    openZapComposer({
+      targetType: 'profile',
+      recipientPubkey: pubkey,
+      recipientName: getDisplayName(npub, profile),
+      recipientProfile: profile,
+    });
+  });
 }
 
 export function setupProfileEditor(
@@ -734,6 +782,7 @@ export function setupProfileEditor(
       await cacheResolvedProfile(pubkey, nextProfile, true);
       options.onProfileUpdated?.(nextProfile);
       renderProfile(pubkey, npub, nextProfile, profileSection);
+      setupProfileZapButton(pubkey, npub, nextProfile, profileSection);
       setupProfileEditor(pubkey, npub, nextProfile, profileSection, options);
     } catch (error: unknown) {
       console.error('[Profile] Failed to publish metadata:', error);

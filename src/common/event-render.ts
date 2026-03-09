@@ -26,6 +26,7 @@ import {
 } from './events-queries.js';
 import { createRelayWebSocket } from './relay-socket.js';
 import { getSessionPrivateKey } from './session.js';
+import { openZapComposer } from './zap.js';
 
 const REFERENCED_EVENT_CACHE_LIMIT: number = 1000;
 const REFERENCED_EVENT_NULL_CACHE_LIMIT: number = 2000;
@@ -589,8 +590,8 @@ function filterRelaysToUserList(
     return normalizedUserRelays;
   }
   const userRelaySet: Set<string> = new Set(normalizedUserRelays);
-  return normalizeRelayList(candidateRelays).filter((relayUrl: string): boolean =>
-    userRelaySet.has(relayUrl),
+  return normalizeRelayList(candidateRelays).filter(
+    (relayUrl: string): boolean => userRelaySet.has(relayUrl),
   );
 }
 
@@ -1023,6 +1024,7 @@ export function renderEvent(
     storedPubkey && storedPubkey === event.pubkey,
   );
   const isLoggedIn: boolean = Boolean(storedPubkey);
+  const canZapTarget: boolean = Boolean(profile?.lud16 || profile?.lud06);
   const actionBtnBase: string =
     'event-action-btn inline-flex items-center justify-center p-1 rounded transition-colors';
   const actionBtnDisabled: string = 'opacity-60 cursor-not-allowed';
@@ -1046,6 +1048,13 @@ export function renderEvent(
     ? `${actionBtnBase} react-event-btn text-rose-600 hover:text-rose-800 hover:bg-rose-50`
     : `${actionBtnBase} react-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
+  const zapButtonTitle: string = canZapTarget
+    ? 'Zap via Lightning'
+    : 'Zap unavailable';
+  const zapButtonClasses: string = canZapTarget
+    ? `${actionBtnBase} zap-event-btn text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50`
+    : `${actionBtnBase} zap-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
+
   const deleteButtonTitle: string = 'Delete post';
   const deleteButtonClasses: string = `${actionBtnBase} delete-event-btn text-red-600 hover:text-red-800 hover:bg-red-50`;
 
@@ -1068,6 +1077,13 @@ export function renderEvent(
                 <path stroke-linecap="round" stroke-linejoin="round" d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z" />
               </svg>
             </button>
+            ${
+              canZapTarget
+                ? `<button class="${zapButtonClasses}" aria-label="Zap post" title="${zapButtonTitle}">
+                    <span aria-hidden="true" class="text-sm leading-none">⚡</span>
+                  </button>`
+                : ''
+            }
             ${
               canDeletePost
                 ? `<button class="${deleteButtonClasses}" aria-label="${deleteButtonTitle}" title="${deleteButtonTitle}">
@@ -1386,6 +1402,23 @@ export function renderEvent(
         }
       },
     );
+  }
+
+  const zapButton: HTMLButtonElement | null = div.querySelector(
+    '.zap-event-btn',
+  ) as HTMLButtonElement | null;
+  if (zapButton) {
+    zapButton.addEventListener('click', (e: MouseEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      openZapComposer({
+        targetType: 'event',
+        recipientPubkey: event.pubkey as PubkeyHex,
+        recipientName: name,
+        recipientProfile: profile,
+        event,
+      });
+    });
   }
 
   const deleteButton: HTMLButtonElement | null = div.querySelector(

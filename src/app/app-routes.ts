@@ -27,6 +27,7 @@ import {
   fetchProfile,
   renderProfile,
   setupProfileEditor,
+  setupProfileZapButton,
 } from '../features/profile/profile.js';
 import { loadEvents } from '../features/profile/profile-events.js';
 import { loadReactionsPage } from '../features/reactions/reactions-page.js';
@@ -826,6 +827,7 @@ async function startAppCore(
   if (profileSection) {
     if (!isRouteActive()) return; // Guard before DOM update
     renderProfile(pubkeyHex, npub, appState.profile, profileSection);
+    setupProfileZapButton(pubkeyHex, npub, appState.profile, profileSection);
     setupProfileEditor(pubkeyHex, npub, appState.profile, profileSection, {
       getRelays: (): string[] => appState.relays,
       publishEvent: publishEventToRelays,
