@@ -1,8 +1,13 @@
-import type { NostrProfile, Npub, PubkeyHex } from '../../../types/nostr';
-import { nip19 } from 'nostr-tools';
+import { finalizeEvent, nip19 } from 'nostr-tools';
+import type {
+  NostrEvent,
+  NostrProfile,
+  Npub,
+  PubkeyHex,
+} from '../../../types/nostr';
 import { storeProfile } from '../../common/db/index.js';
-import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
+import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
 import { recordRelayFailure } from '../relays/relays.js';
 import { getCachedProfile, setCachedProfile } from './profile-cache.js';
@@ -31,7 +36,9 @@ function normalizeHttpUrl(url: string): string | null {
   }
 }
 
-function normalizeProfileWebsiteUrl(profile: NostrProfile | null): string | null {
+function normalizeProfileWebsiteUrl(
+  profile: NostrProfile | null,
+): string | null {
   const websiteRaw: unknown = profile?.website ?? profile?.url;
   if (typeof websiteRaw !== 'string') {
     return null;
@@ -97,9 +104,16 @@ function emojifySegmentToHtml(
           pubkey = decoded.data as PubkeyHex;
           profilePathNpub = mentionedProfileId as Npub;
         } else if (decoded.type === 'nprofile') {
-          const data: any = decoded.data;
+          const data: unknown = decoded.data;
+          let dataPubkey: string | undefined;
+          if (typeof data === 'object' && data !== null && 'pubkey' in data) {
+            const maybePubkey: unknown = (data as { pubkey?: unknown }).pubkey;
+            if (typeof maybePubkey === 'string') {
+              dataPubkey = maybePubkey;
+            }
+          }
           const candidate: string | undefined =
-            data?.pubkey || (typeof data === 'string' ? data : undefined);
+            dataPubkey || (typeof data === 'string' ? data : undefined);
           if (candidate) {
             pubkey = candidate as PubkeyHex;
             profilePathNpub = nip19.npubEncode(pubkey);
@@ -166,7 +180,11 @@ interface FetchProfileOptions {
   forceRefresh?: boolean;
 }
 
-import { promiseAny, RelayMissError as RelayProfileMissError } from '../../common/promise-utils.js';
+import {
+  promiseAny,
+  RelayMissError as RelayProfileMissError,
+} from '../../common/promise-utils.js';
+import { getSessionPrivateKey } from '../../common/session.js';
 
 const PROFILE_MEM_CACHE_TTL_MS: number = 5 * 60 * 1000;
 const PROFILE_RETRY_INTERVAL_MS: number = 30 * 1000;
@@ -176,6 +194,105 @@ const profileMemoryCache: Map<
 > = new Map();
 const profileInFlight: Map<PubkeyHex, Promise<NostrProfile | null>> = new Map();
 const profileLastAttempt: Map<PubkeyHex, number> = new Map();
+const PROFILE_EDITABLE_FIELDS: Array<
+  'name' | 'about' | 'picture' | 'banner' | 'website' | 'nip05' | 'lud16'
+> = ['name', 'about', 'picture', 'banner', 'website', 'nip05', 'lud16'];
+
+interface ProfileEditorOptions {
+  getRelays: () => string[];
+  publishEvent: (event: NostrEvent, relayList: string[]) => Promise<void>;
+  onProfileUpdated?: (profile: NostrProfile) => void;
+}
+
+interface WindowWithNostr extends Window {
+  nostr?: {
+    signEvent: (event: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent>;
+  };
+}
+
+async function cacheResolvedProfile(
+  pubkeyHex: PubkeyHex,
+  profile: NostrProfile,
+  persistProfile: boolean,
+): Promise<void> {
+  if (persistProfile) {
+    setCachedProfile(pubkeyHex, profile);
+  }
+  await storeProfile(pubkeyHex, profile);
+  profileMemoryCache.set(pubkeyHex, {
+    profile,
+    expiresAt: Date.now() + PROFILE_MEM_CACHE_TTL_MS,
+  });
+}
+
+function getStoredPubkey(): PubkeyHex | null {
+  const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
+  return storedPubkey ? (storedPubkey as PubkeyHex) : null;
+}
+
+function canSignProfileMetadata(): boolean {
+  const nostr: WindowWithNostr['nostr'] = (window as WindowWithNostr).nostr;
+  if (nostr?.signEvent) {
+    return true;
+  }
+  return Boolean(getSessionPrivateKey());
+}
+
+function stripTransientProfileFields(profile: NostrProfile): NostrProfile {
+  const sanitized: NostrProfile = { ...profile };
+  delete sanitized.emojiTags;
+  return sanitized;
+}
+
+function buildEditableProfileDraft(
+  currentProfile: NostrProfile | null,
+  form: HTMLFormElement,
+): NostrProfile {
+  const formData: FormData = new FormData(form);
+  const draft: NostrProfile = stripTransientProfileFields(currentProfile || {});
+
+  PROFILE_EDITABLE_FIELDS.forEach((field): void => {
+    const rawValue: FormDataEntryValue | null = formData.get(field);
+    const value: string = typeof rawValue === 'string' ? rawValue.trim() : '';
+    if (value) {
+      draft[field] = value;
+    } else {
+      delete draft[field];
+    }
+  });
+
+  if (draft.website) {
+    draft.url = draft.website;
+  } else {
+    delete draft.url;
+  }
+
+  return draft;
+}
+
+async function signProfileMetadataEvent(
+  pubkeyHex: PubkeyHex,
+  profile: NostrProfile,
+): Promise<NostrEvent> {
+  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
+    kind: 0,
+    pubkey: pubkeyHex,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: Array.isArray(profile.emojiTags) ? profile.emojiTags : [],
+    content: JSON.stringify(stripTransientProfileFields(profile)),
+  };
+
+  const nostr: WindowWithNostr['nostr'] = (window as WindowWithNostr).nostr;
+  if (nostr?.signEvent) {
+    return await nostr.signEvent(unsignedEvent);
+  }
+
+  const privateKey: Uint8Array | null = getSessionPrivateKey();
+  if (!privateKey) {
+    throw new Error('No signing method available');
+  }
+  return finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
+}
 
 export async function fetchProfile(
   pubkeyHex: PubkeyHex,
@@ -265,12 +382,42 @@ export async function fetchProfile(
                 };
 
                 socket.onmessage = (msg: MessageEvent): void => {
-                  const arr: any[] = JSON.parse(msg.data);
-                  if (arr[0] === 'EVENT' && arr[2]?.kind === 0) {
+                  const parsedMessage: unknown = JSON.parse(msg.data);
+                  if (!Array.isArray(parsedMessage)) {
+                    return;
+                  }
+
+                  const messageType: unknown = parsedMessage[0];
+                  const eventPayload: unknown = parsedMessage[2];
+                  const eventKind: unknown =
+                    typeof eventPayload === 'object' &&
+                    eventPayload !== null &&
+                    'kind' in eventPayload
+                      ? (eventPayload as { kind?: unknown }).kind
+                      : undefined;
+
+                  if (messageType === 'EVENT' && eventKind === 0) {
                     try {
-                      const parsed: NostrProfile = JSON.parse(arr[2].content);
-                      const emojiTags: string[][] = Array.isArray(arr[2].tags)
-                        ? arr[2].tags.filter(
+                      const rawContent: unknown =
+                        typeof eventPayload === 'object' &&
+                        eventPayload !== null &&
+                        'content' in eventPayload
+                          ? (eventPayload as { content?: unknown }).content
+                          : undefined;
+                      const rawTags: unknown =
+                        typeof eventPayload === 'object' &&
+                        eventPayload !== null &&
+                        'tags' in eventPayload
+                          ? (eventPayload as { tags?: unknown }).tags
+                          : undefined;
+                      if (typeof rawContent !== 'string') {
+                        finish(null);
+                        return;
+                      }
+
+                      const parsed: NostrProfile = JSON.parse(rawContent);
+                      const emojiTags: string[][] = Array.isArray(rawTags)
+                        ? rawTags.filter(
                             (tag: unknown): tag is string[] =>
                               Array.isArray(tag) && tag[0] === 'emoji',
                           )
@@ -283,7 +430,7 @@ export async function fetchProfile(
                     }
                   }
 
-                  if (arr[0] === 'EOSE') {
+                  if (messageType === 'EOSE') {
                     finish(null);
                   }
                 };
@@ -309,14 +456,7 @@ export async function fetchProfile(
 
       try {
         const profile: NostrProfile = await promiseAny(profileRequests);
-        if (persistProfile) {
-          setCachedProfile(pubkeyHex, profile);
-        }
-        await storeProfile(pubkeyHex, profile);
-        profileMemoryCache.set(pubkeyHex, {
-          profile,
-          expiresAt: Date.now() + PROFILE_MEM_CACHE_TTL_MS,
-        });
+        await cacheResolvedProfile(pubkeyHex, profile, persistProfile);
         return profile;
       } catch {
         // All relays missed or failed. Do NOT cache null in profileMemoryCache —
@@ -386,7 +526,11 @@ export function renderProfile(
         </h2>
         ${bioHtml ? `<p class="${banner && !isEnergySavingMode ? 'text-white/90 drop-shadow' : 'text-gray-600'} text-sm mt-1 text-center max-w-2xl break-words px-4 w-full whitespace-pre-wrap">${bioHtml}</p>` : ''}
         ${websiteUrl ? `<p class="text-sm mt-2 text-center ${banner && !isEnergySavingMode ? 'text-blue-100 drop-shadow' : 'text-blue-600'}"><a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener noreferrer" class="underline break-all">${escapeHtml(websiteLabel)}</a></p>` : ''}
-        <div id="follow-action" class="mt-4"></div>
+        <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
+          <div id="profile-owner-action"></div>
+          <div id="follow-action"></div>
+        </div>
+        <div id="profile-edit-panel" class="hidden mt-4 w-full max-w-2xl"></div>
       </div>
     </div>
   `;
@@ -409,4 +553,197 @@ export function renderProfile(
       }
     })();
   }
+}
+
+export function setupProfileEditor(
+  pubkey: PubkeyHex,
+  npub: Npub,
+  profile: NostrProfile | null,
+  profileSection: HTMLElement,
+  options: ProfileEditorOptions,
+): void {
+  const ownerAction: HTMLElement | null = profileSection.querySelector(
+    '#profile-owner-action',
+  );
+  const editPanel: HTMLElement | null = profileSection.querySelector(
+    '#profile-edit-panel',
+  );
+  if (!ownerAction || !editPanel) {
+    return;
+  }
+
+  const storedPubkey: PubkeyHex | null = getStoredPubkey();
+  if (!storedPubkey || storedPubkey !== pubkey) {
+    ownerAction.innerHTML = '';
+    editPanel.innerHTML = '';
+    editPanel.classList.add('hidden');
+    return;
+  }
+
+  const canSign: boolean = canSignProfileMetadata();
+  ownerAction.innerHTML = `
+    <button
+      id="profile-edit-toggle"
+      class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+    >
+      Edit profile
+    </button>
+  `;
+
+  editPanel.innerHTML = `
+    <form id="profile-edit-form" class="rounded-xl border border-slate-200 bg-white/95 p-4 text-left shadow-sm backdrop-blur">
+      <div class="grid gap-4 md:grid-cols-2">
+        <label class="block text-sm font-medium text-slate-700">
+          Name
+          <input name="name" type="text" value="${escapeHtml(profile?.name || '')}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="block text-sm font-medium text-slate-700">
+          NIP-05
+          <input name="nip05" type="text" value="${escapeHtml(profile?.nip05 || '')}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="name@example.com" />
+        </label>
+        <label class="block text-sm font-medium text-slate-700">
+          Avatar URL
+          <input name="picture" type="url" value="${escapeHtml(profile?.picture || '')}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="block text-sm font-medium text-slate-700">
+          Banner URL
+          <input name="banner" type="url" value="${escapeHtml(profile?.banner || '')}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="block text-sm font-medium text-slate-700">
+          Website
+          <input name="website" type="text" value="${escapeHtml((profile?.website || profile?.url || '') as string)}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="example.com" />
+        </label>
+        <label class="block text-sm font-medium text-slate-700">
+          Lightning Address
+          <input name="lud16" type="text" value="${escapeHtml(profile?.lud16 || '')}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="name@getalby.com" />
+        </label>
+        <label class="block text-sm font-medium text-slate-700 md:col-span-2">
+          About
+          <textarea name="about" rows="4" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">${escapeHtml(profile?.about || '')}</textarea>
+        </label>
+      </div>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          id="profile-edit-submit"
+          type="submit"
+          class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+        >
+          Save profile
+        </button>
+        <button
+          id="profile-edit-cancel"
+          type="button"
+          class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+        >
+          Cancel
+        </button>
+        <span id="profile-edit-status" class="text-sm text-slate-500">
+          ${canSign ? 'Ready to publish kind 0 metadata' : 'Sign-in required to edit profile'}
+        </span>
+      </div>
+    </form>
+  `;
+
+  editPanel.classList.add('hidden');
+
+  const toggleButton: HTMLButtonElement | null = profileSection.querySelector(
+    '#profile-edit-toggle',
+  );
+  const form: HTMLFormElement | null =
+    profileSection.querySelector('#profile-edit-form');
+  const submitButton: HTMLButtonElement | null = profileSection.querySelector(
+    '#profile-edit-submit',
+  );
+  const cancelButton: HTMLButtonElement | null = profileSection.querySelector(
+    '#profile-edit-cancel',
+  );
+  const statusEl: HTMLElement | null = profileSection.querySelector(
+    '#profile-edit-status',
+  );
+  if (!toggleButton || !form || !submitButton || !cancelButton || !statusEl) {
+    return;
+  }
+
+  let isSubmitting: boolean = false;
+
+  const syncFormState = (): void => {
+    toggleButton.disabled = isSubmitting;
+    submitButton.disabled = isSubmitting;
+    if (isSubmitting) {
+      toggleButton.classList.add('opacity-60', 'cursor-not-allowed');
+      submitButton.classList.add('opacity-60', 'cursor-not-allowed');
+      cancelButton.disabled = true;
+      cancelButton.classList.add('opacity-60', 'cursor-not-allowed');
+      return;
+    }
+
+    toggleButton.classList.remove('opacity-60', 'cursor-not-allowed');
+    submitButton.classList.remove('opacity-60', 'cursor-not-allowed');
+    cancelButton.disabled = false;
+    cancelButton.classList.remove('opacity-60', 'cursor-not-allowed');
+  };
+
+  const closeEditor = (): void => {
+    editPanel.classList.add('hidden');
+    statusEl.textContent = canSignProfileMetadata()
+      ? 'Ready to publish kind 0 metadata'
+      : 'Sign-in required to edit profile';
+  };
+
+  toggleButton.addEventListener('click', (): void => {
+    if (editPanel.classList.contains('hidden')) {
+      editPanel.classList.remove('hidden');
+      statusEl.textContent = canSignProfileMetadata()
+        ? 'Ready to publish kind 0 metadata'
+        : 'Sign-in required to edit profile';
+      return;
+    }
+    closeEditor();
+  });
+
+  cancelButton.addEventListener('click', (): void => {
+    form.reset();
+    closeEditor();
+  });
+
+  form.addEventListener('submit', async (event: Event): Promise<void> => {
+    event.preventDefault();
+
+    if (!canSignProfileMetadata()) {
+      statusEl.textContent = 'Sign-in required to edit profile';
+      alert(
+        'Sign-in required to edit profile. Please log in with extension or private key.',
+      );
+      return;
+    }
+
+    isSubmitting = true;
+    syncFormState();
+    statusEl.textContent = 'Publishing profile...';
+
+    try {
+      const nextProfile: NostrProfile = buildEditableProfileDraft(
+        profile,
+        form,
+      );
+      const signedEvent: NostrEvent = await signProfileMetadataEvent(
+        pubkey,
+        nextProfile,
+      );
+      await options.publishEvent(signedEvent, options.getRelays());
+      await cacheResolvedProfile(pubkey, nextProfile, true);
+      options.onProfileUpdated?.(nextProfile);
+      renderProfile(pubkey, npub, nextProfile, profileSection);
+      setupProfileEditor(pubkey, npub, nextProfile, profileSection, options);
+    } catch (error: unknown) {
+      console.error('[Profile] Failed to publish metadata:', error);
+      statusEl.textContent = 'Failed to publish profile';
+      alert('Failed to publish profile. Please try again.');
+    } finally {
+      isSubmitting = false;
+      syncFormState();
+    }
+  });
+
+  syncFormState();
 }
