@@ -179,6 +179,64 @@
       </div>
     </div>
   </div>
+  <div id="zap-overlay" style="display: none;" class="fixed inset-0 z-50">
+    <div id="zap-overlay-backdrop" class="absolute inset-0 bg-black/60"></div>
+    <div class="relative h-full w-full flex items-center justify-center px-4">
+      <div class="bg-white w-full max-w-lg rounded-xl shadow-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 id="zap-title" class="text-lg font-semibold text-gray-900">Zap</h3>
+          <button id="zap-overlay-close" class="text-gray-500 hover:text-gray-800 text-xl font-bold">✕</button>
+        </div>
+        <div id="zap-target" class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3"></div>
+        <div class="grid gap-3">
+          <label class="block text-sm font-medium text-gray-700">
+            Amount (sats)
+            <input id="zap-amount" type="number" min="1" step="1" value="21"
+              class="mt-1 w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          </label>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" data-zap-amount="21" class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">21</button>
+            <button type="button" data-zap-amount="100" class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">100</button>
+            <button type="button" data-zap-amount="500" class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">500</button>
+            <button type="button" data-zap-amount="1000" class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">1000</button>
+          </div>
+          <label class="block text-sm font-medium text-gray-700">
+            Comment
+            <textarea id="zap-comment" rows="3" placeholder="Optional zap note"
+              class="mt-1 w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+          </label>
+        </div>
+        <div id="zap-invoice" style="display: none;" class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <div class="mb-3 flex justify-center">
+            <img id="zap-invoice-qr" src="" alt="Lightning invoice QR code"
+              class="h-48 w-48 rounded-lg border border-gray-200 bg-white p-2 object-contain" />
+          </div>
+          <label class="block text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">
+            Lightning Invoice
+          </label>
+          <textarea id="zap-invoice-text" readonly rows="4"
+            class="w-full border border-gray-300 rounded-lg p-2 text-xs text-gray-800 bg-white"></textarea>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button id="zap-copy-invoice" type="button"
+              class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100">
+              Copy invoice
+            </button>
+            <a id="zap-open-wallet" href="#" target="_self"
+              class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+              Open wallet
+            </a>
+          </div>
+        </div>
+        <div class="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
+          <span id="zap-status" class="text-xs text-gray-500"></span>
+          <button id="zap-submit"
+            class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
+            Create zap
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="image-overlay" style="display: none;" class="fixed inset-0 z-50">
     <div id="image-overlay-backdrop" class="absolute inset-0 bg-black/80"></div>
     <div class="relative h-full w-full flex items-center justify-center px-4">

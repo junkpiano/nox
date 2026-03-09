@@ -16,6 +16,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
     "@types/node": "^25.0.9",
+    "@types/qrcode": "^1.5.6",
     "autoprefixer": "^10.4.23",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
@@ -25,6 +26,7 @@
   "dependencies": {
     "emoji-dictionary": "^1.0.12",
     "nostr-tools": "^2.23.0",
+    "qrcode": "^1.5.4",
     "rx-nostr": "^3.6.2",
     "rxjs": "^7.8.2"
   }

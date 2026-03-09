@@ -15,12 +15,19 @@ import {
   registerServiceWorker,
   startPeriodicSync,
 } from '../common/sync/service-worker-manager.js';
+import { setupZapOverlay } from '../common/zap.js';
 import { loadGlobalTimeline } from '../features/global/global-timeline.js';
 import { loadUserHomeTimeline } from '../features/home/home-loader.js';
 import { loadHomeTimeline } from '../features/home/home-timeline.js';
 import { clearNotifications } from '../features/notifications/notifications.js';
 import { publishEventToRelays } from '../features/profile/follow.js';
 import { recordRelayFailure } from '../features/relays/relays.js';
+import {
+  configureRouteDependencies,
+  handleRoute,
+  loadGlobalPage,
+  loadHomePage,
+} from './app-routes.js';
 import {
   appState,
   composeButton,
@@ -36,12 +43,6 @@ import {
   seenEventIds,
   syncRelays,
 } from './app-state.js';
-import {
-  configureRouteDependencies,
-  handleRoute,
-  loadGlobalPage,
-  loadHomePage,
-} from './app-routes.js';
 
 function showNewEventsNotification(_timelineType: string, count: number): void {
   // Remove existing notification if any
@@ -334,7 +335,8 @@ function showNewPostsNotification(count: number): void {
         appState.untilTimestamp = Math.floor(Date.now() / 1000);
         appState.newestEventTimestamp = appState.untilTimestamp;
 
-        const followedPubkeys = appState.cachedHomeTimeline?.followedPubkeys || [];
+        const followedPubkeys =
+          appState.cachedHomeTimeline?.followedPubkeys || [];
         if (followedPubkeys.length > 0 && output) {
           const isRouteActive = createRouteGuard();
           await loadHomeTimeline(
@@ -469,6 +471,11 @@ document.addEventListener('DOMContentLoaded', (): void => {
         await loadGlobalPage(isRouteActive);
       }
     },
+  });
+
+  setupZapOverlay({
+    getSessionPrivateKey,
+    getRelays: (): string[] => appState.relays,
   });
 
   document.addEventListener('click', (event: MouseEvent): void => {

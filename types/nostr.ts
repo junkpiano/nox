@@ -19,6 +19,7 @@ export interface NostrProfile {
   url?: string;
   nip05?: string;
   lud16?: string;
+  lud06?: string;
   emojiTags?: string[][];
   [key: string]: any;
 }
