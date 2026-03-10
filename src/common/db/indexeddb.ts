@@ -7,6 +7,7 @@ import {
 } from './types.js';
 
 let dbInstance: IDBDatabase | null = null;
+const OPEN_DB_TIMEOUT_MS: number = 3000;
 
 /**
  * Opens or retrieves the cached IndexedDB connection
@@ -17,12 +18,40 @@ export async function openDb(): Promise<IDBDatabase> {
   }
 
   return new Promise<IDBDatabase>((resolve, reject) => {
+    let settled: boolean = false;
+    let timeoutId: number | null = null;
+
+    const finishResolve = (db: IDBDatabase): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      resolve(db);
+    };
+
+    const finishReject = (error: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      reject(error);
+    };
+
     if (typeof indexedDB === 'undefined') {
-      reject(new Error('IndexedDB not available'));
+      finishReject(new Error('IndexedDB not available'));
       return;
     }
 
     const request = indexedDB.open(DB_NAME, DB_VERSION);
+    timeoutId = window.setTimeout((): void => {
+      finishReject(new Error('IndexedDB open timed out'));
+    }, OPEN_DB_TIMEOUT_MS);
 
     request.onupgradeneeded = (event): void => {
       const db = request.result;
@@ -84,17 +113,20 @@ export async function openDb(): Promise<IDBDatabase> {
     request.onsuccess = (): void => {
       dbInstance = request.result;
       console.log('[IndexedDB] Database opened successfully');
-      resolve(dbInstance);
+      finishResolve(dbInstance);
     };
 
     request.onerror = (): void => {
       console.error('[IndexedDB] Failed to open database', request.error);
-      reject(request.error || new Error('Failed to open IndexedDB'));
+      finishReject(request.error || new Error('Failed to open IndexedDB'));
     };
 
     request.onblocked = (): void => {
       console.warn(
         '[IndexedDB] Database upgrade blocked by another connection',
+      );
+      finishReject(
+        new Error('IndexedDB open blocked by another active connection'),
       );
     };
   });

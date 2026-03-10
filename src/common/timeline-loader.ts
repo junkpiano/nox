@@ -277,6 +277,8 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
   let finalized: boolean = false;
   let clearedPlaceholder: boolean =
     options.output.querySelectorAll('.event-container').length > 0;
+  let subscription: Subscription | null = null;
+  let mainTimeoutId: number | null = null;
 
   const isInitialLoad: boolean = currentUntilTimestamp >= Date.now() / 1000 - 60;
   const originalUntilTimestamp: number = currentUntilTimestamp;
@@ -485,6 +487,11 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
     }
     finalized = true;
 
+    if (mainTimeoutId !== null) {
+      clearTimeout(mainTimeoutId);
+      mainTimeoutId = null;
+    }
+
     flushBufferedEvents();
     persistBufferedTimeline();
 
@@ -498,6 +505,7 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
       options.connectingMsg.style.display = 'none';
     }
 
+    subscription?.unsubscribe();
     connectionSub?.unsubscribe();
     options.onFinalize?.(getContext());
   };
@@ -514,7 +522,6 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
     activeTimeouts.push(timeoutId);
   };
 
-  let subscription: Subscription | null = null;
   subscription = rxNostr.use(req, { relays }).subscribe({
     next: (packet: EventPacket): void => {
       if (!routeIsActive()) {
@@ -571,9 +578,9 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
 
   req.emit(filter);
 
-  const timeoutId = window.setTimeout((): void => {
+  mainTimeoutId = window.setTimeout((): void => {
     options.onTimeout?.(getContext());
     finalizeLoading();
   }, timeoutMs);
-  activeTimeouts.push(timeoutId);
+  activeTimeouts.push(mainTimeoutId);
 }
