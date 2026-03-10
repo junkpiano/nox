@@ -7,6 +7,7 @@ import {
 } from './types.js';
 
 let dbInstance: IDBDatabase | null = null;
+let openDbPromise: Promise<IDBDatabase> | null = null;
 const OPEN_DB_TIMEOUT_MS: number = 3000;
 
 /**
@@ -17,7 +18,11 @@ export async function openDb(): Promise<IDBDatabase> {
     return dbInstance;
   }
 
-  return new Promise<IDBDatabase>((resolve, reject) => {
+  if (openDbPromise) {
+    return openDbPromise;
+  }
+
+  openDbPromise = new Promise<IDBDatabase>((resolve, reject) => {
     let settled: boolean = false;
     let timeoutId: number | null = null;
 
@@ -40,6 +45,7 @@ export async function openDb(): Promise<IDBDatabase> {
       if (timeoutId !== null) {
         clearTimeout(timeoutId);
       }
+      openDbPromise = null;
       reject(error);
     };
 
@@ -112,6 +118,7 @@ export async function openDb(): Promise<IDBDatabase> {
 
     request.onsuccess = (): void => {
       dbInstance = request.result;
+      openDbPromise = null;
       console.log('[IndexedDB] Database opened successfully');
       finishResolve(dbInstance);
     };
@@ -130,6 +137,8 @@ export async function openDb(): Promise<IDBDatabase> {
       );
     };
   });
+
+  return openDbPromise;
 }
 
 /**
@@ -139,6 +148,7 @@ export function closeDb(): void {
   if (dbInstance) {
     dbInstance.close();
     dbInstance = null;
+    openDbPromise = null;
     console.log('[IndexedDB] Database closed');
   }
 }
