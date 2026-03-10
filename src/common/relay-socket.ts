@@ -9,7 +9,6 @@ import {
 import { getSessionPrivateKey } from './session.js';
 
 const RELAY_AUTH_PERMISSIONS_KEY: string = 'nostr_relay_auth_permissions_v1';
-const SHARED_RELAY_CONNECT_TIMEOUT_MS: number = 5000;
 
 type RelayAuthPermission = 'allow' | 'deny';
 
@@ -401,45 +400,12 @@ async function ensureSharedRelaySocket(
     const socket: WebSocket = new WebSocket(connection.relayUrl);
     connection.socket = socket;
     attachSharedRelayListeners(connection);
-    let settled: boolean = false;
-
-    const finishResolve = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeoutId);
-      connection.openPromise = null;
-      resolve(socket);
-    };
-
-    const finishReject = (error: Error): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeoutId);
-      connection.openPromise = null;
-      reject(error);
-    };
-
-    const timeoutId = window.setTimeout((): void => {
-      try {
-        socket.close();
-      } catch {
-        // Best-effort cleanup for stalled connections.
-      }
-      finishReject(
-        new Error(
-          `Timed out connecting to relay ${connection.relayUrl}`,
-        ),
-      );
-    }, SHARED_RELAY_CONNECT_TIMEOUT_MS);
 
     socket.addEventListener(
       'open',
       (): void => {
-        finishResolve();
+        connection.openPromise = null;
+        resolve(socket);
       },
       { once: true },
     );
@@ -447,9 +413,8 @@ async function ensureSharedRelaySocket(
     socket.addEventListener(
       'error',
       (): void => {
-        finishReject(
-          new Error(`Failed to connect to relay ${connection.relayUrl}`),
-        );
+        connection.openPromise = null;
+        reject(new Error(`Failed to connect to relay ${connection.relayUrl}`));
       },
       { once: true },
     );
@@ -457,9 +422,7 @@ async function ensureSharedRelaySocket(
     socket.addEventListener(
       'close',
       (): void => {
-        finishReject(
-          new Error(`Relay ${connection.relayUrl} closed before opening`),
-        );
+        connection.openPromise = null;
       },
       { once: true },
     );
