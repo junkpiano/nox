@@ -10,6 +10,12 @@ interface ShowInputFormOptions {
   handleRoute: () => void;
 }
 
+interface WindowWithNostr extends Window {
+  nostr?: {
+    getPublicKey: () => Promise<string>;
+  };
+}
+
 export async function showInputForm(
   options: ShowInputFormOptions,
 ): Promise<void> {
@@ -29,30 +35,66 @@ export async function showInputForm(
   }
 
   options.output.innerHTML = `
-      <div class="text-center py-12">
-        <h2 class="text-2xl font-bold text-gray-800 mb-4">Welcome to noxtr</h2>
-        <p class="text-gray-600 mb-6">Connect your Nostr extension or use your private key to view your home timeline,<br/>or explore the global timeline.</p>
-        <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <button id="welcome-login" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-lg">
-            🔑 Connect Extension
-          </button>
-          <button id="welcome-global" class="bg-gradient-to-r from-slate-800 via-indigo-900 to-purple-950 hover:from-slate-900 hover:via-indigo-950 hover:to-purple-950 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-lg">
-            🌍 View Global Timeline
-          </button>
+      <section class="nox-welcome py-4 sm:py-8">
+        <div class="nox-welcome-hero">
+          <div>
+            <p class="nox-kicker">Home Feed Access</p>
+            <h2 class="nox-welcome-title">Enter nox mode</h2>
+            <p class="nox-welcome-copy">
+              Sign in with a compatible extension for the cleanest flow, use a local private key if
+              you need direct control, or skip straight to the global timeline and watch the network
+              in motion.
+            </p>
+          </div>
+
+          <div class="nox-welcome-grid">
+            <div class="nox-feature-card">
+              <strong>Direct relay view</strong>
+              <span>Posts come from your configured relay set, not from an app server in the middle.</span>
+            </div>
+            <div class="nox-feature-card">
+              <strong>Cache-first rendering</strong>
+              <span>IndexedDB keeps feeds, profiles, and timelines close for faster revisits.</span>
+            </div>
+            <div class="nox-feature-card">
+              <strong>Protocol-visible UI</strong>
+              <span>Relay management, reply context, NIP-65, and profile identity stay accessible.</span>
+            </div>
+          </div>
         </div>
-        <div class="mt-6 max-w-xl mx-auto text-left space-y-2">
-          <label for="private-key-input" class="block text-sm font-semibold text-gray-700">Private Key (nsec or 64 hex)</label>
-          <div class="flex flex-col sm:flex-row gap-2">
-            <input id="private-key-input" type="password" autocomplete="off" placeholder="nsec1... or hex"
-              class="border border-gray-300 rounded-lg px-4 py-2 w-full text-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button id="private-key-login"
-              class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-lg">
-              Use Private Key
+
+        <div class="nox-auth-card space-y-5">
+          <div>
+            <p class="nox-kicker">Authentication</p>
+            <h3 class="nox-panel-title">Choose an entry point</h3>
+            <p class="nox-panel-copy">Extension sign-in is recommended. Local key mode stays on this device until logout.</p>
+          </div>
+
+          <div class="nox-auth-actions">
+            <button id="welcome-login" class="nox-primary-button py-3 px-6">
+              <span aria-hidden="true">🔑</span>
+              <span>Connect Extension</span>
+            </button>
+            <button id="welcome-global" class="nox-secondary-button py-3 px-6">
+              <span aria-hidden="true">🌍</span>
+              <span>View Global Timeline</span>
             </button>
           </div>
-          <p class="text-xs text-gray-500">Private keys are stored on this device so you stay logged in after closing the app. Log out to remove it. For better security, use a Nostr extension instead.</p>
+
+          <div class="space-y-2">
+            <label for="private-key-input" class="nox-field-label">Private key access</label>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input id="private-key-input" type="password" autocomplete="off" placeholder="nsec1... or 64-char hex"
+                class="nox-input px-4 py-3 text-sm" />
+              <button id="private-key-login"
+                class="nox-secondary-button py-3 px-5 whitespace-nowrap">
+                Use Private Key
+              </button>
+            </div>
+            <p class="nox-auth-note">Private keys are stored locally so you remain signed in after closing the app. Use an extension when possible for better isolation.</p>
+          </div>
         </div>
-      </div>
+      </section>
     `;
 
   const welcomeLoginBtn: HTMLElement | null =
@@ -68,14 +110,15 @@ export async function showInputForm(
   if (welcomeLoginBtn) {
     welcomeLoginBtn.addEventListener('click', async (): Promise<void> => {
       try {
-        if (!(window as any).nostr) {
+        const nostrWindow: WindowWithNostr = window as WindowWithNostr;
+        if (!nostrWindow.nostr) {
           alert(
-            'No Nostr extension found!\n\nPlease install a Nostr browser extension like:\n- Alby (getalby.com)\n- nos2x\n- Flamingo\n\nThen reload this page.',
+            'No compatible extension found!\n\nPlease install a browser extension that exposes the nostr signing API, such as:\n- Alby (getalby.com)\n- nos2x\n- Flamingo\n\nThen reload this page.',
           );
           return;
         }
 
-        const pubkeyHex: string = await (window as any).nostr.getPublicKey();
+        const pubkeyHex: string = await nostrWindow.nostr.getPublicKey();
         if (!pubkeyHex) {
           alert('Failed to get public key from extension.');
           return;

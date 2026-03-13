@@ -49,7 +49,7 @@ export function setEventMeta(
   event: { id: string; content: string; created_at: number; pubkey: string },
   npub: Npub,
 ): void {
-  const title: string = `noxtr - Event ${event.id.slice(0, 8)}`;
+  const title: string = `nox - Event ${event.id.slice(0, 8)}`;
   const description: string =
     event.content.length > 140
       ? `${event.content.slice(0, 140)}...`

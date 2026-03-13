@@ -64,7 +64,7 @@ export function loadRelaysPage(options: RelaysPageOptions): void {
         <div class="bg-slate-50 border border-slate-200 text-slate-900 rounded-lg p-3 text-xs space-y-2">
           <div class="font-semibold">NIP-65 (kind 10002) Relay List</div>
           <div class="text-slate-700">
-            You can publish your relay list to Nostr (so other clients can discover it), or import it back into this app.
+            You can publish your relay list to the network so other clients can discover it, or import it back into this app.
           </div>
           <div class="flex flex-col sm:flex-row gap-2">
             <button id="nip65-import"

@@ -1,6 +1,6 @@
-# noxtr
+# nox
 
-Nostr SPA built with TypeScript + Vite.
+nox is a relay-first SPA built with TypeScript + Vite.
 This README is for developers working on this repository.
 
 ## Stack

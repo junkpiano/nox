@@ -1,3 +1,866 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --nox-bg-0: #050816;
+  --nox-bg-1: #0b1226;
+  --nox-bg-2: #111a33;
+  --nox-bg-3: #172240;
+  --nox-panel: rgba(11, 18, 38, 0.82);
+  --nox-panel-strong: rgba(17, 26, 51, 0.94);
+  --nox-panel-soft: rgba(24, 34, 63, 0.72);
+  --nox-border: rgba(148, 163, 184, 0.18);
+  --nox-border-strong: rgba(148, 163, 184, 0.28);
+  --nox-text: #edf3ff;
+  --nox-text-muted: #9fb0d4;
+  --nox-text-dim: #7283aa;
+  --nox-accent: #89a8ff;
+  --nox-accent-strong: #bad0ff;
+  --nox-cyan: #72e5ff;
+  --nox-emerald: #73f0c1;
+  --nox-amber: #f4c56b;
+  --nox-rose: #f490b6;
+  --nox-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  --nox-glow:
+    0 0 0 1px rgba(137, 168, 255, 0.1), 0 18px 60px rgba(0, 0, 0, 0.34);
+}
+
+html {
+  background: var(--nox-bg-0);
+}
+
+body.theme-nox {
+  min-height: 100vh;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(114, 229, 255, 0.16),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 85% 12%,
+      rgba(137, 168, 255, 0.16),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 50% 110%,
+      rgba(116, 92, 255, 0.16),
+      transparent 38%
+    ),
+    linear-gradient(180deg, #060916 0%, #091124 38%, #040713 100%);
+  color: var(--nox-text);
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+body.theme-nox::before,
+body.theme-nox::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+}
+
+body.theme-nox::before {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at center, black 42%, transparent 88%);
+  opacity: 0.3;
+}
+
+body.theme-nox::after {
+  background:
+    radial-gradient(
+      circle at 16% 20%,
+      rgba(114, 229, 255, 0.12),
+      transparent 18%
+    ),
+    radial-gradient(
+      circle at 80% 28%,
+      rgba(137, 168, 255, 0.14),
+      transparent 16%
+    );
+  filter: blur(42px);
+  opacity: 0.8;
+}
+
+body.theme-nox ::selection {
+  background: rgba(137, 168, 255, 0.3);
+  color: #ffffff;
+}
+
+body.theme-nox a {
+  color: var(--nox-accent-strong);
+}
+
+body.theme-nox button,
+body.theme-nox a,
+body.theme-nox input,
+body.theme-nox textarea {
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    opacity 180ms ease;
+}
+
+.nox-header {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  background:
+    linear-gradient(135deg, rgba(11, 18, 38, 0.96), rgba(7, 12, 27, 0.9)),
+    radial-gradient(
+      circle at top right,
+      rgba(137, 168, 255, 0.18),
+      transparent 36%
+    );
+}
+
+.nox-header::before {
+  content: "";
+  position: absolute;
+  inset: -20% -10% auto;
+  height: 180px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(114, 229, 255, 0.18),
+    transparent
+  );
+  transform: rotate(-6deg);
+  filter: blur(24px);
+}
+
+.nox-header-shell {
+  position: relative;
+  display: flex;
+  gap: 2rem;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 2.5rem 0 2.25rem;
+}
+
+.nox-kicker {
+  margin: 0 0 0.65rem;
+  color: var(--nox-cyan);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+}
+
+.nox-title {
+  margin: 0;
+  color: #f8fbff;
+  font-family:
+    "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-size: clamp(2.5rem, 6vw, 4.8rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 0.94;
+}
+
+.nox-subtitle {
+  max-width: 40rem;
+  margin: 0.9rem 0 0;
+  color: var(--nox-text-muted);
+  font-size: 0.98rem;
+  line-height: 1.7;
+}
+
+.nox-header-meta {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: end;
+}
+
+.nox-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.nox-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.52rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.6);
+  color: #d6e4ff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  backdrop-filter: blur(14px);
+}
+
+.nox-chip::before {
+  content: "";
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--nox-cyan), var(--nox-accent));
+  box-shadow: 0 0 14px rgba(114, 229, 255, 0.45);
+}
+
+.nox-status-line {
+  color: var(--nox-text-dim);
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.nox-panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--nox-border);
+  border-radius: 1.5rem;
+  background: linear-gradient(
+    180deg,
+    rgba(17, 26, 51, 0.9),
+    rgba(8, 14, 29, 0.9)
+  );
+  box-shadow: var(--nox-shadow);
+  backdrop-filter: blur(18px);
+}
+
+.nox-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03),
+    transparent 30%
+  );
+  pointer-events: none;
+}
+
+.nox-nav-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nox-panel-title {
+  margin: 0 0 0.85rem;
+  color: #f5f8ff;
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.nox-panel-copy {
+  margin: 0;
+  color: var(--nox-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.7;
+}
+
+.nox-nav-button {
+  position: relative;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 1rem;
+  background: transparent;
+  color: var(--nox-text-muted);
+}
+
+.nox-nav-button:hover {
+  transform: translateX(2px);
+}
+
+.nox-nav-footer {
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.nox-feed-panel {
+  min-height: 60vh;
+}
+
+.nox-feed-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.nox-feed-kicker {
+  margin: 0 0 0.4rem;
+  color: var(--nox-cyan);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.nox-feed-note {
+  color: var(--nox-text-dim);
+  font-size: 0.78rem;
+  max-width: 14rem;
+  text-align: right;
+}
+
+.nox-search-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.nox-field-label {
+  display: block;
+  margin: 0 0 0.55rem;
+  color: var(--nox-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.nox-input {
+  width: 100%;
+  border: 1px solid var(--nox-border-strong);
+  border-radius: 1rem;
+  background: rgba(5, 10, 24, 0.72);
+  color: var(--nox-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.nox-input::placeholder {
+  color: var(--nox-text-dim);
+}
+
+.nox-input:focus {
+  outline: none;
+  border-color: rgba(137, 168, 255, 0.5);
+  box-shadow:
+    0 0 0 1px rgba(137, 168, 255, 0.4),
+    0 0 0 4px rgba(137, 168, 255, 0.12);
+}
+
+.nox-primary-button,
+.nox-secondary-button,
+.nox-muted-button,
+.nox-danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: var(--nox-glow);
+}
+
+.nox-primary-button {
+  background: linear-gradient(135deg, #76dbff, #8da4ff 48%, #d18fff);
+  color: #04111f;
+}
+
+.nox-primary-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 40px rgba(114, 229, 255, 0.18);
+}
+
+.nox-secondary-button {
+  border: 1px solid rgba(137, 168, 255, 0.3);
+  background: rgba(22, 34, 65, 0.9);
+  color: #eff4ff;
+}
+
+.nox-secondary-button:hover,
+.nox-muted-button:hover,
+.nox-danger-button:hover {
+  transform: translateY(-1px);
+}
+
+.nox-muted-button {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--nox-text-muted);
+}
+
+.nox-danger-button {
+  border: 1px solid rgba(244, 114, 182, 0.24);
+  background: rgba(84, 23, 52, 0.72);
+  color: #ffd8e8;
+}
+
+.nox-fab {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(
+    160deg,
+    rgba(13, 20, 40, 0.96),
+    rgba(38, 24, 70, 0.92)
+  );
+  color: #f5f8ff;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(16px);
+}
+
+.nox-fab:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.46);
+}
+
+.nox-modal-card {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.98),
+    rgba(10, 16, 31, 0.96)
+  );
+  color: var(--nox-text);
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.58);
+}
+
+.nox-modal-card textarea,
+.nox-modal-card input,
+.nox-modal-card #reply-original-post,
+.nox-modal-card #zap-target,
+.nox-modal-card #zap-invoice {
+  background: rgba(6, 11, 24, 0.78);
+}
+
+.nox-welcome {
+  display: grid;
+  gap: 2rem;
+}
+
+.nox-welcome-hero {
+  display: grid;
+  gap: 1.5rem;
+  padding: 1.75rem;
+  border: 1px solid rgba(137, 168, 255, 0.16);
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(114, 229, 255, 0.12),
+      transparent 34%
+    ),
+    linear-gradient(135deg, rgba(17, 26, 51, 0.92), rgba(8, 14, 29, 0.92));
+  box-shadow: var(--nox-shadow);
+}
+
+.nox-welcome-title {
+  margin: 0;
+  color: #f7fbff;
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: clamp(1.9rem, 4vw, 3rem);
+  line-height: 1;
+}
+
+.nox-welcome-copy {
+  max-width: 42rem;
+  color: var(--nox-text-muted);
+  line-height: 1.8;
+}
+
+.nox-welcome-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+}
+
+.nox-feature-card {
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 1.15rem;
+  background: rgba(7, 12, 27, 0.58);
+}
+
+.nox-feature-card strong {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: #f3f7ff;
+  font-size: 0.92rem;
+}
+
+.nox-feature-card span {
+  color: var(--nox-text-dim);
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+.nox-auth-card {
+  padding: 1.35rem;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 1.35rem;
+  background: rgba(6, 11, 24, 0.72);
+}
+
+.nox-auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.nox-auth-note {
+  color: var(--nox-text-dim);
+  font-size: 0.78rem;
+  line-height: 1.7;
+}
+
+.theme-nox #posts-header {
+  margin: 0;
+  color: #f5f8ff;
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: clamp(1.35rem, 3vw, 1.9rem);
+  letter-spacing: 0.02em;
+}
+
+.theme-nox #profile-section:empty {
+  display: none;
+}
+
+.theme-nox #profile-section > * {
+  margin-bottom: 1.4rem;
+}
+
+.theme-nox #nostr-output {
+  color: var(--nox-text);
+}
+
+.theme-nox #nostr-output > * + * {
+  margin-top: 1rem;
+}
+
+.theme-nox #connecting-msg {
+  color: var(--nox-text-dim);
+  font-size: 0.82rem;
+}
+
+.theme-nox .event-container {
+  border: 1px solid rgba(148, 163, 184, 0.14) !important;
+  border-radius: 1.25rem !important;
+  background: linear-gradient(
+    180deg,
+    rgba(18, 28, 52, 0.92),
+    rgba(8, 13, 27, 0.92)
+  ) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+.theme-nox .event-container:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(24, 38, 70, 0.94),
+    rgba(10, 16, 31, 0.94)
+  ) !important;
+  border-color: rgba(137, 168, 255, 0.22) !important;
+  transform: translateY(-1px);
+}
+
+.theme-nox .event-avatar {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+}
+
+.theme-nox .event-username {
+  color: #f3f7ff !important;
+}
+
+.theme-nox .event-action-btn {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.theme-nox .event-action-btn:hover {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.theme-nox .reactions-container > * {
+  border-radius: 999px;
+}
+
+.theme-nox .event-cw-details {
+  border-color: rgba(244, 197, 107, 0.3) !important;
+  background: rgba(58, 40, 14, 0.44) !important;
+}
+
+.theme-nox .event-cw-details summary {
+  color: #ffdfa3 !important;
+}
+
+.theme-nox .event-image {
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
+.theme-nox ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.theme-nox ::-webkit-scrollbar-track {
+  background: rgba(10, 16, 31, 0.6);
+}
+
+.theme-nox ::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(10, 16, 31, 0.75);
+  border-radius: 999px;
+  background: rgba(137, 168, 255, 0.28);
+}
+
+.theme-nox .bg-white,
+.theme-nox .bg-white\/95 {
+  background: var(--nox-panel) !important;
+}
+
+.theme-nox .bg-gray-50,
+.theme-nox .bg-slate-50 {
+  background: rgba(15, 23, 42, 0.68) !important;
+}
+
+.theme-nox .bg-gray-100 {
+  background: rgba(24, 34, 63, 0.72) !important;
+}
+
+.theme-nox .bg-gray-200 {
+  background: rgba(51, 65, 85, 0.72) !important;
+}
+
+.theme-nox .bg-gray-300 {
+  background: rgba(71, 85, 105, 0.72) !important;
+}
+
+.theme-nox .bg-indigo-50 {
+  background: rgba(36, 47, 91, 0.7) !important;
+}
+
+.theme-nox .bg-sky-50 {
+  background: rgba(9, 43, 67, 0.7) !important;
+}
+
+.theme-nox .bg-amber-50 {
+  background: rgba(65, 45, 15, 0.68) !important;
+}
+
+.theme-nox .bg-emerald-50 {
+  background: rgba(10, 56, 44, 0.66) !important;
+}
+
+.theme-nox .bg-red-100 {
+  background: rgba(88, 24, 55, 0.64) !important;
+}
+
+.theme-nox .border-gray-200,
+.theme-nox .border-gray-300,
+.theme-nox .border-slate-200,
+.theme-nox .border-slate-300 {
+  border-color: var(--nox-border) !important;
+}
+
+.theme-nox .border-indigo-200 {
+  border-color: rgba(137, 168, 255, 0.22) !important;
+}
+
+.theme-nox .border-sky-200 {
+  border-color: rgba(114, 229, 255, 0.22) !important;
+}
+
+.theme-nox .border-amber-200,
+.theme-nox .border-amber-300,
+.theme-nox .border-amber-400 {
+  border-color: rgba(244, 197, 107, 0.24) !important;
+}
+
+.theme-nox .border-emerald-200,
+.theme-nox .border-emerald-300 {
+  border-color: rgba(115, 240, 193, 0.24) !important;
+}
+
+.theme-nox .text-gray-900,
+.theme-nox .text-gray-800,
+.theme-nox .text-slate-900,
+.theme-nox .text-slate-700 {
+  color: var(--nox-text) !important;
+}
+
+.theme-nox .text-gray-700,
+.theme-nox .text-gray-600,
+.theme-nox .text-slate-700,
+.theme-nox .text-slate-600 {
+  color: var(--nox-text-muted) !important;
+}
+
+.theme-nox .text-gray-500,
+.theme-nox .text-slate-500 {
+  color: var(--nox-text-dim) !important;
+}
+
+.theme-nox .text-indigo-900 {
+  color: #dbe7ff !important;
+}
+
+.theme-nox .text-sky-900 {
+  color: #cff7ff !important;
+}
+
+.theme-nox .text-amber-900 {
+  color: #ffe5ac !important;
+}
+
+.theme-nox .text-emerald-900,
+.theme-nox .text-emerald-800 {
+  color: #b5ffe5 !important;
+}
+
+.theme-nox .text-indigo-700 {
+  color: #e9f0ff !important;
+}
+
+.theme-nox .text-blue-600,
+.theme-nox .text-blue-500 {
+  color: var(--nox-cyan) !important;
+}
+
+.theme-nox .text-emerald-700,
+.theme-nox .text-emerald-600 {
+  color: #90ffd7 !important;
+}
+
+.theme-nox .text-red-700,
+.theme-nox .text-red-600 {
+  color: #ffb5cf !important;
+}
+
+.theme-nox .bg-indigo-100 {
+  border-color: rgba(137, 168, 255, 0.28) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(67, 82, 145, 0.9),
+    rgba(38, 50, 102, 0.9)
+  ) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.theme-nox .bg-indigo-600 {
+  background: linear-gradient(135deg, #6fd7ff, #849dff 58%, #bf8cff) !important;
+  color: #08111d !important;
+}
+
+.theme-nox .bg-emerald-600 {
+  background: linear-gradient(135deg, #53d9b8, #7ff5c8) !important;
+  color: #041710 !important;
+}
+
+.theme-nox .bg-slate-800 {
+  background: linear-gradient(
+    135deg,
+    rgba(23, 34, 64, 0.95),
+    rgba(10, 16, 31, 0.95)
+  ) !important;
+}
+
+.theme-nox .hover\:bg-gray-100:hover,
+.theme-nox .hover\:bg-gray-300:hover,
+.theme-nox .hover\:bg-gray-400:hover,
+.theme-nox .hover\:bg-slate-50:hover {
+  background: rgba(31, 44, 77, 0.76) !important;
+}
+
+.theme-nox .hover\:bg-indigo-700:hover,
+.theme-nox .hover\:bg-indigo-800:hover {
+  background: linear-gradient(135deg, #8ce0ff, #9db1ff 52%, #cf9cff) !important;
+}
+
+.theme-nox .hover\:bg-emerald-700:hover {
+  background: linear-gradient(135deg, #68edc8, #92ffd8) !important;
+}
+
+.theme-nox .hover\:bg-emerald-100:hover {
+  background: rgba(12, 74, 58, 0.82) !important;
+}
+
+.theme-nox .hover\:bg-rose-50:hover,
+.theme-nox .hover\:bg-red-50:hover {
+  background: rgba(93, 31, 63, 0.78) !important;
+}
+
+.theme-nox .hover\:bg-blue-50:hover {
+  background: rgba(23, 61, 89, 0.8) !important;
+}
+
+.theme-nox .hover\:text-blue-600:hover,
+.theme-nox .hover\:text-blue-800:hover {
+  color: #b8f2ff !important;
+}
+
+.theme-nox input[type="text"],
+.theme-nox input[type="password"],
+.theme-nox input[type="url"],
+.theme-nox input[type="number"],
+.theme-nox textarea {
+  border-color: var(--nox-border) !important;
+  background: rgba(5, 10, 24, 0.74) !important;
+  color: var(--nox-text) !important;
+}
+
+.theme-nox input[type="text"]::placeholder,
+.theme-nox input[type="password"]::placeholder,
+.theme-nox input[type="url"]::placeholder,
+.theme-nox input[type="number"]::placeholder,
+.theme-nox textarea::placeholder {
+  color: var(--nox-text-dim) !important;
+}
+
+.theme-nox input:focus,
+.theme-nox textarea:focus {
+  outline: none;
+  border-color: rgba(137, 168, 255, 0.42) !important;
+  box-shadow:
+    0 0 0 1px rgba(137, 168, 255, 0.34),
+    0 0 0 4px rgba(137, 168, 255, 0.1) !important;
+}
+
+@media (max-width: 1023px) {
+  .nox-header-shell {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .nox-header-meta,
+  .nox-chip-row {
+    justify-items: start;
+    justify-content: flex-start;
+  }
+
+  .nox-status-line {
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .nox-header-shell {
+    padding: 2rem 0 1.8rem;
+  }
+
+  .nox-feed-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .nox-feed-note {
+    max-width: none;
+    text-align: left;
+  }
+
+  .nox-auth-actions {
+    flex-direction: column;
+  }
+}

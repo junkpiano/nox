@@ -59,6 +59,9 @@ export function setupNavigation(options: NavigationOptions): void {
     document.getElementById('nav-reactions');
   const relaysButton: HTMLElement | null =
     document.getElementById('nav-relays');
+  const profileLink: HTMLAnchorElement | null = document.getElementById(
+    'nav-profile',
+  ) as HTMLAnchorElement | null;
   const settingsButton: HTMLElement | null =
     document.getElementById('nav-settings');
   const aboutButton: HTMLElement | null = document.getElementById('nav-about');
@@ -184,6 +187,21 @@ export function setupNavigation(options: NavigationOptions): void {
         options.navigateTo('/reactions');
       }),
     );
+  }
+
+  if (profileLink) {
+    profileLink.addEventListener('click', (event: MouseEvent): void => {
+      const href: string | null = profileLink.getAttribute('href');
+      if (!href || !href.startsWith('/')) {
+        closeMobileMenu();
+        return;
+      }
+
+      event.preventDefault();
+      wrapNavigationHandler((): void => {
+        options.navigateTo(href);
+      })();
+    });
   }
 
   if (relaysButton) {

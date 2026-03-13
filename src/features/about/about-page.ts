@@ -40,7 +40,7 @@ export function loadAboutPage(options: AboutPageOptions): void {
   const postsHeader: HTMLElement | null =
     document.getElementById('posts-header');
   if (postsHeader) {
-    postsHeader.textContent = 'About noxtr';
+    postsHeader.textContent = 'About nox';
     postsHeader.style.display = '';
   }
 
@@ -56,16 +56,16 @@ export function loadAboutPage(options: AboutPageOptions): void {
   options.output.innerHTML = `
     <article class="space-y-6 text-sm text-gray-700 leading-relaxed">
       <section class="bg-white border border-gray-200 rounded-lg p-5">
-        <h3 class="text-lg font-bold text-gray-900 mb-2">A Practical Nostr Client</h3>
+        <h3 class="text-lg font-bold text-gray-900 mb-2">A Practical Relay Client</h3>
         <p>
-          noxtr is built as a fast single-page web client focused on reliability and day-to-day use.
+          nox is built as a fast single-page web client focused on reliability and day-to-day use.
           It keeps the protocol visible, avoids heavy abstractions, and gives you direct control over
           relays, identity, and timelines.
         </p>
       </section>
 
       <section class="bg-indigo-50 border border-indigo-200 rounded-lg p-5">
-        <h3 class="text-base font-bold text-indigo-900 mb-3">What Makes noxtr Different</h3>
+        <h3 class="text-base font-bold text-indigo-900 mb-3">What Makes nox Different</h3>
         <ul class="space-y-2 list-disc list-inside">
           <li><span class="font-semibold">Relay-first controls:</span> full relay list management, health checks, and one-click post broadcast to newly added relays.</li>
           <li><span class="font-semibold">Protocol-forward rendering:</span> native support for NIP-30 custom emoji in posts, reactions, and profile metadata.</li>
@@ -93,16 +93,16 @@ export function loadAboutPage(options: AboutPageOptions): void {
       <section class="bg-gray-50 border border-gray-200 rounded-lg p-5">
 	        <h3 class="text-base font-bold text-gray-900 mb-2">Design Goal</h3>
 	        <p>
-	          noxtr prioritizes transparency over magic: when something happens on the network, you can
+	          nox prioritizes transparency over magic: when something happens on the network, you can
 	          usually trace it in the UI. The goal is a client that stays simple enough to trust while
-	          still being capable enough for serious Nostr usage.
+	          still being capable enough for serious daily use.
 	        </p>
 	      </section>
 
 	      <section class="bg-emerald-50 border border-emerald-200 rounded-lg p-5">
 	        <h3 class="text-base font-bold text-emerald-900 mb-2">Donate / Zap</h3>
 	        <p>
-	          If you find noxtr useful, you can support development via Lightning Address:
+	          If you find nox useful, you can support development via Lightning Address:
 	        </p>
 	        <div class="mt-3 flex items-center gap-2 flex-wrap">
 	          <code class="px-2 py-1 bg-white border border-emerald-200 rounded font-mono text-emerald-900 text-xs">
