@@ -1,6 +1,8 @@
 import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { storeEvent } from './db/index.js';
+import type { ImageUploadResult } from './image-upload.js';
+import { uploadImage } from './image-upload.js';
 
 interface ComposeOverlayOptions {
   composeButton: HTMLElement | null;
@@ -34,6 +36,22 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   const statusEl: HTMLElement | null =
     document.getElementById('compose-status');
 
+  const imageInput: HTMLInputElement | null = document.getElementById(
+    'compose-image-input',
+  ) as HTMLInputElement | null;
+  const imageBtn: HTMLButtonElement | null = document.getElementById(
+    'compose-image-btn',
+  ) as HTMLButtonElement | null;
+  const imagePreview: HTMLElement | null = document.getElementById(
+    'compose-image-preview',
+  );
+  const imagePreviewImg: HTMLImageElement | null = document.getElementById(
+    'compose-image-preview-img',
+  ) as HTMLImageElement | null;
+  const imageRemoveBtn: HTMLButtonElement | null = document.getElementById(
+    'compose-image-remove',
+  ) as HTMLButtonElement | null;
+
   if (
     !overlay ||
     !backdrop ||
@@ -47,6 +65,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
     return;
   }
   let isSubmitting: boolean = false;
+  let selectedImageFile: File | null = null;
 
   const updateContentWarningReasonState = (): void => {
     const enabled: boolean = contentWarningToggle.checked;
@@ -69,6 +88,19 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
     textarea.focus();
   };
 
+  const clearSelectedImage = (): void => {
+    selectedImageFile = null;
+    if (imageInput) {
+      imageInput.value = '';
+    }
+    if (imagePreview) {
+      imagePreview.style.display = 'none';
+    }
+    if (imagePreviewImg) {
+      imagePreviewImg.src = '';
+    }
+  };
+
   const closeOverlay = (): void => {
     overlay.style.display = 'none';
     document.body.classList.remove('overflow-hidden');
@@ -76,6 +108,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
     contentWarningToggle.checked = false;
     contentWarningReason.value = '';
     updateContentWarningReasonState();
+    clearSelectedImage();
   };
 
   const refreshStatus = (): void => {
@@ -110,6 +143,31 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   contentWarningToggle.addEventListener('change', (): void => {
     updateContentWarningReasonState();
   });
+
+  if (imageBtn && imageInput) {
+    imageBtn.addEventListener('click', (): void => {
+      imageInput.click();
+    });
+  }
+
+  if (imageInput && imagePreview && imagePreviewImg) {
+    imageInput.addEventListener('change', (): void => {
+      const file: File | undefined = imageInput.files?.[0];
+      if (!file) {
+        return;
+      }
+      selectedImageFile = file;
+      const objectUrl: string = URL.createObjectURL(file);
+      imagePreviewImg.src = objectUrl;
+      imagePreview.style.display = '';
+    });
+  }
+
+  if (imageRemoveBtn) {
+    imageRemoveBtn.addEventListener('click', (): void => {
+      clearSelectedImage();
+    });
+  }
 
   const isTypingContext = (target: EventTarget | null): boolean => {
     if (!(target instanceof HTMLElement)) {
@@ -170,7 +228,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   });
 
   submitBtn.addEventListener('click', async (): Promise<void> => {
-    if (!textarea.value.trim()) {
+    if (!textarea.value.trim() && !selectedImageFile) {
       textarea.focus();
       return;
     }
@@ -188,13 +246,25 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
 
     isSubmitting = true;
     refreshStatus();
-    statusEl.textContent = 'Posting...';
 
     try {
       const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
       if (!storedPubkey) {
         throw new Error('Not logged in');
       }
+
+      let imageUrl: string | null = null;
+      if (selectedImageFile) {
+        statusEl.textContent = 'Uploading image...';
+        const result: ImageUploadResult = await uploadImage(
+          selectedImageFile,
+          storedPubkey as PubkeyHex,
+          options.getSessionPrivateKey,
+        );
+        imageUrl = result.url;
+      }
+
+      statusEl.textContent = 'Posting...';
 
       const tags: string[][] = [];
       if (contentWarningToggle.checked) {
@@ -208,12 +278,20 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
         tags.push(['L', 'content-warning']);
       }
 
+      const textContent: string = textarea.value.trim();
+      const content: string =
+        imageUrl !== null
+          ? textContent
+            ? `${textContent}\n\n${imageUrl}`
+            : imageUrl
+          : textContent;
+
       const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
         kind: 1,
         pubkey: storedPubkey as PubkeyHex,
         created_at: Math.floor(Date.now() / 1000),
         tags,
-        content: textarea.value.trim(),
+        content,
       };
 
       let signedEvent: NostrEvent;
@@ -232,6 +310,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
       contentWarningToggle.checked = false;
       contentWarningReason.value = '';
       updateContentWarningReasonState();
+      clearSelectedImage();
       statusEl.textContent = 'Posted';
       closeOverlay();
       await options.refreshTimeline();
