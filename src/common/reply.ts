@@ -64,6 +64,7 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
     `;
 
     overlay.style.display = '';
+    document.body.classList.add('overflow-hidden');
     textarea.value = '';
     textarea.focus();
     refreshStatus();
@@ -71,6 +72,7 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
 
   const closeOverlay = (): void => {
     overlay.style.display = 'none';
+    document.body.classList.remove('overflow-hidden');
     statusEl.textContent = '';
     currentReplyContext = null;
     textarea.value = '';

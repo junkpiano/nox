@@ -65,11 +65,13 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   const openOverlay = (): void => {
     overlay.style.display = '';
     updateContentWarningReasonState();
+    document.body.classList.add('overflow-hidden');
     textarea.focus();
   };
 
   const closeOverlay = (): void => {
     overlay.style.display = 'none';
+    document.body.classList.remove('overflow-hidden');
     statusEl.textContent = '';
     contentWarningToggle.checked = false;
     contentWarningReason.value = '';
