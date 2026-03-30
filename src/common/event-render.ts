@@ -1236,7 +1236,7 @@ export function renderEvent(
   );
   const hasContent: boolean = contentWithCustomEmoji.trim().length > 0;
   const repostBadgeHtml: string = isRepost
-    ? `<span class="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold px-2 py-0.5">🔁 Repost</span>`
+    ? `<span class="ml-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-900 text-xs font-semibold px-2 py-0.5">🔁 Repost</span>`
     : '';
   const contentHtml: string = hasContent
     ? `<div class="whitespace-pre-wrap break-words break-all mb-2 text-sm text-gray-700">${contentWithCustomEmoji}</div>`
