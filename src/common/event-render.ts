@@ -27,6 +27,17 @@ import {
   getCachedDeletionStatus,
   isEventDeleted,
 } from './events-queries.js';
+import {
+  applyOptimisticReactionState,
+  filterDeletedReactionEvents,
+  findOwnReactionEvents,
+  getNextReactionDetailsState,
+  getReactionAggregate,
+  isReactionClickOnly,
+  mergeReactionEvents,
+  normalizeReaction,
+} from './reaction-interactions.js';
+import type { ReactionAggregate } from './reaction-interactions.js';
 import { createRelayWebSocket } from './relay-socket.js';
 import { getSessionPrivateKey } from './session.js';
 import { openZapComposer } from './zap.js';
@@ -36,14 +47,6 @@ const REFERENCED_EVENT_NULL_CACHE_LIMIT: number = 2000;
 const REFERENCED_EVENT_NULL_CACHE_TTL_MS: number = 60 * 1000;
 const referencedEventCache: Map<string, Promise<NostrEvent | null>> = new Map();
 const referencedEventNullCache: Map<string, number> = new Map();
-interface ReactionAggregate {
-  count: number;
-  key: string;
-  content: string;
-  shortcode?: string;
-  imageUrl?: string;
-}
-
 interface ContentWarningInfo {
   hasWarning: boolean;
   reason: string;
@@ -59,6 +62,104 @@ const reactionCache: Map<
   Promise<Map<string, ReactionAggregate>>
 > = new Map();
 const reactionEventsCache: Map<string, Promise<NostrEvent[]>> = new Map();
+const optimisticReactionEvents: Map<string, Map<string, NostrEvent>> = new Map();
+const optimisticRemovedReactionEventIds: Map<string, Set<string>> = new Map();
+
+function invalidateReactionCaches(eventId: string): void {
+  reactionCache.delete(eventId);
+  reactionEventsCache.delete(eventId);
+}
+
+function getOptimisticReactionKey(
+  eventId: string,
+  reactionKey: string,
+): string {
+  return `${eventId}:${reactionKey}`;
+}
+
+function getOptimisticReactionEvents(
+  eventId: string,
+  reactionKey: string,
+): NostrEvent[] {
+  const cacheKey: string = getOptimisticReactionKey(eventId, reactionKey);
+  return Array.from(optimisticReactionEvents.get(cacheKey)?.values() || []);
+}
+
+function getAllOptimisticReactionEvents(eventId: string): NostrEvent[] {
+  const prefix: string = `${eventId}:`;
+  const events: NostrEvent[] = [];
+  optimisticReactionEvents.forEach(
+    (reactionEventsById: Map<string, NostrEvent>, cacheKey: string): void => {
+      if (!cacheKey.startsWith(prefix)) {
+        return;
+      }
+      events.push(...Array.from(reactionEventsById.values()));
+    },
+  );
+  return events;
+}
+
+function getOptimisticRemovedReactionIds(eventId: string): Set<string> {
+  return new Set(optimisticRemovedReactionEventIds.get(eventId) || []);
+}
+
+function rememberOptimisticReaction(
+  eventId: string,
+  reactionKey: string,
+  reactionEvent: NostrEvent,
+): void {
+  const cacheKey: string = getOptimisticReactionKey(eventId, reactionKey);
+  const existing: Map<string, NostrEvent> =
+    optimisticReactionEvents.get(cacheKey) || new Map();
+  existing.set(reactionEvent.id, reactionEvent);
+  optimisticReactionEvents.set(cacheKey, existing);
+}
+
+function forgetOptimisticReactions(
+  eventId: string,
+  reactionKey: string,
+  reactionEventIds: string[],
+): void {
+  const cacheKey: string = getOptimisticReactionKey(eventId, reactionKey);
+  const existing: Map<string, NostrEvent> | undefined =
+    optimisticReactionEvents.get(cacheKey);
+  if (!existing) {
+    return;
+  }
+  reactionEventIds.forEach((reactionEventId: string): void => {
+    existing.delete(reactionEventId);
+  });
+  if (existing.size === 0) {
+    optimisticReactionEvents.delete(cacheKey);
+  }
+}
+
+function rememberOptimisticRemovedReactions(
+  eventId: string,
+  reactionEventIds: string[],
+): void {
+  const existing: Set<string> =
+    optimisticRemovedReactionEventIds.get(eventId) || new Set();
+  reactionEventIds.forEach((reactionEventId: string): void => {
+    existing.add(reactionEventId);
+  });
+  optimisticRemovedReactionEventIds.set(eventId, existing);
+}
+
+function forgetOptimisticRemovedReaction(
+  eventId: string,
+  reactionEventId: string,
+): void {
+  const existing: Set<string> | undefined =
+    optimisticRemovedReactionEventIds.get(eventId);
+  if (!existing) {
+    return;
+  }
+  existing.delete(reactionEventId);
+  if (existing.size === 0) {
+    optimisticRemovedReactionEventIds.delete(eventId);
+  }
+}
 
 function formatEventTimeLabel(createdAtSeconds: number): string {
   const nowSeconds: number = Math.floor(Date.now() / 1000);
@@ -342,77 +443,26 @@ async function fetchReactions(
     return cached;
   }
 
-  const request: Promise<Map<string, ReactionAggregate>> = new Promise<
-    Map<string, ReactionAggregate>
-  >((resolve) => {
+  const request: Promise<Map<string, ReactionAggregate>> =
+    (async (): Promise<Map<string, ReactionAggregate>> => {
+    const events: NostrEvent[] = await fetchReactionEvents(eventId, relays);
     const counts: Map<string, ReactionAggregate> = new Map();
-    const seenReactionIds: Set<string> = new Set();
 
-    const promises = relays.map(async (relayUrl: string): Promise<void> => {
-      try {
-        const socket: WebSocket = createRelayWebSocket(relayUrl);
-        await new Promise<void>((innerResolve) => {
-          let settled: boolean = false;
-          const finish = (): void => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            socket.close();
-            innerResolve();
-          };
-
-          const timeout = setTimeout(() => {
-            finish();
-          }, 5000);
-
-          socket.onopen = (): void => {
-            const subId: string = `reactions-${Math.random().toString(36).slice(2)}`;
-            const req: [
-              string,
-              string,
-              { kinds: number[]; '#e': string[]; limit: number },
-            ] = ['REQ', subId, { kinds: [7], '#e': [eventId], limit: 50 }];
-            socket.send(JSON.stringify(req));
-          };
-
-          socket.onmessage = (msg: MessageEvent): void => {
-            const arr: any[] = JSON.parse(msg.data);
-            if (arr[0] === 'EVENT' && arr[2]) {
-              const event: NostrEvent = arr[2];
-              if (event.kind !== 7 || seenReactionIds.has(event.id)) {
-                return;
-              }
-              seenReactionIds.add(event.id);
-              const reaction: ReactionAggregate = getReactionAggregate(
-                event.content,
-                event.tags,
-              );
-              const existing: ReactionAggregate | undefined = counts.get(
-                reaction.key,
-              );
-              if (existing) {
-                existing.count += 1;
-              } else {
-                counts.set(reaction.key, reaction);
-              }
-            } else if (arr[0] === 'EOSE') {
-              finish();
-            }
-          };
-
-          socket.onerror = (): void => {
-            finish();
-          };
-        });
-      } catch (e) {
-        console.warn(`Failed to fetch reactions from ${relayUrl}:`, e);
+    events.forEach((event: NostrEvent): void => {
+      const reaction: ReactionAggregate = getReactionAggregate(
+        event.content,
+        event.tags,
+      );
+      const existing: ReactionAggregate | undefined = counts.get(reaction.key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        counts.set(reaction.key, reaction);
       }
     });
 
-    Promise.allSettled(promises).then(() => {
-      resolve(counts);
-    });
-  });
+    return counts;
+  })();
 
   reactionCache.set(eventId, request);
   return request;
@@ -486,7 +536,35 @@ async function fetchReactionEvents(
         list.sort(
           (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
         );
-        resolve(list);
+        const reactionIds: string[] = list.map(
+          (reactionEvent: NostrEvent): string => reactionEvent.id,
+        );
+        const reactionAuthors: string[] = Array.from(
+          new Set(
+            list.map((reactionEvent: NostrEvent): string => reactionEvent.pubkey),
+          ),
+        );
+
+        void fetchReactionDeletionEvents(reactionIds, reactionAuthors, relays)
+          .then((deletionEvents: NostrEvent[]): void => {
+            resolve(
+              applyOptimisticReactionState(
+                filterDeletedReactionEvents(list, deletionEvents),
+                getAllOptimisticReactionEvents(eventId),
+                getOptimisticRemovedReactionIds(eventId),
+              ),
+            );
+          })
+          .catch((error: unknown): void => {
+            console.warn('Failed to fetch reaction deletion events:', error);
+            resolve(
+              applyOptimisticReactionState(
+                list,
+                getAllOptimisticReactionEvents(eventId),
+                getOptimisticRemovedReactionIds(eventId),
+              ),
+            );
+          });
       });
     },
   );
@@ -495,40 +573,73 @@ async function fetchReactionEvents(
   return request;
 }
 
-function normalizeReaction(content: string | undefined): string {
-  const trimmed: string = replaceEmojiShortcodes(content || '').trim();
-  return trimmed ? trimmed : '❤';
-}
-
-function getReactionAggregate(
-  content: string | undefined,
-  tags: string[][],
-): ReactionAggregate {
-  const normalizedContent: string = normalizeReaction(content);
-  const customMatch: RegExpMatchArray | null =
-    normalizedContent.match(/^:([a-z0-9_]+):$/i);
-  const shortcodeMatch: string | undefined = customMatch?.[1];
-  if (shortcodeMatch) {
-    const shortcode: string = shortcodeMatch;
-    const emojiTagMap: Map<string, string> = getEmojiTagMap(tags);
-    const imageUrl: string | undefined = emojiTagMap.get(
-      shortcode.toLowerCase(),
-    );
-    if (imageUrl) {
-      return {
-        count: 1,
-        key: `custom:${shortcode.toLowerCase()}:${imageUrl}`,
-        content: `:${shortcode}:`,
-        shortcode,
-        imageUrl,
-      };
-    }
+async function fetchReactionDeletionEvents(
+  reactionIds: string[],
+  authors: string[],
+  relays: string[],
+): Promise<NostrEvent[]> {
+  if (reactionIds.length === 0 || authors.length === 0) {
+    return [];
   }
-  return {
-    count: 1,
-    key: `text:${normalizedContent}`,
-    content: normalizedContent,
-  };
+
+  const deletionEvents: Map<string, NostrEvent> = new Map();
+  const limit: number = Math.max(50, reactionIds.length * 2);
+
+  const promises = relays.map(async (relayUrl: string): Promise<void> => {
+    try {
+      const socket: WebSocket = createRelayWebSocket(relayUrl);
+      await new Promise<void>((innerResolve) => {
+        let settled: boolean = false;
+        const finish = (): void => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          socket.close();
+          innerResolve();
+        };
+
+        const timeout = setTimeout(() => {
+          finish();
+        }, 5000);
+
+        socket.onopen = (): void => {
+          const subId: string = `reactions-deletes-${Math.random().toString(36).slice(2)}`;
+          const req: [
+            string,
+            string,
+            { kinds: number[]; authors: string[]; '#e': string[]; limit: number },
+          ] = [
+            'REQ',
+            subId,
+            { kinds: [5], authors, '#e': reactionIds, limit },
+          ];
+          socket.send(JSON.stringify(req));
+        };
+
+        socket.onmessage = (msg: MessageEvent): void => {
+          const arr: any[] = JSON.parse(msg.data);
+          if (arr[0] === 'EVENT' && arr[2]?.kind === 5) {
+            const event: NostrEvent = arr[2];
+            deletionEvents.set(event.id, event);
+          } else if (arr[0] === 'EOSE') {
+            finish();
+          }
+        };
+
+        socket.onerror = (): void => {
+          finish();
+        };
+      });
+    } catch (error: unknown) {
+      console.warn(
+        `Failed to fetch reaction deletion events from ${relayUrl}:`,
+        error,
+      );
+    }
+  });
+
+  await Promise.allSettled(promises);
+  return Array.from(deletionEvents.values());
 }
 
 function resolveParentAuthorPubkey(event: NostrEvent): PubkeyHex | null {
@@ -634,9 +745,34 @@ async function fetchEventWithRetry(
   return null;
 }
 
+function closeReactionDetails(detailsContainer: HTMLElement): void {
+  detailsContainer.style.display = 'none';
+  delete detailsContainer.dataset.reaction;
+  detailsContainer.innerHTML = '';
+}
+
+async function refreshReactionUi(
+  eventId: string,
+  eventCard: HTMLElement,
+): Promise<void> {
+  const reactionsContainer: HTMLElement | null = eventCard.querySelector(
+    '.reactions-container',
+  );
+  const detailsContainer: HTMLElement | null = eventCard.querySelector(
+    '.reactions-details',
+  );
+
+  if (detailsContainer) {
+    closeReactionDetails(detailsContainer);
+  }
+
+  if (reactionsContainer) {
+    await loadReactionsForEvent(eventId, reactionsContainer);
+  }
+}
+
 export async function loadReactionsForEvent(
   eventId: string,
-  targetPubkey: PubkeyHex,
   container: HTMLElement,
 ): Promise<void> {
   const relays: string[] = getRelays();
@@ -682,57 +818,82 @@ export async function loadReactionsForEvent(
       countEl.textContent = reaction.count.toString();
       badge.appendChild(emojiEl);
       badge.appendChild(countEl);
+      if (!isReactionClickOnly()) {
+        const tooltip: HTMLDivElement = document.createElement('div');
+        tooltip.className =
+          'fixed w-56 rounded-lg border border-gray-200 bg-white shadow-lg p-2 text-xs text-gray-700 z-50';
+        tooltip.style.display = 'none';
+        document.body.appendChild(tooltip);
 
-      const tooltip: HTMLDivElement = document.createElement('div');
-      tooltip.className =
-        'fixed w-56 rounded-lg border border-gray-200 bg-white shadow-lg p-2 text-xs text-gray-700 z-50';
-      tooltip.style.display = 'none';
-      document.body.appendChild(tooltip);
+        let hoverTimeout: number | null = null;
 
-      let hoverTimeout: number | null = null;
+        const positionTooltip = (): void => {
+          const rect: DOMRect = badge.getBoundingClientRect();
+          const spacing: number = 8;
+          const top: number = rect.bottom + spacing;
+          const left: number = Math.min(rect.left, window.innerWidth - 240);
+          tooltip.style.top = `${top}px`;
+          tooltip.style.left = `${Math.max(left, 8)}px`;
+        };
 
-      const positionTooltip = (): void => {
-        const rect: DOMRect = badge.getBoundingClientRect();
-        const spacing: number = 8;
-        const top: number = rect.bottom + spacing;
-        const left: number = Math.min(rect.left, window.innerWidth - 240);
-        tooltip.style.top = `${top}px`;
-        tooltip.style.left = `${Math.max(left, 8)}px`;
-      };
-
-      const showTooltip = (): void => {
-        if (hoverTimeout) {
-          window.clearTimeout(hoverTimeout);
-          hoverTimeout = null;
-        }
-        positionTooltip();
-        tooltip.style.display = 'block';
-        loadReactionDetails(eventId, reaction.key, tooltip);
-      };
-
-      const hideTooltip = (): void => {
-        if (hoverTimeout) {
-          window.clearTimeout(hoverTimeout);
-        }
-        hoverTimeout = window.setTimeout((): void => {
-          tooltip.style.display = 'none';
-        }, 150);
-      };
-
-      badge.addEventListener('mouseenter', showTooltip);
-      badge.addEventListener('mouseleave', hideTooltip);
-      tooltip.addEventListener('mouseenter', showTooltip);
-      tooltip.addEventListener('mouseleave', hideTooltip);
-
-      window.addEventListener('scroll', () => {
-        if (tooltip.style.display !== 'none') {
+        const showTooltip = (): void => {
+          if (hoverTimeout) {
+            window.clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+          }
           positionTooltip();
-        }
-      });
+          tooltip.style.display = 'block';
+          loadReactionDetails(eventId, reaction.key, tooltip);
+        };
+
+        const hideTooltip = (): void => {
+          if (hoverTimeout) {
+            window.clearTimeout(hoverTimeout);
+          }
+          hoverTimeout = window.setTimeout((): void => {
+            tooltip.style.display = 'none';
+          }, 150);
+        };
+
+        badge.addEventListener('mouseenter', showTooltip);
+        badge.addEventListener('mouseleave', hideTooltip);
+        tooltip.addEventListener('mouseenter', showTooltip);
+        tooltip.addEventListener('mouseleave', hideTooltip);
+
+        window.addEventListener('scroll', () => {
+          if (tooltip.style.display !== 'none') {
+            positionTooltip();
+          }
+        });
+      }
 
       badge.addEventListener('click', (event: MouseEvent): void => {
         event.preventDefault();
-        publishReaction(eventId, targetPubkey, reaction);
+        event.stopPropagation();
+        const eventCard: HTMLElement | null =
+          container.closest('.event-container');
+        const detailsContainer: HTMLElement | null = eventCard?.querySelector(
+          '.reactions-details',
+        ) as HTMLElement | null;
+        if (!detailsContainer) {
+          return;
+        }
+
+        const currentReactionKey: string | null =
+          detailsContainer.style.display === 'none'
+            ? null
+            : detailsContainer.dataset.reaction || null;
+        const nextState = getNextReactionDetailsState(
+          currentReactionKey,
+          reaction.key,
+        );
+        if (!nextState.isOpen || !nextState.reactionKey) {
+          closeReactionDetails(detailsContainer);
+          return;
+        }
+
+        detailsContainer.style.display = '';
+        loadReactionDetails(eventId, nextState.reactionKey, detailsContainer);
       });
       container.appendChild(badge);
     });
@@ -818,11 +979,11 @@ async function publishReaction(
   eventId: string,
   targetPubkey: PubkeyHex,
   reaction: ReactionAggregate,
-): Promise<void> {
+): Promise<NostrEvent | null> {
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
   if (!storedPubkey) {
     alert('Sign in to react.');
-    return;
+    return null;
   }
 
   const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
@@ -846,7 +1007,7 @@ async function publishReaction(
     const privateKey: Uint8Array | null = getSessionPrivateKey();
     if (!privateKey) {
       alert('Sign in to react.');
-      return;
+      return null;
     }
     signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
   }
@@ -886,6 +1047,7 @@ async function publishReaction(
   });
 
   await Promise.allSettled(promises);
+  return signedEvent;
 }
 
 async function publishRepost(targetEvent: NostrEvent): Promise<void> {
@@ -1399,16 +1561,84 @@ export function renderEvent(
       async (e: MouseEvent): Promise<void> => {
         e.preventDefault();
         e.stopPropagation();
+        if (!isLoggedIn) {
+          alert('Sign in to react.');
+          return;
+        }
         const reaction: ReactionAggregate = {
           count: 1,
           key: 'text:❤',
           content: '❤',
         };
+        reactButton.disabled = true;
+        reactButton.classList.add('opacity-60', 'cursor-not-allowed');
         try {
-          await publishReaction(event.id, event.pubkey, reaction);
+          const viewerPubkey: PubkeyHex = storedPubkey as PubkeyHex;
+          const relayReactionEvents: NostrEvent[] = await fetchReactionEvents(
+            event.id,
+            getRelays(),
+          );
+          const reactionEvents: NostrEvent[] = mergeReactionEvents(
+            relayReactionEvents,
+            getOptimisticReactionEvents(event.id, reaction.key),
+          );
+          const existingHeartReactions: NostrEvent[] = findOwnReactionEvents(
+            reactionEvents,
+            viewerPubkey,
+            event.id,
+            reaction.key,
+          );
+
+          if (existingHeartReactions.length > 0) {
+            rememberOptimisticRemovedReactions(
+              event.id,
+              existingHeartReactions.map(
+                (reactionEvent: NostrEvent): string => reactionEvent.id,
+              ),
+            );
+            await Promise.allSettled(
+              existingHeartReactions.map(
+                async (reactionEvent: NostrEvent): Promise<void> => {
+                  await deleteEventOnRelays(reactionEvent);
+                },
+              ),
+            );
+            await deleteEvents(
+              existingHeartReactions.map(
+                (reactionEvent: NostrEvent): string => reactionEvent.id,
+              ),
+            );
+            forgetOptimisticReactions(
+              event.id,
+              reaction.key,
+              existingHeartReactions.map(
+                (reactionEvent: NostrEvent): string => reactionEvent.id,
+              ),
+            );
+          } else {
+            const publishedReaction: NostrEvent | null = await publishReaction(
+              event.id,
+              event.pubkey,
+              reaction,
+            );
+            if (publishedReaction) {
+              rememberOptimisticReaction(
+                event.id,
+                reaction.key,
+                publishedReaction,
+              );
+              forgetOptimisticRemovedReaction(event.id, publishedReaction.id);
+            }
+          }
+
+          invalidateReactionCaches(event.id);
+          await refreshReactionUi(event.id, div);
         } catch (error: unknown) {
           console.error('Failed to react:', error);
           alert('Failed to react. Please try again.');
+        } finally {
+          reactButton.disabled = false;
+          reactButton.classList.remove('opacity-60', 'cursor-not-allowed');
         }
       },
     );

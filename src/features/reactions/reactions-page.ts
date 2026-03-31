@@ -1,6 +1,7 @@
 import { finalizeEvent, nip19 } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { deleteEvents } from '../../common/db/index.js';
+import { filterDeletedReactionEvents } from '../../common/reaction-interactions.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getSessionPrivateKey } from '../../common/session.js';
 import { setActiveNav } from '../../common/navigation.js';
@@ -88,10 +89,91 @@ async function fetchMyReactions(
   await Promise.allSettled(promises);
 
   const events: NostrEvent[] = Array.from(results.values());
-  events.sort(
+  const deletionEvents: NostrEvent[] = await fetchReactionDeletionEvents(
+    relays,
+    authorPubkey,
+    events.map((event: NostrEvent): string => event.id),
+  );
+  const visibleEvents: NostrEvent[] = filterDeletedReactionEvents(
+    events,
+    deletionEvents,
+  );
+  visibleEvents.sort(
     (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
   );
-  return events.slice(0, limit);
+  return visibleEvents.slice(0, limit);
+}
+
+async function fetchReactionDeletionEvents(
+  relays: string[],
+  authorPubkey: PubkeyHex,
+  reactionIds: string[],
+): Promise<NostrEvent[]> {
+  if (reactionIds.length === 0) {
+    return [];
+  }
+
+  const results: Map<string, NostrEvent> = new Map();
+  const requestLimit: number = Math.max(50, reactionIds.length * 2);
+
+  const promises = relays.map(async (relayUrl: string): Promise<void> => {
+    try {
+      const socket: WebSocket = createRelayWebSocket(relayUrl);
+      await new Promise<void>((resolve) => {
+        let settled: boolean = false;
+        const finish = (): void => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          socket.close();
+          resolve();
+        };
+
+        const timeout = setTimeout(() => {
+          recordRelayFailure(relayUrl);
+          finish();
+        }, 5000);
+
+        socket.onopen = (): void => {
+          const subId: string = `my-reaction-deletes-${Math.random().toString(36).slice(2)}`;
+          const req: [
+            string,
+            string,
+            { kinds: number[]; authors: string[]; '#e': string[]; limit: number },
+          ] = [
+            'REQ',
+            subId,
+            {
+              kinds: [5],
+              authors: [authorPubkey],
+              '#e': reactionIds,
+              limit: requestLimit,
+            },
+          ];
+          socket.send(JSON.stringify(req));
+        };
+
+        socket.onmessage = (msg: MessageEvent): void => {
+          const arr: any[] = JSON.parse(msg.data);
+          if (arr[0] === 'EVENT' && arr[2]?.kind === 5) {
+            const event: NostrEvent = arr[2];
+            results.set(event.id, event);
+          } else if (arr[0] === 'EOSE') {
+            finish();
+          }
+        };
+
+        socket.onerror = (): void => {
+          finish();
+        };
+      });
+    } catch (error: unknown) {
+      console.warn(`Failed to load reaction deletions from ${relayUrl}:`, error);
+    }
+  });
+
+  await Promise.allSettled(promises);
+  return Array.from(results.values());
 }
 
 async function deleteEventOnRelays(

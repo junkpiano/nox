@@ -206,11 +206,7 @@ export async function loadEventPage(
       '.reactions-container',
     );
     const reactionsPromise = reactionsContainer
-      ? loadReactionsForEvent(
-          event.id,
-          event.pubkey as PubkeyHex,
-          reactionsContainer,
-        )
+      ? loadReactionsForEvent(event.id, reactionsContainer)
       : Promise.resolve();
 
     // Run slow checks/metadata fetches in parallel after first paint.
