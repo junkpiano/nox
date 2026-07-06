@@ -223,8 +223,11 @@ async function syncTimelineViaFetch(timelineType, userPubkey, followedPubkeys) {
 // IndexedDB helpers for service worker context
 function openDB() {
   return new Promise((resolve, reject) => {
-    // Use the same database name as the main app
-    const request = indexedDB.open('nostr_cache_v2', 1);
+    // Open at whatever version the main app has created (no version argument),
+    // so we never trigger an upgrade or fail with VersionError when the app's
+    // DB_VERSION is ahead of a hardcoded number. The SW only reads/writes
+    // existing stores; the main app owns the schema.
+    const request = indexedDB.open('nostr_cache_v2');
 
     request.onsuccess = () => {
       const db = request.result;
@@ -312,7 +315,9 @@ async function fetchNewEventsFromRelays(
   const filter = {
     kinds: [1],
     limit: 50,
-    since: sinceTimestamp,
+    // Exclusive lower bound: `since` is inclusive in NIP-01, so without +1 the
+    // newest already-cached event is re-fetched and counted as "new" every cycle.
+    since: sinceTimestamp + 1,
   };
 
   if (

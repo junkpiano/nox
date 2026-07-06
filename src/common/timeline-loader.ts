@@ -498,6 +498,7 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
       options.connectingMsg.style.display = 'none';
     }
 
+    subscription?.unsubscribe();
     connectionSub?.unsubscribe();
     options.onFinalize?.(getContext());
   };
@@ -570,6 +571,10 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
   });
 
   req.emit(filter);
+  // Signal that no further filters will be emitted on this backward req. Without
+  // this the observable never completes, so `complete` never fires and every load
+  // waits out the full timeout before finalizing. See rx-nostr RxReqOverable.
+  req.over();
 
   const timeoutId = window.setTimeout((): void => {
     options.onTimeout?.(getContext());

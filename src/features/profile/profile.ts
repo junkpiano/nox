@@ -483,9 +483,15 @@ export function renderProfile(
     pubkey,
     profile,
   );
-  const avatar: string = getAvatarURL(pubkey, renderProfileData);
+  const avatarRaw: string = getAvatarURL(pubkey, renderProfileData);
+  // Validate scheme (reject javascript:/data: etc.) and escape for the src="" attribute
+  // context. A profile's picture/banner are attacker-controlled kind-0 fields.
+  const avatar: string =
+    normalizeHttpUrl(avatarRaw) ?? `https://robohash.org/${pubkey}.png`;
   const rawName: string = getDisplayName(npub, renderProfileData);
-  const banner: string | undefined = renderProfileData?.banner;
+  const banner: string | null = renderProfileData?.banner
+    ? normalizeHttpUrl(renderProfileData.banner)
+    : null;
   const emojiTags: string[][] = renderProfileData?.emojiTags || [];
   const nip05: string | undefined = renderProfileData?.nip05?.trim();
   const hasNip05: boolean = !!nip05 && isNip05Identifier(nip05);
@@ -503,7 +509,7 @@ export function renderProfile(
   // Avatar HTML based on energy saving mode
   const avatarHtml: string = isEnergySavingMode
     ? `<div class="w-20 h-20 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-3xl mb-2 border-4 ${banner ? 'border-white shadow-lg' : 'border-gray-200'}">👤</div>`
-    : `<img src="${avatar}" alt="Avatar" class="w-20 h-20 rounded-full object-cover mb-2 border-4 ${banner ? 'border-white shadow-lg' : 'border-gray-200'}"
+    : `<img src="${escapeHtml(avatar)}" alt="Avatar" class="w-20 h-20 rounded-full object-cover mb-2 border-4 ${banner ? 'border-white shadow-lg' : 'border-gray-200'}"
             onerror="this.src='https://placekitten.com/100/100';" />`;
 
   // Banner HTML based on energy saving mode
@@ -511,7 +517,7 @@ export function renderProfile(
     banner && !isEnergySavingMode
       ? `
         <div class="absolute inset-0 w-full h-full">
-          <img src="${banner}" alt="Profile Banner" class="w-full h-full object-cover"
+          <img src="${escapeHtml(banner)}" alt="Profile Banner" class="w-full h-full object-cover"
             onerror="this.style.display='none';" />
           <div class="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/70"></div>
         </div>
