@@ -1,6 +1,9 @@
 import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
-import { fetchFollowList } from '../../common/events-queries.js';
+import {
+  fetchFollowList,
+  fetchLatestFollowListEvent,
+} from '../../common/events-queries.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getSessionPrivateKey } from '../../common/session.js';
 import { recordRelayFailure } from '../relays/relays.js';
@@ -88,26 +91,48 @@ export async function setupFollowToggle(
     button.classList.add('opacity-60', 'cursor-not-allowed');
 
     try {
-      followList = await fetchFollowList(
+      // Fetch the full current kind-3 so we can mutate it in place, preserving
+      // petnames/relay hints on existing `p` tags, any non-`p` tags, and the
+      // legacy relay JSON in `content`.
+      const currentEvent: NostrEvent | null = await fetchLatestFollowListEvent(
         storedPubkey as PubkeyHex,
         options.getRelays(),
       );
-      const followSet: Set<PubkeyHex> = new Set(followList);
-      if (isFollowing) {
-        followSet.delete(targetPubkey);
-      } else {
-        followSet.add(targetPubkey);
+
+      // A null result means every relay failed or returned nothing — we do NOT
+      // know the real follow list. Publishing here would broadcast a list built
+      // from scratch and wipe the user's follows network-wide. Abort instead.
+      if (!currentEvent) {
+        throw new Error(
+          'Could not load your current follow list from any relay; not modifying it to avoid wiping your follows.',
+        );
       }
 
-      const tags: string[][] = Array.from(followSet).map(
-        (pubkey: PubkeyHex): string[] => ['p', pubkey],
+      const existingTags: string[][] = currentEvent.tags;
+      const alreadyFollowing: boolean = existingTags.some(
+        (tag: string[]): boolean => tag[0] === 'p' && tag[1] === targetPubkey,
       );
+
+      let tags: string[][];
+      if (isFollowing) {
+        // Unfollow: drop only the target's `p` tag, keep everything else intact.
+        tags = existingTags.filter(
+          (tag: string[]): boolean =>
+            !(tag[0] === 'p' && tag[1] === targetPubkey),
+        );
+      } else {
+        // Follow: append the target unless it's somehow already present.
+        tags = alreadyFollowing
+          ? existingTags
+          : [...existingTags, ['p', targetPubkey]];
+      }
+
       const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
         kind: 3,
         pubkey: storedPubkey as PubkeyHex,
         created_at: Math.floor(Date.now() / 1000),
         tags,
-        content: '',
+        content: currentEvent.content,
       };
 
       let signedEvent: NostrEvent;

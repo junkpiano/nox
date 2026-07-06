@@ -15,13 +15,22 @@ export function cacheDeletionStatus(eventId: string, deleted: boolean): void {
   deletionCache.set(eventId, deleted);
 }
 
-export async function fetchFollowList(
+/**
+ * Fetch the most recent kind-3 (follow list) event for a pubkey.
+ *
+ * Returns the full event so callers can preserve tags/content when republishing,
+ * and returns `null` when no valid kind-3 was received from any relay. Callers that
+ * mutate and republish the follow list MUST treat `null` as "unknown" (abort) rather
+ * than "no follows" — publishing an empty list would wipe the user's follows.
+ */
+export async function fetchLatestFollowListEvent(
   pubkeyHex: PubkeyHex,
   relays: string[],
-): Promise<PubkeyHex[]> {
+): Promise<NostrEvent | null> {
   console.log(`Fetching follow list for ${pubkeyHex}`);
   let latestFollowTimestamp: number = -1;
-  let latestFollowTags: string[][] = [];
+  let latestFollowTagCount: number = 0;
+  let latestFollowEvent: NostrEvent | null = null;
 
   const relayResults: Map<
     string,
@@ -75,15 +84,17 @@ export async function fetchFollowList(
                 return;
               }
 
-              const isNewerAndRicher: boolean =
-                event.created_at > latestFollowTimestamp &&
-                event.tags.length >= latestFollowTags.length;
+              const prevTagCount: number = latestFollowEvent
+                ? latestFollowEvent.tags.length
+                : 0;
+              const isNewer: boolean = event.created_at > latestFollowTimestamp;
               const isSameSecondButRicher: boolean =
                 event.created_at === latestFollowTimestamp &&
-                event.tags.length > latestFollowTags.length;
-              if (isNewerAndRicher || isSameSecondButRicher) {
+                event.tags.length > prevTagCount;
+              if (isNewer || isSameSecondButRicher) {
                 latestFollowTimestamp = event.created_at;
-                latestFollowTags = event.tags;
+                latestFollowTagCount = event.tags.length;
+                latestFollowEvent = event;
               }
               relayResults.set(relayUrl, {
                 gotEvent: true,
@@ -124,17 +135,36 @@ export async function fetchFollowList(
 
   await Promise.allSettled(promises);
 
+  console.log(`Follow list relay summary:`, Array.from(relayResults.entries()));
+  console.log(
+    `Using latest kind 3 event at ${latestFollowTimestamp >= 0 ? latestFollowTimestamp : 'n/a'}, tags: ${latestFollowTimestamp >= 0 ? latestFollowTagCount : 'none'}`,
+  );
+  return latestFollowEvent;
+}
+
+/**
+ * Convenience wrapper returning just the followed pubkeys from the latest kind-3.
+ * Returns `[]` when no follow list was found — do NOT use this for republishing;
+ * use {@link fetchLatestFollowListEvent} so an empty/failed fetch can be distinguished.
+ */
+export async function fetchFollowList(
+  pubkeyHex: PubkeyHex,
+  relays: string[],
+): Promise<PubkeyHex[]> {
+  const event: NostrEvent | null = await fetchLatestFollowListEvent(
+    pubkeyHex,
+    relays,
+  );
+  if (!event) {
+    return [];
+  }
+
   const followedPubkeys: Set<PubkeyHex> = new Set();
-  latestFollowTags.forEach((tag: string[]): void => {
+  event.tags.forEach((tag: string[]): void => {
     if (tag[0] === 'p' && tag[1]) {
       followedPubkeys.add(tag[1] as PubkeyHex);
     }
   });
-
-  console.log(`Follow list relay summary:`, Array.from(relayResults.entries()));
-  console.log(
-    `Using latest kind 3 event at ${latestFollowTimestamp >= 0 ? latestFollowTimestamp : 'n/a'}, total follows: ${followedPubkeys.size}`,
-  );
   return Array.from(followedPubkeys);
 }
 
