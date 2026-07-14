@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy",
     "format": "biome format .",
     "format:write": "biome format --write .",
     "lint": "biome lint .",
@@ -21,9 +22,12 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "wrangler": "^4.110.0"
   },
   "dependencies": {
+    "baseline-browser-mapping": "^2.10.42",
+    "caniuse-lite": "^1.0.30001802",
     "emoji-dictionary": "^1.0.12",
     "nostr-tools": "^2.23.0",
     "qrcode": "^1.5.4",
