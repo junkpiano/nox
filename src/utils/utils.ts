@@ -127,7 +127,7 @@ export async function fetchOGP(url: string): Promise<OGPResponse | null> {
     (async (): Promise<OGPResponse | null> => {
       try {
         const encodedURL: string = encodeURIComponent(url);
-        const apiURL: string = `https://proxy.yusuke.cloud/api/ogp?url=${encodedURL}`;
+        const apiURL: string = `https://nostr-proxy-worker.junkpiano.workers.dev/api/ogp?url=${encodedURL}`;
 
         const response: Response = await fetch(apiURL);
 
