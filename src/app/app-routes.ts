@@ -140,6 +140,22 @@ async function getSettingsPageModule(): Promise<
   return import('../features/settings/settings-page.js');
 }
 
+// `location.pathname` keeps percent-encoded characters, so `/user%40domain.com`
+// never matches the NIP-05 branch unless it is decoded first.
+function decodePathSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+function escapeHtml(text: string): string {
+  const div: HTMLDivElement = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 function stopBackgroundFetch(): void {
   if (appState.backgroundFetchInterval) {
     clearInterval(appState.backgroundFetchInterval);
@@ -393,7 +409,7 @@ export function handleRoute(scrollRestoreState?: unknown): void {
       });
     } else {
       // Try to parse as npub profile
-      const npub: string = path.replace('/', '').trim();
+      const npub: string = decodePathSegment(path.replace('/', '')).trim();
       if (npub.startsWith('nevent') || npub.startsWith('note')) {
         const { loadEventPage } = await getEventPageModule();
         await loadEventPage({
@@ -432,7 +448,7 @@ export function handleRoute(scrollRestoreState?: unknown): void {
         );
         resetNotificationsButtonState();
 
-        renderLoadingState('Resolving NIP-05 identifier...', npub);
+        renderLoadingState('Resolving NIP-05 identifier...', escapeHtml(npub));
 
         const pubkeyHex: PubkeyHex | null = await resolveNip05(npub);
         if (!isRouteActive()) return;
@@ -443,7 +459,7 @@ export function handleRoute(scrollRestoreState?: unknown): void {
           output.innerHTML = `
           <div class="text-center py-8">
             <p class="text-red-600 mb-4">Could not resolve NIP-05 identifier.</p>
-            <p class="text-gray-600 text-sm">"${npub}" could not be found. Check the identifier and try again.</p>
+            <p class="text-gray-600 text-sm">"${escapeHtml(npub)}" could not be found. Check the identifier and try again.</p>
           </div>
         `;
         }
