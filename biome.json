@@ -20,6 +20,13 @@
     }
   },
   "files": {
-    "includes": ["**", "!dist", "!node_modules"]
+    "includes": [
+      "**",
+      "!dist",
+      "!node_modules",
+      "!src-tauri/gen",
+      "!src-tauri/target",
+      "!.tmp"
+    ]
   }
 }

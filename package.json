@@ -12,10 +12,16 @@
     "format:write": "biome format --write .",
     "lint": "biome lint .",
     "check": "biome check .",
-    "test": "tsc -p tsconfig.test.json && node --test .tmp/test-dist/tests/*.test.js"
+    "test": "tsc -p tsconfig.test.json && node --test .tmp/test-dist/tests/*.test.js",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^25.0.9",
     "@types/qrcode": "^1.5.6",
     "autoprefixer": "^10.4.23",
@@ -26,6 +32,8 @@
     "wrangler": "^4.110.0"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-http": "^2.5.9",
     "baseline-browser-mapping": "^2.10.42",
     "caniuse-lite": "^1.0.30001802",
     "emoji-dictionary": "^1.0.12",
