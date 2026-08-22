@@ -1,4 +1,5 @@
 import type { PubkeyHex } from '../../../types/nostr.js';
+import { isNativeRuntime } from '../native-http.js';
 
 let serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
 let syncConfig: {
@@ -21,8 +22,17 @@ export interface ServiceWorkerManager {
 
 /**
  * Registers the service worker
+ *
+ * Background sync is web-only. The native shell serves the app from a custom
+ * protocol origin that cannot host a worker script, and mobile platforms would
+ * not keep a relay connection alive in the background anyway, so the native
+ * build skips registration instead of failing at it on every launch.
  */
 export async function registerServiceWorker(): Promise<boolean> {
+  if (isNativeRuntime()) {
+    return false;
+  }
+
   if (!('serviceWorker' in navigator)) {
     console.warn('[ServiceWorkerManager] Service workers not supported');
     return false;
@@ -94,7 +104,10 @@ export async function startPeriodicSync(config: {
   syncGlobal?: boolean;
 }): Promise<void> {
   if (!serviceWorkerRegistration) {
-    console.warn('[ServiceWorkerManager] No service worker registered');
+    // Expected in the native shell, where registration is skipped by design.
+    if (!isNativeRuntime()) {
+      console.warn('[ServiceWorkerManager] No service worker registered');
+    }
     return;
   }
 
@@ -180,10 +193,10 @@ function handleServiceWorkerMessage(event: MessageEvent): void {
 }
 
 /**
- * Checks if service workers are supported
+ * Checks if service workers are supported and usable in this runtime
  */
 export function isServiceWorkerSupported(): boolean {
-  return 'serviceWorker' in navigator;
+  return !isNativeRuntime() && 'serviceWorker' in navigator;
 }
 
 /**
