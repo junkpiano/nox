@@ -2,6 +2,7 @@ import { bech32 } from '@scure/base';
 import { finalizeEvent, nip57 } from 'nostr-tools';
 import * as QRCode from 'qrcode';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
+import { crossOriginFetch } from './native-http.js';
 
 interface ZapOverlayOptions {
   getSessionPrivateKey: () => Uint8Array | null;
@@ -132,7 +133,7 @@ async function fetchZapPayInfo(
     throw new Error('Recipient does not have a Lightning address configured.');
   }
 
-  const response: Response = await fetch(lnurl);
+  const response: Response = await crossOriginFetch(lnurl);
   if (!response.ok) {
     throw new Error(
       `Failed to load zap endpoint: ${response.status} ${response.statusText}`,
@@ -356,7 +357,9 @@ async function requestZapInvoice(
     callbackUrl.searchParams.set('comment', trimmedComment);
   }
 
-  const invoiceResponse: Response = await fetch(callbackUrl.toString());
+  const invoiceResponse: Response = await crossOriginFetch(
+    callbackUrl.toString(),
+  );
   if (!invoiceResponse.ok) {
     throw new Error(
       `Failed to create invoice: ${invoiceResponse.status} ${invoiceResponse.statusText}`,
