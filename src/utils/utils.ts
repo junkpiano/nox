@@ -2,9 +2,12 @@ import emojiDictionary from 'emoji-dictionary';
 import type {
   NostrProfile,
   Npub,
+  OGPMetadata,
   OGPResponse,
   PubkeyHex,
 } from '../../types/nostr';
+import { crossOriginFetch, isNativeRuntime } from '../common/native-http.js';
+import { parseOgpDocument } from '../common/ogp-parse.js';
 
 const ogpCache: Map<string, Promise<OGPResponse | null>> = new Map();
 const twitterEmbedCache: Map<string, Promise<string | null>> = new Map();
@@ -75,7 +78,7 @@ export async function fetchTwitterEmbed(url: string): Promise<string | null> {
       const encodedURL: string = encodeURIComponent(url);
       const oembedURL: string = `https://publish.twitter.com/oembed?url=${encodedURL}&theme=light&dnt=true`;
 
-      const response: Response = await fetch(oembedURL);
+      const response: Response = await crossOriginFetch(oembedURL);
 
       if (!response.ok) {
         console.error(
@@ -113,6 +116,60 @@ export function loadTwitterWidgets(): void {
 }
 
 /**
+ * Fetches OGP metadata through the CORS proxy worker.
+ *
+ * Used on the web, where the WebView cannot read cross-origin HTML directly.
+ */
+async function fetchOGPViaProxy(url: string): Promise<OGPResponse | null> {
+  const encodedURL: string = encodeURIComponent(url);
+  const apiURL: string = `https://nostr-proxy-worker.junkpiano.workers.dev/api/ogp?url=${encodedURL}`;
+
+  const response: Response = await fetch(apiURL);
+
+  if (!response.ok) {
+    console.error(
+      `Failed to fetch OGP for ${url}: ${response.status} ${response.statusText}`,
+    );
+    return null;
+  }
+
+  const data: OGPResponse = await response.json();
+  return data;
+}
+
+/**
+ * Fetches OGP metadata straight from the origin and parses it locally.
+ *
+ * Only viable in the native shell, where requests are issued from Rust and are
+ * not subject to CORS. Skipping the proxy removes a hop and a dependency.
+ */
+async function fetchOGPDirect(url: string): Promise<OGPResponse | null> {
+  const response: Response = await crossOriginFetch(url, {
+    headers: { Accept: 'text/html,application/xhtml+xml' },
+    redirect: 'follow',
+  });
+
+  if (!response.ok) {
+    console.error(
+      `Failed to fetch OGP for ${url}: ${response.status} ${response.statusText}`,
+    );
+    return null;
+  }
+
+  // Checked before reading the body so non-HTML targets (images, video,
+  // archives) are not downloaded just to be discarded.
+  const contentType: string = response.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('html')) {
+    return null;
+  }
+
+  const html: string = await response.text();
+  const data: OGPMetadata = parseOgpDocument(html, response.url || url);
+
+  return Object.keys(data).length > 0 ? { url, data } : null;
+}
+
+/**
  * Fetches Open Graph Protocol (OGP) metadata for a given URL
  * @param url - The URL to fetch OGP information for
  * @returns Promise resolving to OGP response object, or null if fetch fails
@@ -126,20 +183,9 @@ export async function fetchOGP(url: string): Promise<OGPResponse | null> {
   const request: Promise<OGPResponse | null> =
     (async (): Promise<OGPResponse | null> => {
       try {
-        const encodedURL: string = encodeURIComponent(url);
-        const apiURL: string = `https://nostr-proxy-worker.junkpiano.workers.dev/api/ogp?url=${encodedURL}`;
-
-        const response: Response = await fetch(apiURL);
-
-        if (!response.ok) {
-          console.error(
-            `Failed to fetch OGP for ${url}: ${response.status} ${response.statusText}`,
-          );
-          return null;
-        }
-
-        const data: OGPResponse = await response.json();
-        return data;
+        return isNativeRuntime()
+          ? await fetchOGPDirect(url)
+          : await fetchOGPViaProxy(url);
       } catch (error: unknown) {
         console.error(`Error fetching OGP for ${url}:`, error);
         return null;

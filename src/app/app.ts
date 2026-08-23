@@ -9,6 +9,7 @@ import { setupSearchBar } from '../common/search.js';
 import {
   clearSessionPrivateKey,
   getSessionPrivateKey,
+  restoreSessionPrivateKey,
   updateLogoutButton,
 } from '../common/session.js';
 import {
@@ -546,8 +547,13 @@ document.addEventListener('DOMContentLoaded', (): void => {
     handleRoute();
   });
 
-  // Handle initial route
-  handleRoute();
+  // Handle initial route.
+  // The key is restored first because routing kicks off the initial timeline
+  // load, and NIP-42 AUTH during that load needs the key already in memory.
+  void restoreSessionPrivateKey().finally((): void => {
+    updateLogoutButton(composeButton);
+    handleRoute();
+  });
 });
 
 // Cleanup background fetch on page unload
