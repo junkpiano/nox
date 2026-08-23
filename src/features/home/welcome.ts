@@ -1,4 +1,5 @@
 import type { PubkeyHex } from '../../../types/nostr';
+import { showKeyBackupNotice } from '../../common/key-backup.js';
 
 interface ShowInputFormOptions {
   output: HTMLElement | null;
@@ -165,6 +166,9 @@ export async function showInputForm(
         options.updateLogoutButton(options.composeButton);
         window.history.pushState(null, '', '/home');
         options.handleRoute();
+        // The key now lives in encrypted device storage, which the user cannot
+        // read back. Warn before that becomes their only copy.
+        showKeyBackupNotice();
       } catch (error: unknown) {
         console.error('Private key login error:', error);
         options.clearSessionPrivateKey();
