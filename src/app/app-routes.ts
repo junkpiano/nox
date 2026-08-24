@@ -389,6 +389,7 @@ export function handleRoute(scrollRestoreState?: unknown): void {
     } else if (path === '/settings') {
       const { loadSettingsPage } = await getSettingsPageModule();
       await loadSettingsPage({
+        getRelays: (): string[] => appState.relays,
         closeAllWebSockets,
         stopBackgroundFetch,
         clearNotification: clearNewPostsNotification,
@@ -903,8 +904,10 @@ async function startAppCore(
     return;
   }
   if (profileSection) {
-    const [{ renderProfile, setupProfileEditor, setupProfileZapButton }, { publishEventToRelays }] =
-      await Promise.all([getProfilePageModule(), getProfileFollowModule()]);
+    const [
+      { renderProfile, setupProfileEditor, setupProfileZapButton },
+      { publishEventToRelays },
+    ] = await Promise.all([getProfilePageModule(), getProfileFollowModule()]);
     if (!isRouteActive()) return; // Guard before DOM update
     renderProfile(pubkeyHex, npub, appState.profile, profileSection);
     setupProfileZapButton(pubkeyHex, npub, appState.profile, profileSection);

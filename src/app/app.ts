@@ -1,6 +1,7 @@
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { setupComposeOverlay } from '../common/compose.js';
 import { getTimelineNewestTimestamp } from '../common/db/index.js';
+import { clearMuteList, loadCachedMuteList } from '../common/mute-state.js';
 import { setupNavigation } from '../common/navigation.js';
 import { setupImageOverlay } from '../common/overlays.js';
 import { createRelayWebSocket } from '../common/relay-socket.js';
@@ -17,6 +18,8 @@ import {
   startPeriodicSync,
 } from '../common/sync/service-worker-manager.js';
 import { setupZapOverlay } from '../common/zap.js';
+import { refreshMuteListFromRelays } from '../features/moderation/moderation-actions.js';
+import { setupModerationOverlay } from '../features/moderation/moderation-overlay.js';
 import { clearNotifications } from '../features/notifications/notifications.js';
 import { recordRelayFailure } from '../features/relays/relays.js';
 import {
@@ -228,6 +231,8 @@ function handleLogout(): void {
   localStorage.removeItem('nostr_pubkey');
   clearSessionPrivateKey();
   clearNotifications();
+  // Otherwise the next account inherits this one's mute list.
+  clearMuteList();
 
   appState.cachedHomeTimeline = null;
 
@@ -422,6 +427,16 @@ document.addEventListener('DOMContentLoaded', (): void => {
   );
 
   window.addEventListener('relays-updated', syncRelays);
+
+  setupModerationOverlay({
+    getRelays: (): string[] => appState.relays,
+  });
+
+  // Muting hides an author mid-session, so re-run the route to drop their
+  // cards from whatever is on screen.
+  window.addEventListener('mute-list-updated', (): void => {
+    handleRoute();
+  });
   if (connectingMsg) {
     connectingMsg.style.display = 'none'; // Hide connecting message by default
   }
@@ -550,10 +565,15 @@ document.addEventListener('DOMContentLoaded', (): void => {
   // Handle initial route.
   // The key is restored first because routing kicks off the initial timeline
   // load, and NIP-42 AUTH during that load needs the key already in memory.
-  void restoreSessionPrivateKey().finally((): void => {
-    updateLogoutButton(composeButton);
-    handleRoute();
-  });
+  void Promise.all([restoreSessionPrivateKey(), loadCachedMuteList()]).finally(
+    (): void => {
+      updateLogoutButton(composeButton);
+      handleRoute();
+      // Refreshed in the background: the cached list already filters the first
+      // render, and a relay round-trip should not delay it.
+      void refreshMuteListFromRelays(appState.relays);
+    },
+  );
 });
 
 // Cleanup background fetch on page unload

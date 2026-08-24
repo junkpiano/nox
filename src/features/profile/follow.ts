@@ -4,6 +4,7 @@ import {
   fetchFollowList,
   fetchLatestFollowListEvent,
 } from '../../common/events-queries.js';
+import { isMuted } from '../../common/mute-state.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getSessionPrivateKey } from '../../common/session.js';
 import { recordRelayFailure } from '../relays/relays.js';
@@ -29,10 +30,38 @@ export async function setupFollowToggle(
   }
 
   container.innerHTML = `
-    <button id="follow-toggle" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
-      Follow
-    </button>
+    <div class="flex items-center gap-2">
+      <button id="follow-toggle" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
+        Follow
+      </button>
+      <button id="profile-mute-toggle" type="button" class="nox-muted-button font-semibold py-2 px-4 rounded-lg transition-colors">
+        ${isMuted(targetPubkey) ? 'Unmute' : 'Mute'}
+      </button>
+      <button id="profile-report" type="button" class="nox-muted-button font-semibold py-2 px-4 rounded-lg transition-colors">
+        Report
+      </button>
+    </div>
   `;
+
+  document
+    .getElementById('profile-mute-toggle')
+    ?.addEventListener('click', (): void => {
+      window.dispatchEvent(
+        new CustomEvent('request-mute-user', {
+          detail: { pubkey: targetPubkey, name: '' },
+        }),
+      );
+    });
+
+  document
+    .getElementById('profile-report')
+    ?.addEventListener('click', (): void => {
+      window.dispatchEvent(
+        new CustomEvent('request-report-content', {
+          detail: { pubkey: targetPubkey, name: '' },
+        }),
+      );
+    });
 
   const button: HTMLButtonElement | null = document.getElementById(
     'follow-toggle',

@@ -5,6 +5,7 @@ import type {
   Npub,
   PubkeyHex,
 } from '../../../types/nostr';
+import { isMuted } from '../../common/mute-state.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getDisplayName, replaceEmojiShortcodes } from '../../utils/utils.js';
 import { fetchProfile, getAuthoritativeProfile } from '../profile/profile.js';
@@ -56,6 +57,12 @@ function renderNotifications(
   displayNames: Map<PubkeyHex, string>,
 ): void {
   container.innerHTML = '';
+
+  // A muted account should not be able to reach the viewer by replying to or
+  // reacting to their posts.
+  events = events.filter(
+    (event: NostrEvent): boolean => !isMuted(event.pubkey),
+  );
 
   if (events.length === 0) {
     const empty: HTMLDivElement = document.createElement('div');
