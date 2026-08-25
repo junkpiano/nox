@@ -9,6 +9,7 @@
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { openRelaySubscription } from '../../common/relay-socket.js';
 import { publishEventToRelays } from '../profile/follow.js';
+import { fetchDmRelayList, resolveDeliveryRelays } from './dm-relays.js';
 import { addMessages } from './messages-store.js';
 import type { ChatRumor } from './nip17.js';
 import { buildGiftWraps, GIFT_WRAP_KIND, unwrapChatMessage } from './nip17.js';
@@ -51,6 +52,13 @@ export async function startMessageSync(
 ): Promise<() => void> {
   stopMessageSync();
 
+  // Listen wherever we advertised, or messages sent correctly by other
+  // clients would land on relays this one never reads.
+  const ownDmRelays: string[] = await fetchDmRelayList(viewerPubkey, relays);
+  const listenRelays: string[] = Array.from(
+    new Set([...relays, ...ownDmRelays]),
+  );
+
   const since: number = Math.floor(Date.now() / 1000) - LOOKBACK_SECONDS;
   const pending: NostrEvent[] = [];
   let flushTimer: number | null = null;
@@ -70,7 +78,7 @@ export async function startMessageSync(
 
   const unsubscribers: Array<() => void> = [];
   await Promise.allSettled(
-    relays.map(async (relayUrl: string): Promise<void> => {
+    listenRelays.map(async (relayUrl: string): Promise<void> => {
       try {
         const unsubscribe = await openRelaySubscription(
           relayUrl,
@@ -127,12 +135,31 @@ export async function sendDirectMessage(params: {
     message: params.message,
   });
 
-  await Promise.all(
-    wraps.map(
-      (wrap: NostrEvent): Promise<void> =>
-        publishEventToRelays(wrap, params.relays),
-    ),
+  // Each copy goes where its reader will look for it. A gift wrap left on
+  // relays the recipient never reads is delivered nowhere, which is the whole
+  // reason kind 10050 exists.
+  const [recipientDmRelays, ownDmRelays] = await Promise.all([
+    fetchDmRelayList(params.recipientPubkey, params.relays),
+    fetchDmRelayList(params.senderPubkey, params.relays),
+  ]);
+
+  const recipientTargets: string[] = resolveDeliveryRelays(
+    recipientDmRelays,
+    params.relays,
   );
+  const ownTargets: string[] = resolveDeliveryRelays(
+    ownDmRelays,
+    params.relays,
+  );
+
+  // buildGiftWraps returns the recipient's copy first, then the sender's.
+  const [recipientWrap, ownWrap] = wraps;
+  await Promise.all([
+    recipientWrap
+      ? publishEventToRelays(recipientWrap, recipientTargets)
+      : Promise.resolve(),
+    ownWrap ? publishEventToRelays(ownWrap, ownTargets) : Promise.resolve(),
+  ]);
 
   addMessages(
     [

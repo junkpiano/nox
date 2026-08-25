@@ -8,6 +8,11 @@
 import { nip19 } from 'nostr-tools';
 import type { PubkeyHex } from '../../../types/nostr';
 import type { SetActiveNavFn } from '../../common/types.js';
+import {
+  fetchDmRelayList,
+  invalidateDmRelayCache,
+  signDmRelayListEvent,
+} from './dm-relays.js';
 import type { Conversation, StoredMessage } from './messages-store.js';
 import {
   getConversation,
@@ -69,6 +74,77 @@ function renderUnavailable(output: HTMLElement): void {
       </p>
     </section>
   `;
+}
+
+/**
+ * Prompts the user to publish a DM relay list when they have none.
+ *
+ * Without kind 10050 nobody can message them: other clients refuse to guess
+ * where to deliver, and say so. Amethyst reports "cannot deliver until the
+ * recipient sets a relay list" and stops. This is therefore a setup step, not
+ * an optional refinement, and belongs at the top of the screen until done.
+ */
+async function renderDmRelayNotice(
+  output: HTMLElement,
+  viewerPubkey: PubkeyHex,
+  options: MessagesPageOptions,
+): Promise<void> {
+  const relays: string[] = options.getRelays();
+  const published: string[] = await fetchDmRelayList(viewerPubkey, relays);
+  if (published.length > 0) {
+    return;
+  }
+
+  const notice: HTMLElement = document.createElement('section');
+  notice.className = 'nox-panel mb-3 p-4 text-sm';
+  notice.innerHTML = `
+    <h3 class="mb-2 font-semibold">Nobody can message you yet</h3>
+    <p class="mb-3">
+      Other clients need to know which relays to deliver your private messages
+      to. Until you publish that list they will refuse to send, and you will
+      not receive anything.
+    </p>
+    <p id="dm-relay-status" class="mb-3 text-xs opacity-80"></p>
+    <button id="dm-relay-publish" type="button" class="nox-primary-button w-full rounded px-4 py-2 font-semibold">
+      Publish my DM relays
+    </button>
+  `;
+  output.prepend(notice);
+
+  const status = notice.querySelector('#dm-relay-status');
+  if (status) {
+    status.textContent = `Will publish: ${relays.join(', ')}`;
+  }
+
+  const button = notice.querySelector(
+    '#dm-relay-publish',
+  ) as HTMLButtonElement | null;
+  button?.addEventListener('click', (): void => {
+    void (async (): Promise<void> => {
+      button.disabled = true;
+      button.classList.add('opacity-60', 'cursor-not-allowed');
+      if (status) status.textContent = 'Publishing…';
+      try {
+        const event = await signDmRelayListEvent({
+          pubkeyHex: viewerPubkey,
+          relayUrls: relays,
+        });
+        const { publishEventToRelays } = await import('../profile/follow.js');
+        await publishEventToRelays(event, relays);
+        invalidateDmRelayCache(viewerPubkey);
+        notice.remove();
+      } catch (error: unknown) {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? `Could not publish: ${error.message}`
+              : 'Could not publish the list.';
+        }
+        button.disabled = false;
+        button.classList.remove('opacity-60', 'cursor-not-allowed');
+      }
+    })();
+  });
 }
 
 function wireNewMessage(
@@ -353,6 +429,7 @@ function render(options: MessagesPageOptions): void {
     renderThread(output, openPeer, viewerPubkey, options);
   } else {
     renderConversationList(output, options);
+    void renderDmRelayNotice(output, viewerPubkey, options);
   }
 }
 
