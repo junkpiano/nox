@@ -131,6 +131,23 @@ function dropLocalEcho(rumor: ChatRumor): boolean {
   return false;
 }
 
+/** True when a real message already carries this content from this author. */
+function hasEquivalentMessage(rumor: ChatRumor): boolean {
+  for (const [id, existing] of messages) {
+    if (id.startsWith(LOCAL_ID_PREFIX)) {
+      continue;
+    }
+    if (
+      existing.author === rumor.pubkey &&
+      existing.content === rumor.content &&
+      Math.abs(existing.createdAt - rumor.created_at) <= ECHO_WINDOW_SECONDS
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function addMessages(
   rumors: ChatRumor[],
   viewerPubkey: PubkeyHex,
@@ -146,7 +163,13 @@ export function addMessages(
       continue;
     }
 
-    if (!rumor.id.startsWith(LOCAL_ID_PREFIX) && dropLocalEcho(rumor)) {
+    if (rumor.id.startsWith(LOCAL_ID_PREFIX)) {
+      // The real copy may already have arrived from a relay, in which case the
+      // placeholder is redundant rather than pending.
+      if (hasEquivalentMessage(rumor)) {
+        continue;
+      }
+    } else if (dropLocalEcho(rumor)) {
       changed = true;
     }
 
