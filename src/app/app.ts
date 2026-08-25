@@ -20,6 +20,8 @@ import {
   startPeriodicSync,
 } from '../common/sync/service-worker-manager.js';
 import { setupZapOverlay } from '../common/zap.js';
+import { clearMessages } from '../features/messages/messages-store.js';
+import { stopMessageSync } from '../features/messages/messages-sync.js';
 import { refreshMuteListFromRelays } from '../features/moderation/moderation-actions.js';
 import { setupModerationOverlay } from '../features/moderation/moderation-overlay.js';
 import { clearNotifications } from '../features/notifications/notifications.js';
@@ -242,6 +244,9 @@ function handleLogout(): void {
   // The connection secret can spend money. Leaving it behind would hand the
   // next person to sign in on this device a working wallet permission.
   void clearWalletConnection();
+  // Decrypted message history must not outlive the account it belongs to.
+  clearMessages();
+  stopMessageSync();
 
   appState.cachedHomeTimeline = null;
 
@@ -483,6 +488,18 @@ document.addEventListener('DOMContentLoaded', (): void => {
   });
 
   setupBottomTabs();
+
+  // Lets a deeply nested view request navigation without being handed the
+  // router; the profile page uses this to open a conversation.
+  window.addEventListener('navigate-to-path', ((event: CustomEvent): void => {
+    const path: unknown = event.detail?.path;
+    if (typeof path !== 'string') {
+      return;
+    }
+    saveScrollToHistoryState();
+    pushAppHistoryPath(path);
+    handleRoute();
+  }) as EventListener);
 
   // Loaded once so the zap flow can tell synchronously whether a wallet is
   // available, instead of reaching for the credential store mid-payment.

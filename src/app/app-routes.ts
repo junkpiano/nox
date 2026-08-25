@@ -56,6 +56,12 @@ function getRouteDependencies(): RouteDependencies {
   return routeDependencies;
 }
 
+async function getMessagesPageModule(): Promise<
+  typeof import('../features/messages/messages-page.js')
+> {
+  return import('../features/messages/messages-page.js');
+}
+
 async function getWalletPageModule(): Promise<
   typeof import('../features/wallet/wallet-page.js')
 > {
@@ -191,6 +197,10 @@ export function handleRoute(scrollRestoreState?: unknown): void {
   const path: string = url.pathname;
   const searchQuery: string = (url.searchParams.get('q') || '').trim();
   updateLogoutButton(composeButton);
+  // Every route change runs through here, including the one right after
+  // signing in, which is the moment tabs that depend on a session need to
+  // refresh. pushState alone would miss it.
+  window.dispatchEvent(new CustomEvent('app-route-changed'));
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
   const notificationsButton: HTMLElement | null =
     document.getElementById('nav-notifications');
@@ -402,6 +412,18 @@ export function handleRoute(scrollRestoreState?: unknown): void {
         setActiveNav,
         profileSection,
         output,
+      });
+    } else if (path === '/messages') {
+      resetNotificationsButtonState();
+      const { loadMessagesPage } = await getMessagesPageModule();
+      loadMessagesPage({
+        closeAllWebSockets,
+        stopBackgroundFetch,
+        clearNotification: clearNewPostsNotification,
+        setActiveNav,
+        profileSection,
+        output,
+        getRelays: (): string[] => appState.relays,
       });
     } else if (path === '/wallet') {
       resetNotificationsButtonState();
