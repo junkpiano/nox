@@ -27,54 +27,92 @@ interface WalletPageOptions {
   profileSection: HTMLElement | null;
 }
 
-const CUSTODY_NOTE: string = `
-  <section class="nox-panel p-4 text-sm">
-    <h3 class="mb-2 font-semibold">Your wallet stays yours</h3>
-    <p class="mb-2">
-      nox has no server and no account. Connecting a wallet does not move your
-      money anywhere, and the developer of this app never holds, sees, or can
-      spend your funds.
-    </p>
-    <p>
-      What you paste below is a permission slip to your own wallet, stored
-      encrypted on this device. Your wallet decides what it allows, and you can
-      revoke it from the wallet at any time.
-    </p>
-  </section>
+/**
+ * The explanation, available rather than displayed.
+ *
+ * An earlier version spent sixty words reassuring the user before they could
+ * reach the input. Someone who already understands NWC does not need any of it,
+ * and someone who does not is better served by asking than by being lectured on
+ * arrival. So it lives behind a question mark, and the screen states the one
+ * fact that changes a decision.
+ */
+const CUSTODY_HELP: string = `
+  <h3 class="mb-3 text-lg font-semibold">About wallet connections</h3>
+  <p class="mb-2 text-sm">
+    nox has no server and no account. Connecting a wallet does not move your
+    money, and the developer never holds, sees, or can spend your funds.
+  </p>
+  <p class="mb-2 text-sm">
+    What you paste is a permission to your own wallet, stored encrypted on this
+    device. Your wallet decides what it allows, and you can revoke it there at
+    any time.
+  </p>
+  <p class="text-sm">
+    Wallets supporting Nostr Wallet Connect include Alby, Coinos and Mutiny.
+  </p>
+`;
+
+function showWalletHelp(): void {
+  document.getElementById('wallet-help-overlay')?.remove();
+
+  const overlay: HTMLDivElement = document.createElement('div');
+  overlay.id = 'wallet-help-overlay';
+  overlay.className = 'fixed inset-0 z-50 h-dvh';
+  overlay.innerHTML = `
+    <div class="absolute inset-0 bg-black/60" data-help-backdrop></div>
+    <div class="relative flex h-full items-center justify-center p-4">
+      <div class="nox-modal-card w-full max-w-md rounded-lg p-5">
+        ${CUSTODY_HELP}
+        <button id="wallet-help-close" type="button" class="nox-primary-button mt-4 w-full rounded px-4 py-2 font-semibold">
+          Close
+        </button>
+      </div>
+    </div>
+  `;
+
+  const close = (): void => overlay.remove();
+  overlay
+    .querySelector('[data-help-backdrop]')
+    ?.addEventListener('click', close);
+  overlay.querySelector('#wallet-help-close')?.addEventListener('click', close);
+  document.body.appendChild(overlay);
+}
+
+/** Sits next to the heading, out of the way until wanted. */
+const HELP_BUTTON: string = `
+  <button id="wallet-help" type="button" class="nox-muted-button rounded-full px-2 py-1 text-xs font-semibold" aria-label="About wallet connections">
+    ?
+  </button>
 `;
 
 function renderDisconnected(output: HTMLElement): void {
+  // The placeholder shows the format; no sentence needs to describe it.
   output.innerHTML = `
-    <div class="space-y-4">
-      ${CUSTODY_NOTE}
+    <div class="space-y-3">
+      <div class="flex items-center justify-between gap-2">
+        <span class="font-semibold">Connect a wallet</span>
+        ${HELP_BUTTON}
+      </div>
 
-      <section class="nox-panel p-4 space-y-3">
-        <div>
-          <h3 class="font-semibold">Connect a wallet</h3>
-          <p class="mt-1 text-sm">
-            In a wallet that supports Nostr Wallet Connect, create a connection
-            and paste the string it gives you. Alby, Coinos, Mutiny and others
-            support this.
-          </p>
-        </div>
+      <textarea
+        id="nwc-uri"
+        rows="3"
+        spellcheck="false"
+        placeholder="nostr+walletconnect://..."
+        class="nox-input w-full rounded p-2 font-mono text-xs"
+      ></textarea>
 
-        <label class="nox-field-label" for="nwc-uri">Connection string</label>
-        <textarea
-          id="nwc-uri"
-          rows="3"
-          spellcheck="false"
-          placeholder="nostr+walletconnect://..."
-          class="nox-input w-full rounded p-2 font-mono text-xs"
-        ></textarea>
+      <p id="nwc-status" class="text-sm" role="status"></p>
 
-        <p id="nwc-status" class="text-sm" role="status"></p>
-
-        <button id="nwc-connect" type="button" class="nox-primary-button w-full rounded px-4 py-2 font-semibold">
-          Connect
-        </button>
-      </section>
+      <button id="nwc-connect" type="button" class="nox-primary-button w-full rounded px-4 py-2 font-semibold">
+        Connect
+      </button>
     </div>
   `;
+
+  document
+    .getElementById('wallet-help')
+    ?.addEventListener('click', showWalletHelp);
 }
 
 function renderConnected(
@@ -82,33 +120,32 @@ function renderConnected(
   connection: NwcConnection,
   alias: string | null,
 ): void {
+  // Connected, the screen has one job: show the balance. The wallet's name and
+  // relay are reference, not headline, and Disconnect explains itself.
   output.innerHTML = `
-    <div class="space-y-4">
-      <section class="nox-panel p-4">
-        <p class="nox-kicker">Balance</p>
-        <p id="nwc-balance" class="mt-1 text-3xl font-semibold">—</p>
-        <p id="nwc-balance-note" class="mt-1 text-sm"></p>
-      </section>
+    <div class="space-y-6">
+      <div>
+        <p id="nwc-balance" class="text-4xl font-semibold">—</p>
+        <p id="nwc-balance-note" class="mt-1 text-sm opacity-70"></p>
+      </div>
 
-      <section class="nox-panel p-4 space-y-2 text-sm">
-        <h3 class="font-semibold">Connected wallet</h3>
+      <div class="text-sm opacity-70">
         <p id="nwc-alias"></p>
         <p id="nwc-relay" class="break-all font-mono text-xs"></p>
-      </section>
+      </div>
 
-      ${CUSTODY_NOTE}
-
-      <section class="nox-panel p-4 space-y-3">
-        <p class="text-sm">
-          Disconnecting removes the permission from this device. It does not
-          touch your wallet or your money.
-        </p>
-        <button id="nwc-disconnect" type="button" class="nox-muted-button w-full rounded px-4 py-2 font-semibold">
+      <div class="flex items-center gap-2">
+        <button id="nwc-disconnect" type="button" class="nox-muted-button flex-1 rounded px-4 py-2 font-semibold">
           Disconnect
         </button>
-      </section>
+        ${HELP_BUTTON}
+      </div>
     </div>
   `;
+
+  document
+    .getElementById('wallet-help')
+    ?.addEventListener('click', showWalletHelp);
 
   // Assigned as text so a wallet-supplied alias cannot inject markup.
   const aliasEl = output.querySelector('#nwc-alias');
