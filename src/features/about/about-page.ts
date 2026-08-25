@@ -99,6 +99,22 @@ export function loadAboutPage(options: AboutPageOptions): void {
 	        </p>
 	      </section>
 
+	      <section class="bg-white border border-gray-200 rounded-lg p-5">
+	        <h3 class="text-base font-bold text-gray-900 mb-2">Privacy and Terms</h3>
+	        <p class="mb-3">
+	          nox has no server and no account. Your key stays on your device, and the
+	          developer never receives your data.
+	        </p>
+	        <ul class="space-y-2 list-disc list-inside">
+	          <li><a href="https://github.com/junkpiano/nox/blob/main/docs/privacy-policy.md" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">Privacy Policy</a></li>
+	          <li><a href="https://github.com/junkpiano/nox/blob/main/docs/terms-of-use.md" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">Terms of Use</a></li>
+	        </ul>
+	        <p class="mt-3 text-xs text-gray-600">
+	          Content comes from the Nostr network and is not moderated by nox. Mute and
+	          report controls are available on every post and profile.
+	        </p>
+	      </section>
+	
 	      <section class="bg-emerald-50 border border-emerald-200 rounded-lg p-5">
 	        <h3 class="text-base font-bold text-emerald-900 mb-2">Donate / Zap</h3>
 	        <p>
