@@ -1135,6 +1135,24 @@ body.theme-nox textarea {
     gap: 0.75rem;
     padding-top: calc(var(--nox-safe-top) + 0.375rem);
     padding-bottom: 0.375rem;
+    /* Nothing sits opposite the menu button once the wordmark is gone, so the
+       shell should not reserve a row's worth of height for it. */
+    display: flex;
+    align-items: center;
+    min-height: 0;
+  }
+
+  .nox-header .nox-header-meta {
+    display: none;
+  }
+
+  /* Tailwind's px-4 on the header and main is what keeps rows off the edges.
+     Full bleed means full bleed; the safe-area insets already keep content
+     clear of the cutout. */
+  .nox-header > div,
+  main {
+    padding-left: 0;
+    padding-right: 0;
   }
 }
 
