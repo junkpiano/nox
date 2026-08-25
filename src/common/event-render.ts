@@ -1290,15 +1290,11 @@ export function renderEvent(
             }
             ${
               canModerate
-                ? `<button class="${moderationBtnClasses} mute-user-btn" aria-label="Mute this account" title="Mute this account" data-mute-pubkey="${escapeHtmlAttribute(event.pubkey)}" data-mute-name="${safeName}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" />
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M17 9l4 6m0-6l-4 6" />
-                    </svg>
-                  </button>
-                  <button class="${moderationBtnClasses} report-event-btn" aria-label="Report this post" title="Report this post" data-report-pubkey="${escapeHtmlAttribute(event.pubkey)}" data-report-event-id="${escapeHtmlAttribute(event.id)}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 21V4h11l-1 3h6l-2 4 2 4h-8l1-3H6" />
+                ? `<button class="${moderationBtnClasses} more-actions-btn" aria-label="More actions" title="More actions" aria-haspopup="menu">
+                    <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 block" aria-hidden="true">
+                      <circle cx="5" cy="12" r="1.6" />
+                      <circle cx="12" cy="12" r="1.6" />
+                      <circle cx="19" cy="12" r="1.6" />
                     </svg>
                   </button>`
                 : ''
@@ -1558,30 +1554,18 @@ export function renderEvent(
     });
   }
 
-  const muteButton: HTMLButtonElement | null = div.querySelector(
-    '.mute-user-btn',
+  const moreButton: HTMLButtonElement | null = div.querySelector(
+    '.more-actions-btn',
   ) as HTMLButtonElement | null;
-  if (muteButton) {
-    muteButton.addEventListener('click', (e: MouseEvent): void => {
+  if (moreButton) {
+    moreButton.addEventListener('click', (e: MouseEvent): void => {
       e.preventDefault();
       e.stopPropagation();
+      // Mute and report are rare and consequential. Behind one control they
+      // stop competing with reply and zap for attention, and a stray tap can
+      // no longer mute someone outright.
       window.dispatchEvent(
-        new CustomEvent('request-mute-user', {
-          detail: { pubkey: event.pubkey, name },
-        }),
-      );
-    });
-  }
-
-  const reportButton: HTMLButtonElement | null = div.querySelector(
-    '.report-event-btn',
-  ) as HTMLButtonElement | null;
-  if (reportButton) {
-    reportButton.addEventListener('click', (e: MouseEvent): void => {
-      e.preventDefault();
-      e.stopPropagation();
-      window.dispatchEvent(
-        new CustomEvent('request-report-content', {
+        new CustomEvent('request-post-actions', {
           detail: { pubkey: event.pubkey, eventId: event.id, name },
         }),
       );

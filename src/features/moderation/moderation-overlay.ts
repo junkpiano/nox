@@ -181,6 +181,49 @@ function showReportDialog(
   });
 }
 
+/**
+ * The menu behind the post's overflow control.
+ *
+ * A sheet rather than a dropdown: it needs no positioning logic, and on a phone
+ * the bottom of the screen is where the thumb already is.
+ */
+function showPostActions(
+  pubkey: PubkeyHex,
+  eventId: string,
+  name: string,
+  options: ModerationOverlayOptions,
+): void {
+  const muted: boolean = isMuted(pubkey);
+
+  const overlay: HTMLDivElement = createOverlay(`
+    <div class="space-y-2">
+      <button id="action-mute" type="button" class="nox-muted-button w-full rounded px-4 py-3 text-left font-semibold">
+        ${muted ? 'Unmute this account' : 'Mute this account'}
+      </button>
+      <button id="action-report" type="button" class="nox-muted-button w-full rounded px-4 py-3 text-left font-semibold">
+        Report this post
+      </button>
+      <button id="action-cancel" type="button" class="nox-muted-button w-full rounded px-4 py-3 font-semibold">
+        Cancel
+      </button>
+    </div>
+  `);
+
+  overlay
+    .querySelector('#action-cancel')
+    ?.addEventListener('click', closeOverlay);
+
+  overlay.querySelector('#action-mute')?.addEventListener('click', (): void => {
+    showMuteDialog(pubkey, name, options);
+  });
+
+  overlay
+    .querySelector('#action-report')
+    ?.addEventListener('click', (): void => {
+      showReportDialog(pubkey, eventId, options);
+    });
+}
+
 /** Subscribes to the moderation requests dispatched by event cards. */
 export function setupModerationOverlay(
   options: ModerationOverlayOptions,
@@ -188,6 +231,13 @@ export function setupModerationOverlay(
   window.addEventListener('request-mute-user', ((event: CustomEvent): void => {
     const { pubkey, name } = event.detail;
     showMuteDialog(pubkey as PubkeyHex, name ?? '', options);
+  }) as EventListener);
+
+  window.addEventListener('request-post-actions', ((
+    event: CustomEvent,
+  ): void => {
+    const { pubkey, eventId, name } = event.detail;
+    showPostActions(pubkey as PubkeyHex, eventId, name ?? '', options);
   }) as EventListener);
 
   window.addEventListener('request-report-content', ((
