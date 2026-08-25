@@ -197,6 +197,10 @@ export function handleRoute(scrollRestoreState?: unknown): void {
   const path: string = url.pathname;
   const searchQuery: string = (url.searchParams.get('q') || '').trim();
   updateLogoutButton(composeButton);
+  // Every route change runs through here, including the one right after
+  // signing in, which is the moment tabs that depend on a session need to
+  // refresh. pushState alone would miss it.
+  window.dispatchEvent(new CustomEvent('app-route-changed'));
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
   const notificationsButton: HTMLElement | null =
     document.getElementById('nav-notifications');

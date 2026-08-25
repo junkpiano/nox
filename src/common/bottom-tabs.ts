@@ -29,6 +29,14 @@ function resolveTabPath(tab: HTMLElement): string | null {
   return href && href !== '#' ? href : null;
 }
 
+function isSignedIn(): boolean {
+  try {
+    return Boolean(localStorage.getItem('nostr_pubkey'));
+  } catch {
+    return false;
+  }
+}
+
 function syncActiveTab(): void {
   const currentPath: string =
     window.location.pathname === '/' ? '/home' : window.location.pathname;
@@ -37,6 +45,13 @@ function syncActiveTab(): void {
     const path: string | null = resolveTabPath(tab);
     const active: boolean = path !== null && path === currentPath;
     tab.classList.toggle(ACTIVE_CLASS, active);
+
+    // Signed out, profile and messages have nothing to show. Dimming says so
+    // before the tap rather than after it.
+    const needsSignIn: boolean =
+      tab.dataset.navTarget === 'nav-profile' ||
+      tab.dataset.navTarget === 'nav-messages';
+    tab.classList.toggle('is-unavailable', needsSignIn && !isSignedIn());
     if (active) {
       tab.setAttribute('aria-current', 'page');
     } else {
@@ -54,6 +69,18 @@ export function setupBottomTabs(): void {
     }
 
     tab.addEventListener('click', (): void => {
+      // Signed out, the profile link has no npub to point at, so delegating
+      // would silently do nothing. Send the user where they can sign in
+      // instead: a tab that appears to be broken is worse than one that
+      // explains itself.
+      if (targetId === 'nav-profile' && !isSignedIn()) {
+        window.dispatchEvent(
+          new CustomEvent('navigate-to-path', { detail: { path: '/home' } }),
+        );
+        syncActiveTab();
+        return;
+      }
+
       // Delegating a click keeps one implementation of each destination.
       document.getElementById(targetId)?.click();
       syncActiveTab();
