@@ -56,6 +56,12 @@ function getRouteDependencies(): RouteDependencies {
   return routeDependencies;
 }
 
+async function getWalletPageModule(): Promise<
+  typeof import('../features/wallet/wallet-page.js')
+> {
+  return import('../features/wallet/wallet-page.js');
+}
+
 async function getAboutPageModule(): Promise<
   typeof import('../features/about/about-page.js')
 > {
@@ -389,6 +395,17 @@ export function handleRoute(scrollRestoreState?: unknown): void {
     } else if (path === '/settings') {
       const { loadSettingsPage } = await getSettingsPageModule();
       await loadSettingsPage({
+        closeAllWebSockets,
+        stopBackgroundFetch,
+        clearNotification: clearNewPostsNotification,
+        setActiveNav,
+        profileSection,
+        output,
+      });
+    } else if (path === '/wallet') {
+      resetNotificationsButtonState();
+      const { loadWalletPage } = await getWalletPageModule();
+      loadWalletPage({
         closeAllWebSockets,
         stopBackgroundFetch,
         clearNotification: clearNewPostsNotification,
@@ -903,8 +920,10 @@ async function startAppCore(
     return;
   }
   if (profileSection) {
-    const [{ renderProfile, setupProfileEditor, setupProfileZapButton }, { publishEventToRelays }] =
-      await Promise.all([getProfilePageModule(), getProfileFollowModule()]);
+    const [
+      { renderProfile, setupProfileEditor, setupProfileZapButton },
+      { publishEventToRelays },
+    ] = await Promise.all([getProfilePageModule(), getProfileFollowModule()]);
     if (!isRouteActive()) return; // Guard before DOM update
     renderProfile(pubkeyHex, npub, appState.profile, profileSection);
     setupProfileZapButton(pubkeyHex, npub, appState.profile, profileSection);
