@@ -302,7 +302,9 @@ export async function loadReactionsPage(
   }
 
   if (postsHeader) {
-    postsHeader.textContent = 'Reactions';
+    // "Reactions" reads as reactions to you, which is what the Notifications
+    // tab shows. This page is the opposite direction: posts you reacted to.
+    postsHeader.textContent = 'Likes';
     postsHeader.style.display = '';
   }
 
@@ -352,7 +354,7 @@ export async function loadReactionsPage(
   if (visibleEvents.length === 0) {
     const empty: HTMLDivElement = document.createElement('div');
     empty.className = 'text-sm text-gray-500';
-    empty.textContent = 'No reactions yet.';
+    empty.textContent = 'No likes yet.';
     list.appendChild(empty);
     return;
   }

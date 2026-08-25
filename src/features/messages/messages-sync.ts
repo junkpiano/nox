@@ -9,6 +9,11 @@
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { openRelaySubscription } from '../../common/relay-socket.js';
 import { publishEventToRelays } from '../profile/follow.js';
+import {
+  fetchDmRelayList,
+  fetchNip65ReadRelays,
+  resolveDeliveryRelays,
+} from './dm-relays.js';
 import { addMessages } from './messages-store.js';
 import type { ChatRumor } from './nip17.js';
 import { buildGiftWraps, GIFT_WRAP_KIND, unwrapChatMessage } from './nip17.js';
@@ -51,6 +56,13 @@ export async function startMessageSync(
 ): Promise<() => void> {
   stopMessageSync();
 
+  // Listen wherever we advertised, or messages sent correctly by other
+  // clients would land on relays this one never reads.
+  const ownDmRelays: string[] = await fetchDmRelayList(viewerPubkey, relays);
+  const listenRelays: string[] = Array.from(
+    new Set([...relays, ...ownDmRelays]),
+  );
+
   const since: number = Math.floor(Date.now() / 1000) - LOOKBACK_SECONDS;
   const pending: NostrEvent[] = [];
   let flushTimer: number | null = null;
@@ -70,7 +82,7 @@ export async function startMessageSync(
 
   const unsubscribers: Array<() => void> = [];
   await Promise.allSettled(
-    relays.map(async (relayUrl: string): Promise<void> => {
+    listenRelays.map(async (relayUrl: string): Promise<void> => {
       try {
         const unsubscribe = await openRelaySubscription(
           relayUrl,
@@ -115,24 +127,63 @@ export function stopMessageSync(): void {
  * The sender's own copy is added straight away rather than waiting for it to
  * come back from a relay, so the thread updates immediately.
  */
+/**
+ * Whether the message could be delivered where the recipient actually reads.
+ *
+ * False means it went to this client's own relays as a guess, which is worth
+ * telling the user about: it is the difference between "sent" and "sent
+ * somewhere they may never look".
+ */
+export interface SendResult {
+  deliveredToRecipientRelays: boolean;
+  /** True when NIP-65 stood in for a missing DM relay list. */
+  usedFallback: boolean;
+}
+
 export async function sendDirectMessage(params: {
   senderPubkey: PubkeyHex;
   recipientPubkey: PubkeyHex;
   message: string;
   relays: string[];
-}): Promise<void> {
+}): Promise<SendResult> {
   const wraps: NostrEvent[] = await buildGiftWraps({
     senderPubkey: params.senderPubkey,
     recipientPubkey: params.recipientPubkey,
     message: params.message,
   });
 
-  await Promise.all(
-    wraps.map(
-      (wrap: NostrEvent): Promise<void> =>
-        publishEventToRelays(wrap, params.relays),
-    ),
+  // Each copy goes where its reader will look for it. A gift wrap left on
+  // relays the recipient never reads is delivered nowhere, which is the whole
+  // reason kind 10050 exists.
+  const [recipientDmRelays, ownDmRelays] = await Promise.all([
+    fetchDmRelayList(params.recipientPubkey, params.relays),
+    fetchDmRelayList(params.senderPubkey, params.relays),
+  ]);
+
+  // Only worth a lookup when there is no DM list to honour.
+  const recipientReadRelays: string[] =
+    recipientDmRelays.length > 0
+      ? []
+      : await fetchNip65ReadRelays(params.recipientPubkey, params.relays);
+
+  const recipientTargets: string[] = resolveDeliveryRelays(
+    recipientDmRelays,
+    params.relays,
+    recipientReadRelays,
   );
+  const ownTargets: string[] = resolveDeliveryRelays(
+    ownDmRelays,
+    params.relays,
+  );
+
+  // buildGiftWraps returns the recipient's copy first, then the sender's.
+  const [recipientWrap, ownWrap] = wraps;
+  await Promise.all([
+    recipientWrap
+      ? publishEventToRelays(recipientWrap, recipientTargets)
+      : Promise.resolve(),
+    ownWrap ? publishEventToRelays(ownWrap, ownTargets) : Promise.resolve(),
+  ]);
 
   addMessages(
     [
@@ -147,4 +198,10 @@ export async function sendDirectMessage(params: {
     ],
     params.senderPubkey,
   );
+
+  return {
+    deliveredToRecipientRelays:
+      recipientDmRelays.length > 0 || recipientReadRelays.length > 0,
+    usedFallback: recipientDmRelays.length === 0,
+  };
 }

@@ -8,8 +8,13 @@
  */
 
 import type { SetActiveNavFn } from '../../common/types.js';
-import type { NwcConnection, NwcInfo } from './nwc-client.js';
-import { getBalance, getInfo, parseNwcUri } from './nwc-client.js';
+import type { NwcConnection, NwcInfo, NwcTransaction } from './nwc-client.js';
+import {
+  getBalance,
+  getInfo,
+  listTransactions,
+  parseNwcUri,
+} from './nwc-client.js';
 import {
   clearWalletConnection,
   getWalletAlias,
@@ -27,54 +32,92 @@ interface WalletPageOptions {
   profileSection: HTMLElement | null;
 }
 
-const CUSTODY_NOTE: string = `
-  <section class="nox-panel p-4 text-sm">
-    <h3 class="mb-2 font-semibold">Your wallet stays yours</h3>
-    <p class="mb-2">
-      nox has no server and no account. Connecting a wallet does not move your
-      money anywhere, and the developer of this app never holds, sees, or can
-      spend your funds.
-    </p>
-    <p>
-      What you paste below is a permission slip to your own wallet, stored
-      encrypted on this device. Your wallet decides what it allows, and you can
-      revoke it from the wallet at any time.
-    </p>
-  </section>
+/**
+ * The explanation, available rather than displayed.
+ *
+ * An earlier version spent sixty words reassuring the user before they could
+ * reach the input. Someone who already understands NWC does not need any of it,
+ * and someone who does not is better served by asking than by being lectured on
+ * arrival. So it lives behind a question mark, and the screen states the one
+ * fact that changes a decision.
+ */
+const CUSTODY_HELP: string = `
+  <h3 class="mb-3 text-lg font-semibold">About wallet connections</h3>
+  <p class="mb-2 text-sm">
+    nox has no server and no account. Connecting a wallet does not move your
+    money, and the developer never holds, sees, or can spend your funds.
+  </p>
+  <p class="mb-2 text-sm">
+    What you paste is a permission to your own wallet, stored encrypted on this
+    device. Your wallet decides what it allows, and you can revoke it there at
+    any time.
+  </p>
+  <p class="text-sm">
+    Wallets supporting Nostr Wallet Connect include Alby, Coinos and Mutiny.
+  </p>
+`;
+
+function showWalletHelp(): void {
+  document.getElementById('wallet-help-overlay')?.remove();
+
+  const overlay: HTMLDivElement = document.createElement('div');
+  overlay.id = 'wallet-help-overlay';
+  overlay.className = 'fixed inset-0 z-50 h-dvh';
+  overlay.innerHTML = `
+    <div class="absolute inset-0 bg-black/60" data-help-backdrop></div>
+    <div class="relative flex h-full items-center justify-center p-4">
+      <div class="nox-modal-card w-full max-w-md rounded-lg p-5">
+        ${CUSTODY_HELP}
+        <button id="wallet-help-close" type="button" class="nox-primary-button mt-4 w-full rounded px-4 py-2 font-semibold">
+          Close
+        </button>
+      </div>
+    </div>
+  `;
+
+  const close = (): void => overlay.remove();
+  overlay
+    .querySelector('[data-help-backdrop]')
+    ?.addEventListener('click', close);
+  overlay.querySelector('#wallet-help-close')?.addEventListener('click', close);
+  document.body.appendChild(overlay);
+}
+
+/** Sits next to the heading, out of the way until wanted. */
+const HELP_BUTTON: string = `
+  <button id="wallet-help" type="button" class="nox-muted-button rounded-full px-2 py-1 text-xs font-semibold" aria-label="About wallet connections">
+    ?
+  </button>
 `;
 
 function renderDisconnected(output: HTMLElement): void {
+  // The placeholder shows the format; no sentence needs to describe it.
   output.innerHTML = `
-    <div class="space-y-4">
-      ${CUSTODY_NOTE}
+    <div class="space-y-3">
+      <div class="flex items-center justify-between gap-2">
+        <span class="font-semibold">Connect a wallet</span>
+        ${HELP_BUTTON}
+      </div>
 
-      <section class="nox-panel p-4 space-y-3">
-        <div>
-          <h3 class="font-semibold">Connect a wallet</h3>
-          <p class="mt-1 text-sm">
-            In a wallet that supports Nostr Wallet Connect, create a connection
-            and paste the string it gives you. Alby, Coinos, Mutiny and others
-            support this.
-          </p>
-        </div>
+      <textarea
+        id="nwc-uri"
+        rows="3"
+        spellcheck="false"
+        placeholder="nostr+walletconnect://..."
+        class="nox-input w-full rounded p-2 font-mono text-xs"
+      ></textarea>
 
-        <label class="nox-field-label" for="nwc-uri">Connection string</label>
-        <textarea
-          id="nwc-uri"
-          rows="3"
-          spellcheck="false"
-          placeholder="nostr+walletconnect://..."
-          class="nox-input w-full rounded p-2 font-mono text-xs"
-        ></textarea>
+      <p id="nwc-status" class="text-sm" role="status"></p>
 
-        <p id="nwc-status" class="text-sm" role="status"></p>
-
-        <button id="nwc-connect" type="button" class="nox-primary-button w-full rounded px-4 py-2 font-semibold">
-          Connect
-        </button>
-      </section>
+      <button id="nwc-connect" type="button" class="nox-primary-button w-full rounded px-4 py-2 font-semibold">
+        Connect
+      </button>
     </div>
   `;
+
+  document
+    .getElementById('wallet-help')
+    ?.addEventListener('click', showWalletHelp);
 }
 
 function renderConnected(
@@ -82,33 +125,34 @@ function renderConnected(
   connection: NwcConnection,
   alias: string | null,
 ): void {
+  // Connected, the screen has one job: show the balance. The wallet's name and
+  // relay are reference, not headline, and Disconnect explains itself.
   output.innerHTML = `
-    <div class="space-y-4">
-      <section class="nox-panel p-4">
-        <p class="nox-kicker">Balance</p>
-        <p id="nwc-balance" class="mt-1 text-3xl font-semibold">—</p>
-        <p id="nwc-balance-note" class="mt-1 text-sm"></p>
-      </section>
+    <div class="space-y-6">
+      <div>
+        <p id="nwc-balance" class="text-4xl font-semibold">—</p>
+        <p id="nwc-balance-note" class="mt-1 text-sm opacity-70"></p>
+      </div>
 
-      <section class="nox-panel p-4 space-y-2 text-sm">
-        <h3 class="font-semibold">Connected wallet</h3>
+      <div class="text-sm opacity-70">
         <p id="nwc-alias"></p>
         <p id="nwc-relay" class="break-all font-mono text-xs"></p>
-      </section>
+      </div>
 
-      ${CUSTODY_NOTE}
+      <div id="nwc-history" class="text-sm"></div>
 
-      <section class="nox-panel p-4 space-y-3">
-        <p class="text-sm">
-          Disconnecting removes the permission from this device. It does not
-          touch your wallet or your money.
-        </p>
-        <button id="nwc-disconnect" type="button" class="nox-muted-button w-full rounded px-4 py-2 font-semibold">
+      <div class="flex items-center justify-between gap-2 pt-2 text-xs opacity-60">
+        <button id="nwc-disconnect" type="button" class="underline">
           Disconnect
         </button>
-      </section>
+        ${HELP_BUTTON}
+      </div>
     </div>
   `;
+
+  document
+    .getElementById('wallet-help')
+    ?.addEventListener('click', showWalletHelp);
 
   // Assigned as text so a wallet-supplied alias cannot inject markup.
   const aliasEl = output.querySelector('#nwc-alias');
@@ -118,6 +162,79 @@ function renderConnected(
   const relayEl = output.querySelector('#nwc-relay');
   if (relayEl) {
     relayEl.textContent = connection.relay;
+  }
+}
+
+/**
+ * Recent payments, when the wallet exposes them.
+ *
+ * This is what someone opens a wallet to see. Silent when unsupported: a
+ * permanent "history unavailable" notice would be a worse use of the space than
+ * nothing at all.
+ */
+async function renderHistory(connection: NwcConnection): Promise<void> {
+  const container = document.getElementById('nwc-history');
+  if (!container) {
+    return;
+  }
+
+  let transactions: NwcTransaction[] = [];
+  try {
+    transactions = await listTransactions(connection);
+  } catch {
+    return;
+  }
+  if (transactions.length === 0) {
+    return;
+  }
+
+  // Without a heading the list is a column of signed numbers and dates, which
+  // could be anything. Rendered only once there is something to head.
+  const heading: HTMLHeadingElement = document.createElement('h3');
+  heading.className =
+    'mb-1 text-xs font-semibold uppercase tracking-wide opacity-60';
+  heading.textContent = 'Recent payments';
+
+  container.innerHTML = '';
+  container.appendChild(heading);
+
+  for (const tx of transactions) {
+    const row: HTMLDivElement = document.createElement('div');
+    row.className =
+      'flex items-baseline justify-between gap-3 border-b border-white/10 py-2 last:border-b-0';
+
+    const left: HTMLDivElement = document.createElement('div');
+    left.className = 'min-w-0';
+
+    const amount: HTMLDivElement = document.createElement('div');
+    amount.className =
+      tx.type === 'incoming'
+        ? 'font-semibold text-emerald-400'
+        : 'font-semibold';
+    amount.textContent = `${tx.type === 'incoming' ? '+' : '−'}${tx.amountSats.toLocaleString()} sats`;
+
+    const memo: HTMLDivElement = document.createElement('div');
+    memo.className = 'truncate text-xs opacity-60';
+    // Many wallets send no description. Naming the direction is still more
+    // than a bare number tells you.
+    memo.textContent =
+      tx.description || (tx.type === 'incoming' ? 'Received' : 'Sent');
+
+    left.append(amount, memo);
+
+    const when: HTMLSpanElement = document.createElement('span');
+    when.className = 'flex-none text-xs opacity-60';
+    when.textContent = tx.settledAt
+      ? new Date(tx.settledAt * 1000).toLocaleString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : 'Pending';
+
+    row.append(left, when);
+    container.appendChild(row);
   }
 }
 
@@ -249,5 +366,6 @@ export function loadWalletPage(options: WalletPageOptions): void {
     renderConnected(output, connection, await getWalletAlias());
     wireDisconnect(options);
     void refreshBalance(connection);
+    void renderHistory(connection);
   })();
 }

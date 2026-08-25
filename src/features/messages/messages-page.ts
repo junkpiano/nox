@@ -6,8 +6,15 @@
  */
 
 import { nip19 } from 'nostr-tools';
-import type { PubkeyHex } from '../../../types/nostr';
+import type { NostrProfile, Npub, PubkeyHex } from '../../../types/nostr';
 import type { SetActiveNavFn } from '../../common/types.js';
+import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
+import {
+  fetchDmRelayList,
+  fetchNip65ReadRelays,
+  invalidateDmRelayCache,
+  signDmRelayListEvent,
+} from './dm-relays.js';
 import type { Conversation, StoredMessage } from './messages-store.js';
 import {
   getConversation,
@@ -61,14 +68,107 @@ function formatTime(seconds: number): string {
 
 function renderUnavailable(output: HTMLElement): void {
   output.innerHTML = `
-    <section class="nox-panel p-4 text-sm">
-      <h3 class="mb-2 font-semibold">Messages need a signing key</h3>
-      <p>
-        Private messages are encrypted to your key. Sign in with a private key,
-        or use an extension that supports NIP-44, to read and send them.
-      </p>
-    </section>
+    <p class="text-sm opacity-70">
+      Messages need a signing key. Sign in with a private key, or an extension
+      supporting NIP-44.
+    </p>
   `;
+}
+
+/**
+ * Prompts the user to publish a DM relay list when they have none.
+ *
+ * Without kind 10050 nobody can message them: other clients refuse to guess
+ * where to deliver, and say so. Amethyst reports "cannot deliver until the
+ * recipient sets a relay list" and stops. This is therefore a setup step, not
+ * an optional refinement, and belongs at the top of the screen until done.
+ */
+async function renderDmRelayNotice(
+  output: HTMLElement,
+  viewerPubkey: PubkeyHex,
+  options: MessagesPageOptions,
+): Promise<void> {
+  const relays: string[] = options.getRelays();
+  const published: string[] = await fetchDmRelayList(viewerPubkey, relays);
+  if (published.length > 0) {
+    return;
+  }
+
+  const notice: HTMLElement = document.createElement('section');
+  notice.className = 'mb-3 text-sm';
+  // The consequence is the part that makes someone act; the protocol
+  // explanation behind it is not needed to decide.
+  notice.innerHTML = `
+    <p class="mb-3 text-sm">Nobody can message you until you publish your DM relays.</p>
+    <p id="dm-relay-status" class="mb-3 text-xs opacity-70"></p>
+    <button id="dm-relay-publish" type="button" class="nox-primary-button w-full rounded px-4 py-2 font-semibold">
+      Publish
+    </button>
+  `;
+  output.prepend(notice);
+
+  const status = notice.querySelector('#dm-relay-status');
+  if (status) {
+    status.textContent = `Will publish: ${relays.join(', ')}`;
+  }
+
+  const button = notice.querySelector(
+    '#dm-relay-publish',
+  ) as HTMLButtonElement | null;
+  button?.addEventListener('click', (): void => {
+    void (async (): Promise<void> => {
+      button.disabled = true;
+      button.classList.add('opacity-60', 'cursor-not-allowed');
+      if (status) status.textContent = 'Publishing…';
+      try {
+        const event = await signDmRelayListEvent({
+          pubkeyHex: viewerPubkey,
+          relayUrls: relays,
+        });
+        const { publishEventToRelays } = await import('../profile/follow.js');
+        await publishEventToRelays(event, relays);
+        invalidateDmRelayCache(viewerPubkey);
+        notice.remove();
+      } catch (error: unknown) {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? `Could not publish: ${error.message}`
+              : 'Could not publish the list.';
+        }
+        button.disabled = false;
+        button.classList.remove('opacity-60', 'cursor-not-allowed');
+      }
+    })();
+  });
+}
+
+/** Profiles are fetched lazily so a long list does not stall on the network. */
+async function resolvePeerProfile(
+  peer: PubkeyHex,
+  options: MessagesPageOptions,
+): Promise<NostrProfile | null> {
+  try {
+    const { fetchProfile } = await import('../profile/profile.js');
+    return await fetchProfile(peer, options.getRelays());
+  } catch {
+    return null;
+  }
+}
+
+async function resolvePeerName(
+  peer: PubkeyHex,
+  options: MessagesPageOptions,
+): Promise<string | null> {
+  const profile: NostrProfile | null = await resolvePeerProfile(peer, options);
+  if (!profile) {
+    return null;
+  }
+  try {
+    return getDisplayName(nip19.npubEncode(peer) as Npub, profile);
+  } catch {
+    return null;
+  }
 }
 
 function wireNewMessage(
@@ -99,13 +199,7 @@ function renderConversationList(
   if (conversations.length === 0) {
     output.innerHTML = `
       <div class="space-y-3">
-        <section class="nox-panel p-4 text-sm">
-          <h3 class="mb-2 font-semibold">No messages yet</h3>
-          <p>
-            Messages sent to you appear here. They are end-to-end encrypted, and
-            relays cannot see who you are talking to.
-          </p>
-        </section>
+        <p class="text-sm opacity-70">No messages yet.</p>
         ${startButtonHtml}
       </div>
     `;
@@ -129,14 +223,35 @@ function renderConversationList(
   for (const conversation of conversations) {
     const row: HTMLButtonElement = document.createElement('button');
     row.type = 'button';
-    row.className = 'w-full px-1 py-3 text-left';
+    row.className = 'flex w-full gap-3 px-1 py-3 text-left';
+
+    const avatar: HTMLImageElement = document.createElement('img');
+    avatar.className = 'h-10 w-10 flex-none rounded-full object-cover';
+    avatar.loading = 'lazy';
+    avatar.alt = '';
+    avatar.src = getAvatarURL(conversation.peer, null);
+    void resolvePeerProfile(conversation.peer, options).then(
+      (profile): void => {
+        avatar.src = getAvatarURL(conversation.peer, profile);
+      },
+    );
+
+    const body: HTMLDivElement = document.createElement('div');
+    body.className = 'min-w-0 flex-1';
 
     const head: HTMLDivElement = document.createElement('div');
     head.className = 'flex items-baseline justify-between gap-3';
 
     const name: HTMLSpanElement = document.createElement('span');
-    name.className = 'font-semibold';
+    name.className = 'truncate font-semibold';
+    // An npub is not a name. Until the profile resolves, the truncated key is
+    // the only handle available; once it does, the row says who this is.
     name.textContent = shortPeer(conversation.peer);
+    void resolvePeerName(conversation.peer, options).then((resolved): void => {
+      if (resolved) {
+        name.textContent = resolved;
+      }
+    });
 
     const time: HTMLSpanElement = document.createElement('span');
     time.className = 'flex-none text-xs opacity-70';
@@ -148,7 +263,8 @@ function renderConversationList(
     preview.textContent = conversation.lastMessage.content;
 
     head.append(name, time);
-    row.append(head, preview);
+    body.append(head, preview);
+    row.append(avatar, body);
     row.addEventListener('click', (): void => {
       openPeer = conversation.peer;
       render(options);
@@ -240,7 +356,8 @@ function renderThread(
       <button id="dm-back" type="button" class="nox-muted-button rounded px-3 py-1 text-sm font-semibold">
         ← Conversations
       </button>
-      <p id="dm-peer" class="break-all font-mono text-xs opacity-70"></p>
+      <p id="dm-peer" class="truncate font-semibold"></p>
+      <p id="dm-peer-warning" class="text-xs text-amber-300" role="status"></p>
       <div id="dm-thread" class="space-y-2"></div>
       <div class="flex gap-2">
         <input
@@ -260,7 +377,36 @@ function renderThread(
   const peerEl = output.querySelector('#dm-peer');
   if (peerEl) {
     peerEl.textContent = shortPeer(peer);
+    // Same reason as the list: the key is a placeholder until the name lands.
+    void resolvePeerName(peer, options).then((resolved): void => {
+      if (resolved) {
+        peerEl.textContent = resolved;
+      }
+    });
   }
+
+  // Checked on open rather than only after sending, so the warning arrives
+  // before the message does.
+  void (async (): Promise<void> => {
+    const recipientRelays: string[] = await fetchDmRelayList(
+      peer,
+      options.getRelays(),
+    );
+    if (recipientRelays.length > 0) {
+      return;
+    }
+    const readRelays: string[] = await fetchNip65ReadRelays(
+      peer,
+      options.getRelays(),
+    );
+    const warning = output.querySelector('#dm-peer-warning');
+    if (warning) {
+      warning.textContent =
+        readRelays.length > 0
+          ? 'Not set up for private messages. Delivery is not guaranteed.'
+          : 'This account publishes no relays. Messages may not arrive.';
+    }
+  })();
 
   const thread = output.querySelector('#dm-thread');
   if (thread) {
@@ -302,13 +448,26 @@ function renderThread(
       sendButton.disabled = true;
       sendButton.classList.add('opacity-60', 'cursor-not-allowed');
       try {
-        await sendDirectMessage({
+        const result = await sendDirectMessage({
           senderPubkey: viewerPubkey,
           recipientPubkey: peer,
           message: text,
           relays: options.getRelays(),
         });
         if (input) input.value = '';
+        if (status) {
+          // "Sent" and "sent where they will see it" are different claims, and
+          // conflating them is what makes a silent non-delivery baffling.
+          if (!result.deliveredToRecipientRelays) {
+            status.textContent =
+              'Sent. This account publishes no relays, so it may not arrive.';
+          } else if (result.usedFallback) {
+            status.textContent =
+              'Sent to their public relays. Delivery is not guaranteed.';
+          } else {
+            status.textContent = '';
+          }
+        }
       } catch (error: unknown) {
         if (status) {
           status.textContent =
@@ -353,6 +512,7 @@ function render(options: MessagesPageOptions): void {
     renderThread(output, openPeer, viewerPubkey, options);
   } else {
     renderConversationList(output, options);
+    void renderDmRelayNotice(output, viewerPubkey, options);
   }
 }
 

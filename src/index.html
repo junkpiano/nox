@@ -27,6 +27,9 @@
             <p class="nox-kicker">Nox / Nostr Client</p>
             <h1 class="nox-title">nox</h1>
           </div>
+          <!-- Small screens drop the wordmark; this carries the only context
+               the tab bar cannot, for destinations that have no tab. -->
+          <span id="page-context" class="nox-page-context lg:hidden"></span>
         </div>
         <div class="nox-header-meta">
         </div>
@@ -67,7 +70,7 @@
           </button>
           <button id="nav-reactions" class="nox-nav-button w-full text-left px-4 py-3 hover:bg-gray-100 transition-colors font-semibold text-gray-700 flex items-center gap-2">
             <span>❤</span>
-            <span>Reactions</span>
+            <span>Likes</span>
           </button>
           <button id="nav-relays" class="nox-nav-button w-full text-left px-4 py-3 hover:bg-gray-100 transition-colors font-semibold text-gray-700 flex items-center gap-2">
             <span>📡</span>

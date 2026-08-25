@@ -37,9 +37,44 @@ function isSignedIn(): boolean {
   }
 }
 
+/**
+ * Puts the page name in the header only where the tab bar cannot say it.
+ *
+ * On a tabbed destination the tab is already lit, so repeating "Home Timeline"
+ * above the feed says nothing the user cannot see. Screens reached through the
+ * drawer have no such marker, and there the label is the only thing telling
+ * them where they are.
+ */
+function syncPageContext(currentPath: string): void {
+  const label = document.getElementById('page-context');
+  if (!label) {
+    return;
+  }
+
+  const tabPaths: Set<string> = new Set<string>();
+  for (const tab of document.querySelectorAll<HTMLElement>('.nox-tab')) {
+    const path: string | null = resolveTabPath(tab);
+    if (path) {
+      tabPaths.add(path);
+    }
+  }
+
+  if (tabPaths.has(currentPath)) {
+    label.textContent = '';
+    return;
+  }
+
+  // Mirrors whatever the page set for the desktop heading, so each route keeps
+  // naming itself in one place.
+  const heading = document.getElementById('posts-header');
+  label.textContent = heading?.textContent?.trim() ?? '';
+}
+
 function syncActiveTab(): void {
   const currentPath: string =
     window.location.pathname === '/' ? '/home' : window.location.pathname;
+
+  syncPageContext(currentPath);
 
   for (const tab of document.querySelectorAll<HTMLElement>('.nox-tab')) {
     const path: string | null = resolveTabPath(tab);

@@ -275,6 +275,44 @@ export async function getBalance(connection: NwcConnection): Promise<number> {
   return Math.floor((result?.balance ?? 0) / 1000);
 }
 
+export interface NwcTransaction {
+  type: 'incoming' | 'outgoing';
+  amountSats: number;
+  description: string;
+  settledAt: number | null;
+}
+
+/**
+ * Recent transactions, newest first.
+ *
+ * Optional in NIP-47: plenty of wallets grant payment without exposing
+ * history, so callers must treat a rejection as "not available" rather than as
+ * a broken connection.
+ */
+export async function listTransactions(
+  connection: NwcConnection,
+  limit: number = 20,
+): Promise<NwcTransaction[]> {
+  const result = await request<{
+    transactions?: Array<{
+      type?: string;
+      amount?: number;
+      description?: string;
+      settled_at?: number;
+    }>;
+  }>(connection, 'list_transactions', { limit });
+
+  const rows = Array.isArray(result?.transactions) ? result.transactions : [];
+  return rows.map(
+    (row): NwcTransaction => ({
+      type: row.type === 'incoming' ? 'incoming' : 'outgoing',
+      amountSats: Math.floor((row.amount ?? 0) / 1000),
+      description: typeof row.description === 'string' ? row.description : '',
+      settledAt: typeof row.settled_at === 'number' ? row.settled_at : null,
+    }),
+  );
+}
+
 export async function payInvoice(
   connection: NwcConnection,
   invoice: string,

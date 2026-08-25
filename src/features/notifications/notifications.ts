@@ -7,7 +7,11 @@ import type {
 } from '../../../types/nostr';
 import { isMuted } from '../../common/mute-state.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
-import { getDisplayName, replaceEmojiShortcodes } from '../../utils/utils.js';
+import {
+  getAvatarURL,
+  getDisplayName,
+  replaceEmojiShortcodes,
+} from '../../utils/utils.js';
 import { fetchProfile, getAuthoritativeProfile } from '../profile/profile.js';
 import { recordRelayFailure } from '../relays/relays.js';
 
@@ -54,7 +58,7 @@ function renderNotifications(
   events: NostrEvent[],
   targetPubkey: PubkeyHex,
   container: HTMLElement,
-  displayNames: Map<PubkeyHex, string>,
+  displayNames: Map<PubkeyHex, NostrProfile | null>,
 ): void {
   container.innerHTML = '';
 
@@ -80,23 +84,23 @@ function renderNotifications(
 
     const row: HTMLAnchorElement = document.createElement('a');
     row.className =
-      'block rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 transition-colors';
+      'flex gap-3 px-1 py-3 text-sm border-b border-white/10 last:border-b-0';
 
     const authorNpub: Npub = nip19.npubEncode(event.pubkey);
-    const shortAuthor: string = `${authorNpub.slice(0, 10)}…${authorNpub.slice(-4)}`;
-    const displayName: string = displayNames.get(event.pubkey) || shortAuthor;
+    const profile: NostrProfile | null = displayNames.get(event.pubkey) ?? null;
+    const displayName: string = getDisplayName(authorNpub, profile);
 
     let label: string = '';
     let content: string = '';
     if (type === 'reaction') {
-      label = 'Reacted';
-      content = event.content ? event.content : 'Reaction';
+      label = 'reacted';
+      content = event.content ? event.content : '❤';
     } else if (type === 'reply') {
-      label = 'Replied';
-      content = event.content || 'Reply';
+      label = 'replied';
+      content = event.content || '';
     } else {
-      label = 'Mentioned';
-      content = event.content || 'Mention';
+      label = 'mentioned you';
+      content = event.content || '';
     }
     content = replaceEmojiShortcodes(content);
 
@@ -108,30 +112,37 @@ function renderNotifications(
       row.href = `/${authorNpub}`;
     }
 
-    const header: HTMLDivElement = document.createElement('div');
-    header.className = 'flex items-center justify-between gap-4';
+    // Who, first and largest. A list of notifications is scanned for people,
+    // not for verbs, and the previous layout led with "Reacted" while the name
+    // sat below in grey and the raw npub repeated it in the corner.
+    const avatar: HTMLImageElement = document.createElement('img');
+    avatar.className = 'h-10 w-10 flex-none rounded-full object-cover';
+    avatar.loading = 'lazy';
+    avatar.alt = '';
+    avatar.src = getAvatarURL(event.pubkey, profile);
+
+    const body: HTMLDivElement = document.createElement('div');
+    body.className = 'min-w-0 flex-1';
+
+    const line: HTMLDivElement = document.createElement('div');
+    line.className = 'flex items-baseline gap-1';
+
+    const nameEl: HTMLSpanElement = document.createElement('span');
+    nameEl.className = 'truncate font-semibold';
+    nameEl.textContent = displayName;
 
     const labelEl: HTMLSpanElement = document.createElement('span');
-    labelEl.className = 'font-semibold text-gray-800';
+    labelEl.className = 'flex-none text-xs opacity-60';
     labelEl.textContent = label;
 
-    const authorEl: HTMLSpanElement = document.createElement('span');
-    authorEl.className = 'text-xs text-gray-500';
-    authorEl.textContent = shortAuthor;
-
-    const authorLine: HTMLDivElement = document.createElement('div');
-    authorLine.className = 'mt-1 text-xs text-gray-500';
-    authorLine.textContent = `From ${displayName}`;
+    line.append(nameEl, labelEl);
 
     const contentEl: HTMLDivElement = document.createElement('div');
-    contentEl.className = 'mt-2 text-gray-600 break-words';
+    contentEl.className = 'mt-1 break-words opacity-80';
     contentEl.textContent = content;
 
-    header.appendChild(labelEl);
-    header.appendChild(authorEl);
-    row.appendChild(header);
-    row.appendChild(authorLine);
-    row.appendChild(contentEl);
+    body.append(line, contentEl);
+    row.append(avatar, body);
 
     container.appendChild(row);
   });
@@ -278,10 +289,8 @@ export async function loadNotificationsPage(
   if (!isRouteActive()) {
     return;
   }
-  const displayNames: Map<PubkeyHex, string> = await loadDisplayNames(
-    options.relays,
-    events,
-  );
+  const displayNames: Map<PubkeyHex, NostrProfile | null> =
+    await loadDisplayNames(options.relays, events);
   if (!isRouteActive()) {
     return;
   }
@@ -289,7 +298,7 @@ export async function loadNotificationsPage(
   output.innerHTML = '';
   const list: HTMLDivElement = document.createElement('div');
   list.id = 'notifications-list';
-  list.className = 'space-y-3';
+  list.className = '';
   output.appendChild(list);
   renderNotifications(events, storedPubkey as PubkeyHex, list, displayNames);
 }
@@ -297,22 +306,17 @@ export async function loadNotificationsPage(
 async function loadDisplayNames(
   relays: string[],
   events: NostrEvent[],
-): Promise<Map<PubkeyHex, string>> {
+): Promise<Map<PubkeyHex, NostrProfile | null>> {
   const pubkeys: PubkeyHex[] = Array.from(
     new Set(events.map((event: NostrEvent): PubkeyHex => event.pubkey)),
   );
-  const displayNames: Map<PubkeyHex, string> = new Map();
+  const displayNames: Map<PubkeyHex, NostrProfile | null> = new Map();
 
   await Promise.allSettled(
     pubkeys.map(async (pubkey: PubkeyHex): Promise<void> => {
       try {
         const profile: NostrProfile | null = await fetchProfile(pubkey, relays);
-        const renderProfile: NostrProfile | null = getAuthoritativeProfile(
-          pubkey,
-          profile,
-        );
-        const npub: Npub = nip19.npubEncode(pubkey);
-        displayNames.set(pubkey, getDisplayName(npub, renderProfile));
+        displayNames.set(pubkey, getAuthoritativeProfile(pubkey, profile));
       } catch (error: unknown) {
         console.warn(
           'Failed to load display name for notification author:',
