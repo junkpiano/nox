@@ -1058,3 +1058,20 @@ body.theme-nox textarea {
     background: var(--nox-panel-strong);
   }
 }
+
+/* Drawer access moved into the header when the More tab made way for Wallet. */
+.nox-header-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Meets the 44px minimum touch target. */
+  height: 2.75rem;
+  width: 2.75rem;
+  flex: none;
+  border: none;
+  border-radius: 0.75rem;
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--nox-text);
+  font-size: 1.125rem;
+  line-height: 1;
+}
