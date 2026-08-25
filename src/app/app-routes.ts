@@ -56,6 +56,12 @@ function getRouteDependencies(): RouteDependencies {
   return routeDependencies;
 }
 
+async function getMessagesPageModule(): Promise<
+  typeof import('../features/messages/messages-page.js')
+> {
+  return import('../features/messages/messages-page.js');
+}
+
 async function getWalletPageModule(): Promise<
   typeof import('../features/wallet/wallet-page.js')
 > {
@@ -401,6 +407,18 @@ export function handleRoute(scrollRestoreState?: unknown): void {
         setActiveNav,
         profileSection,
         output,
+      });
+    } else if (path === '/messages') {
+      resetNotificationsButtonState();
+      const { loadMessagesPage } = await getMessagesPageModule();
+      loadMessagesPage({
+        closeAllWebSockets,
+        stopBackgroundFetch,
+        clearNotification: clearNewPostsNotification,
+        setActiveNav,
+        profileSection,
+        output,
+        getRelays: (): string[] => appState.relays,
       });
     } else if (path === '/wallet') {
       resetNotificationsButtonState();

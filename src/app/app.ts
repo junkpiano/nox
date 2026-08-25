@@ -19,6 +19,8 @@ import {
   startPeriodicSync,
 } from '../common/sync/service-worker-manager.js';
 import { setupZapOverlay } from '../common/zap.js';
+import { clearMessages } from '../features/messages/messages-store.js';
+import { stopMessageSync } from '../features/messages/messages-sync.js';
 import { clearNotifications } from '../features/notifications/notifications.js';
 import { recordRelayFailure } from '../features/relays/relays.js';
 import {
@@ -237,6 +239,9 @@ function handleLogout(): void {
   // The connection secret can spend money. Leaving it behind would hand the
   // next person to sign in on this device a working wallet permission.
   void clearWalletConnection();
+  // Decrypted message history must not outlive the account it belongs to.
+  clearMessages();
+  stopMessageSync();
 
   appState.cachedHomeTimeline = null;
 
