@@ -279,21 +279,14 @@ export async function loadReactionsPage(
     document.getElementById('nav-profile');
   const settingsButton: HTMLElement | null =
     document.getElementById('nav-settings');
-  const reactionsButton: HTMLElement | null =
-    document.getElementById('nav-reactions');
   setActiveNav(
     homeButton,
     globalButton,
     relaysButton,
     profileLink,
     settingsButton,
-    null,
+    document.getElementById('nav-reactions'),
   );
-  if (reactionsButton) {
-    reactionsButton.classList.remove('text-gray-700');
-    reactionsButton.classList.add('bg-indigo-100', 'text-indigo-700');
-  }
-
   const notificationsButton: HTMLElement | null =
     document.getElementById('nav-notifications');
   if (notificationsButton) {
