@@ -1,10 +1,10 @@
 import { finalizeEvent, nip19 } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { deleteEvents } from '../../common/db/index.js';
+import { setActiveNav } from '../../common/navigation.js';
 import { filterDeletedReactionEvents } from '../../common/reaction-interactions.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getSessionPrivateKey } from '../../common/session.js';
-import { setActiveNav } from '../../common/navigation.js';
 import { recordRelayFailure } from '../relays/relays.js';
 
 interface LoadReactionsPageOptions {
@@ -139,7 +139,12 @@ async function fetchReactionDeletionEvents(
           const req: [
             string,
             string,
-            { kinds: number[]; authors: string[]; '#e': string[]; limit: number },
+            {
+              kinds: number[];
+              authors: string[];
+              '#e': string[];
+              limit: number;
+            },
           ] = [
             'REQ',
             subId,
@@ -168,7 +173,10 @@ async function fetchReactionDeletionEvents(
         };
       });
     } catch (error: unknown) {
-      console.warn(`Failed to load reaction deletions from ${relayUrl}:`, error);
+      console.warn(
+        `Failed to load reaction deletions from ${relayUrl}:`,
+        error,
+      );
     }
   });
 
@@ -293,7 +301,9 @@ export async function loadReactionsPage(
   }
 
   if (postsHeader) {
-    postsHeader.textContent = 'Reactions';
+    // "Reactions" reads as reactions to you, which is what the Notifications
+    // tab shows. This page is the opposite direction: posts you reacted to.
+    postsHeader.textContent = 'Likes';
     postsHeader.style.display = '';
   }
 
@@ -332,7 +342,7 @@ export async function loadReactionsPage(
   if (events.length === 0) {
     const empty: HTMLDivElement = document.createElement('div');
     empty.className = 'text-sm text-gray-500';
-    empty.textContent = 'No reactions yet.';
+    empty.textContent = 'No likes yet.';
     list.appendChild(empty);
     return;
   }

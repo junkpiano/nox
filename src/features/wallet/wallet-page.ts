@@ -8,8 +8,13 @@
  */
 
 import type { SetActiveNavFn } from '../../common/types.js';
-import type { NwcConnection, NwcInfo } from './nwc-client.js';
-import { getBalance, getInfo, parseNwcUri } from './nwc-client.js';
+import type { NwcConnection, NwcInfo, NwcTransaction } from './nwc-client.js';
+import {
+  getBalance,
+  getInfo,
+  listTransactions,
+  parseNwcUri,
+} from './nwc-client.js';
 import {
   clearWalletConnection,
   getWalletAlias,
@@ -134,8 +139,10 @@ function renderConnected(
         <p id="nwc-relay" class="break-all font-mono text-xs"></p>
       </div>
 
-      <div class="flex items-center gap-2">
-        <button id="nwc-disconnect" type="button" class="nox-muted-button flex-1 rounded px-4 py-2 font-semibold">
+      <div id="nwc-history" class="text-sm"></div>
+
+      <div class="flex items-center justify-between gap-2 pt-2 text-xs opacity-60">
+        <button id="nwc-disconnect" type="button" class="underline">
           Disconnect
         </button>
         ${HELP_BUTTON}
@@ -155,6 +162,79 @@ function renderConnected(
   const relayEl = output.querySelector('#nwc-relay');
   if (relayEl) {
     relayEl.textContent = connection.relay;
+  }
+}
+
+/**
+ * Recent payments, when the wallet exposes them.
+ *
+ * This is what someone opens a wallet to see. Silent when unsupported: a
+ * permanent "history unavailable" notice would be a worse use of the space than
+ * nothing at all.
+ */
+async function renderHistory(connection: NwcConnection): Promise<void> {
+  const container = document.getElementById('nwc-history');
+  if (!container) {
+    return;
+  }
+
+  let transactions: NwcTransaction[] = [];
+  try {
+    transactions = await listTransactions(connection);
+  } catch {
+    return;
+  }
+  if (transactions.length === 0) {
+    return;
+  }
+
+  // Without a heading the list is a column of signed numbers and dates, which
+  // could be anything. Rendered only once there is something to head.
+  const heading: HTMLHeadingElement = document.createElement('h3');
+  heading.className =
+    'mb-1 text-xs font-semibold uppercase tracking-wide opacity-60';
+  heading.textContent = 'Recent payments';
+
+  container.innerHTML = '';
+  container.appendChild(heading);
+
+  for (const tx of transactions) {
+    const row: HTMLDivElement = document.createElement('div');
+    row.className =
+      'flex items-baseline justify-between gap-3 border-b border-white/10 py-2 last:border-b-0';
+
+    const left: HTMLDivElement = document.createElement('div');
+    left.className = 'min-w-0';
+
+    const amount: HTMLDivElement = document.createElement('div');
+    amount.className =
+      tx.type === 'incoming'
+        ? 'font-semibold text-emerald-400'
+        : 'font-semibold';
+    amount.textContent = `${tx.type === 'incoming' ? '+' : '−'}${tx.amountSats.toLocaleString()} sats`;
+
+    const memo: HTMLDivElement = document.createElement('div');
+    memo.className = 'truncate text-xs opacity-60';
+    // Many wallets send no description. Naming the direction is still more
+    // than a bare number tells you.
+    memo.textContent =
+      tx.description || (tx.type === 'incoming' ? 'Received' : 'Sent');
+
+    left.append(amount, memo);
+
+    const when: HTMLSpanElement = document.createElement('span');
+    when.className = 'flex-none text-xs opacity-60';
+    when.textContent = tx.settledAt
+      ? new Date(tx.settledAt * 1000).toLocaleString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : 'Pending';
+
+    row.append(left, when);
+    container.appendChild(row);
   }
 }
 
@@ -286,5 +366,6 @@ export function loadWalletPage(options: WalletPageOptions): void {
     renderConnected(output, connection, await getWalletAlias());
     wireDisconnect(options);
     void refreshBalance(connection);
+    void renderHistory(connection);
   })();
 }

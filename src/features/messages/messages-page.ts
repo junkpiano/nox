@@ -6,8 +6,9 @@
  */
 
 import { nip19 } from 'nostr-tools';
-import type { PubkeyHex } from '../../../types/nostr';
+import type { NostrProfile, Npub, PubkeyHex } from '../../../types/nostr';
 import type { SetActiveNavFn } from '../../common/types.js';
+import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
 import {
   fetchDmRelayList,
   fetchNip65ReadRelays,
@@ -142,6 +143,34 @@ async function renderDmRelayNotice(
   });
 }
 
+/** Profiles are fetched lazily so a long list does not stall on the network. */
+async function resolvePeerProfile(
+  peer: PubkeyHex,
+  options: MessagesPageOptions,
+): Promise<NostrProfile | null> {
+  try {
+    const { fetchProfile } = await import('../profile/profile.js');
+    return await fetchProfile(peer, options.getRelays());
+  } catch {
+    return null;
+  }
+}
+
+async function resolvePeerName(
+  peer: PubkeyHex,
+  options: MessagesPageOptions,
+): Promise<string | null> {
+  const profile: NostrProfile | null = await resolvePeerProfile(peer, options);
+  if (!profile) {
+    return null;
+  }
+  try {
+    return getDisplayName(nip19.npubEncode(peer) as Npub, profile);
+  } catch {
+    return null;
+  }
+}
+
 function wireNewMessage(
   output: HTMLElement,
   options: MessagesPageOptions,
@@ -194,14 +223,35 @@ function renderConversationList(
   for (const conversation of conversations) {
     const row: HTMLButtonElement = document.createElement('button');
     row.type = 'button';
-    row.className = 'w-full px-1 py-3 text-left';
+    row.className = 'flex w-full gap-3 px-1 py-3 text-left';
+
+    const avatar: HTMLImageElement = document.createElement('img');
+    avatar.className = 'h-10 w-10 flex-none rounded-full object-cover';
+    avatar.loading = 'lazy';
+    avatar.alt = '';
+    avatar.src = getAvatarURL(conversation.peer, null);
+    void resolvePeerProfile(conversation.peer, options).then(
+      (profile): void => {
+        avatar.src = getAvatarURL(conversation.peer, profile);
+      },
+    );
+
+    const body: HTMLDivElement = document.createElement('div');
+    body.className = 'min-w-0 flex-1';
 
     const head: HTMLDivElement = document.createElement('div');
     head.className = 'flex items-baseline justify-between gap-3';
 
     const name: HTMLSpanElement = document.createElement('span');
-    name.className = 'font-semibold';
+    name.className = 'truncate font-semibold';
+    // An npub is not a name. Until the profile resolves, the truncated key is
+    // the only handle available; once it does, the row says who this is.
     name.textContent = shortPeer(conversation.peer);
+    void resolvePeerName(conversation.peer, options).then((resolved): void => {
+      if (resolved) {
+        name.textContent = resolved;
+      }
+    });
 
     const time: HTMLSpanElement = document.createElement('span');
     time.className = 'flex-none text-xs opacity-70';
@@ -213,7 +263,8 @@ function renderConversationList(
     preview.textContent = conversation.lastMessage.content;
 
     head.append(name, time);
-    row.append(head, preview);
+    body.append(head, preview);
+    row.append(avatar, body);
     row.addEventListener('click', (): void => {
       openPeer = conversation.peer;
       render(options);
@@ -305,7 +356,7 @@ function renderThread(
       <button id="dm-back" type="button" class="nox-muted-button rounded px-3 py-1 text-sm font-semibold">
         ← Conversations
       </button>
-      <p id="dm-peer" class="break-all font-mono text-xs opacity-70"></p>
+      <p id="dm-peer" class="truncate font-semibold"></p>
       <p id="dm-peer-warning" class="text-xs text-amber-300" role="status"></p>
       <div id="dm-thread" class="space-y-2"></div>
       <div class="flex gap-2">
@@ -326,6 +377,12 @@ function renderThread(
   const peerEl = output.querySelector('#dm-peer');
   if (peerEl) {
     peerEl.textContent = shortPeer(peer);
+    // Same reason as the list: the key is a placeholder until the name lands.
+    void resolvePeerName(peer, options).then((resolved): void => {
+      if (resolved) {
+        peerEl.textContent = resolved;
+      }
+    });
   }
 
   // Checked on open rather than only after sending, so the warning arrives
