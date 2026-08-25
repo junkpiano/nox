@@ -9,7 +9,11 @@
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { openRelaySubscription } from '../../common/relay-socket.js';
 import { publishEventToRelays } from '../profile/follow.js';
-import { fetchDmRelayList, resolveDeliveryRelays } from './dm-relays.js';
+import {
+  fetchDmRelayList,
+  fetchNip65ReadRelays,
+  resolveDeliveryRelays,
+} from './dm-relays.js';
 import { addMessages } from './messages-store.js';
 import type { ChatRumor } from './nip17.js';
 import { buildGiftWraps, GIFT_WRAP_KIND, unwrapChatMessage } from './nip17.js';
@@ -123,12 +127,25 @@ export function stopMessageSync(): void {
  * The sender's own copy is added straight away rather than waiting for it to
  * come back from a relay, so the thread updates immediately.
  */
+/**
+ * Whether the message could be delivered where the recipient actually reads.
+ *
+ * False means it went to this client's own relays as a guess, which is worth
+ * telling the user about: it is the difference between "sent" and "sent
+ * somewhere they may never look".
+ */
+export interface SendResult {
+  deliveredToRecipientRelays: boolean;
+  /** True when NIP-65 stood in for a missing DM relay list. */
+  usedFallback: boolean;
+}
+
 export async function sendDirectMessage(params: {
   senderPubkey: PubkeyHex;
   recipientPubkey: PubkeyHex;
   message: string;
   relays: string[];
-}): Promise<void> {
+}): Promise<SendResult> {
   const wraps: NostrEvent[] = await buildGiftWraps({
     senderPubkey: params.senderPubkey,
     recipientPubkey: params.recipientPubkey,
@@ -143,9 +160,16 @@ export async function sendDirectMessage(params: {
     fetchDmRelayList(params.senderPubkey, params.relays),
   ]);
 
+  // Only worth a lookup when there is no DM list to honour.
+  const recipientReadRelays: string[] =
+    recipientDmRelays.length > 0
+      ? []
+      : await fetchNip65ReadRelays(params.recipientPubkey, params.relays);
+
   const recipientTargets: string[] = resolveDeliveryRelays(
     recipientDmRelays,
     params.relays,
+    recipientReadRelays,
   );
   const ownTargets: string[] = resolveDeliveryRelays(
     ownDmRelays,
@@ -174,4 +198,10 @@ export async function sendDirectMessage(params: {
     ],
     params.senderPubkey,
   );
+
+  return {
+    deliveredToRecipientRelays:
+      recipientDmRelays.length > 0 || recipientReadRelays.length > 0,
+    usedFallback: recipientDmRelays.length === 0,
+  };
 }
