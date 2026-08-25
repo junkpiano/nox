@@ -67,13 +67,10 @@ function formatTime(seconds: number): string {
 
 function renderUnavailable(output: HTMLElement): void {
   output.innerHTML = `
-    <section class="nox-panel p-4 text-sm">
-      <h3 class="mb-2 font-semibold">Messages need a signing key</h3>
-      <p>
-        Private messages are encrypted to your key. Sign in with a private key,
-        or use an extension that supports NIP-44, to read and send them.
-      </p>
-    </section>
+    <p class="text-sm opacity-70">
+      Messages need a signing key. Sign in with a private key, or an extension
+      supporting NIP-44.
+    </p>
   `;
 }
 
@@ -97,17 +94,14 @@ async function renderDmRelayNotice(
   }
 
   const notice: HTMLElement = document.createElement('section');
-  notice.className = 'nox-panel mb-3 p-4 text-sm';
+  notice.className = 'mb-3 text-sm';
+  // The consequence is the part that makes someone act; the protocol
+  // explanation behind it is not needed to decide.
   notice.innerHTML = `
-    <h3 class="mb-2 font-semibold">Nobody can message you yet</h3>
-    <p class="mb-3">
-      Other clients need to know which relays to deliver your private messages
-      to. Until you publish that list they will refuse to send, and you will
-      not receive anything.
-    </p>
-    <p id="dm-relay-status" class="mb-3 text-xs opacity-80"></p>
+    <p class="mb-3 text-sm">Nobody can message you until you publish your DM relays.</p>
+    <p id="dm-relay-status" class="mb-3 text-xs opacity-70"></p>
     <button id="dm-relay-publish" type="button" class="nox-primary-button w-full rounded px-4 py-2 font-semibold">
-      Publish my DM relays
+      Publish
     </button>
   `;
   output.prepend(notice);
@@ -176,13 +170,7 @@ function renderConversationList(
   if (conversations.length === 0) {
     output.innerHTML = `
       <div class="space-y-3">
-        <section class="nox-panel p-4 text-sm">
-          <h3 class="mb-2 font-semibold">No messages yet</h3>
-          <p>
-            Messages sent to you appear here. They are end-to-end encrypted, and
-            relays cannot see who you are talking to.
-          </p>
-        </section>
+        <p class="text-sm opacity-70">No messages yet.</p>
         ${startButtonHtml}
       </div>
     `;
@@ -358,8 +346,8 @@ function renderThread(
     if (warning) {
       warning.textContent =
         readRelays.length > 0
-          ? 'This account has not set up private messaging. Messages will go to their public relays, which may not reach them.'
-          : 'This account publishes no relays. Messages to them may never arrive.';
+          ? 'Not set up for private messages. Delivery is not guaranteed.'
+          : 'This account publishes no relays. Messages may not arrive.';
     }
   })();
 
@@ -415,10 +403,10 @@ function renderThread(
           // conflating them is what makes a silent non-delivery baffling.
           if (!result.deliveredToRecipientRelays) {
             status.textContent =
-              'Sent, but this account publishes no relays at all. It may never arrive.';
+              'Sent. This account publishes no relays, so it may not arrive.';
           } else if (result.usedFallback) {
             status.textContent =
-              'Sent. This account has not set up private messaging, so delivery used their public relays and is not guaranteed.';
+              'Sent to their public relays. Delivery is not guaranteed.';
           } else {
             status.textContent = '';
           }
