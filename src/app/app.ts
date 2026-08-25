@@ -1,9 +1,11 @@
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import { setupBottomTabs } from '../common/bottom-tabs.js';
 import { setupComposeOverlay } from '../common/compose.js';
 import { getTimelineNewestTimestamp } from '../common/db/index.js';
 import { clearMuteList, loadCachedMuteList } from '../common/mute-state.js';
 import { setupNavigation } from '../common/navigation.js';
 import { setupImageOverlay } from '../common/overlays.js';
+import { applyPlatformClass } from '../common/platform-class.js';
 import { createRelayWebSocket } from '../common/relay-socket.js';
 import { setupReplyOverlay } from '../common/reply.js';
 import { setupSearchBar } from '../common/search.js';
@@ -404,6 +406,9 @@ function showNewPostsNotification(count: number): void {
 configureRouteDependencies({ startBackgroundFetch });
 
 document.addEventListener('DOMContentLoaded', (): void => {
+  // Before anything renders, so the safe-area rules apply to the first paint.
+  applyPlatformClass();
+
   if ('scrollRestoration' in window.history) {
     window.history.scrollRestoration = 'manual';
   }
@@ -469,6 +474,8 @@ document.addEventListener('DOMContentLoaded', (): void => {
     pushAppHistoryPath(path);
     handleRoute();
   });
+
+  setupBottomTabs();
 
   // Setup navigation
   setupNavigation({

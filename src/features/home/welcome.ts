@@ -37,33 +37,6 @@ export async function showInputForm(
 
   options.output.innerHTML = `
       <section class="nox-welcome py-4 sm:py-8">
-        <div class="nox-welcome-hero">
-          <div>
-            <p class="nox-kicker">Home Feed Access</p>
-            <h2 class="nox-welcome-title">Enter nox mode</h2>
-            <p class="nox-welcome-copy">
-              Sign in with a compatible extension for the cleanest flow, use a local private key if
-              you need direct control, or skip straight to the global timeline and watch the network
-              in motion.
-            </p>
-          </div>
-
-          <div class="nox-welcome-grid">
-            <div class="nox-feature-card">
-              <strong>Direct relay view</strong>
-              <span>Posts come from your configured relay set, not from an app server in the middle.</span>
-            </div>
-            <div class="nox-feature-card">
-              <strong>Cache-first rendering</strong>
-              <span>IndexedDB keeps feeds, profiles, and timelines close for faster revisits.</span>
-            </div>
-            <div class="nox-feature-card">
-              <strong>Protocol-visible UI</strong>
-              <span>Relay management, reply context, NIP-65, and profile identity stay accessible.</span>
-            </div>
-          </div>
-        </div>
-
         <div class="nox-auth-card space-y-5">
           <div>
             <p class="nox-kicker">Authentication</p>

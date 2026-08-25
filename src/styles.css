@@ -864,3 +864,197 @@ body.theme-nox textarea {
     flex-direction: column;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Native shell and small-screen layout
+
+   Layout branches on viewport width, so the mobile web build gets the same
+   treatment as the app. Only the [data-runtime="native"] rules below are
+   app-only, because they describe things a browser tab does not have.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --nox-safe-top: env(safe-area-inset-top, 0px);
+  --nox-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nox-safe-left: env(safe-area-inset-left, 0px);
+  --nox-safe-right: env(safe-area-inset-right, 0px);
+  --nox-tabbar-height: 3.5rem;
+}
+
+/* The activity draws edge to edge, so the app has to keep its own content out
+   from under the status bar and the gesture area. */
+/* Safe-area padding lives on .nox-header-shell, which owns the vertical
+   rhythm; setting it here as well would double the inset. */
+
+[data-runtime="native"] {
+  /* A tap highlight on every row reads as a web page, not an app. */
+  -webkit-tap-highlight-color: transparent;
+  /* Rubber-band scrolling at the top of a timeline looks like a stuck page. */
+  overscroll-behavior-y: none;
+}
+
+/* Chrome is chrome: long-pressing a tab should not start a selection. Post text
+   stays selectable, since quoting is a real thing people do. */
+[data-runtime="native"] .nox-tabbar,
+[data-runtime="native"] .nox-nav-button,
+[data-runtime="native"] .nox-header {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Bottom tab bar ---------------------------------------------------------- */
+
+.nox-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  display: flex;
+  align-items: stretch;
+  padding-bottom: var(--nox-safe-bottom);
+  padding-left: var(--nox-safe-left);
+  padding-right: var(--nox-safe-right);
+  background: var(--nox-panel-strong);
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  backdrop-filter: blur(12px);
+}
+
+.nox-tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  /* Comfortably above the 44px minimum touch target. */
+  min-height: var(--nox-tabbar-height);
+  padding: 0.375rem 0.25rem;
+  color: var(--nox-text-muted);
+  background: none;
+  border: none;
+  transition: color 120ms ease;
+}
+
+.nox-tab-icon {
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.nox-tab-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.nox-tab.is-active {
+  color: var(--nox-text-strong, #edf3ff);
+}
+
+/* Small screens ----------------------------------------------------------- */
+
+@media (max-width: 1023px) {
+  /* Clear the tab bar so the last post is never trapped behind it. */
+  main {
+    padding-bottom: calc(
+      var(--nox-tabbar-height) + var(--nox-safe-bottom) + 1rem
+    );
+  }
+
+  /* Full-bleed rows: the card chrome is what makes a timeline read as a web
+     page. Hairline dividers carry the separation instead. */
+  main {
+    padding-left: 0;
+    padding-right: 0;
+    margin-top: 0;
+  }
+
+  #nostr-output {
+    /* space-y-4 puts gaps between cards; dividers replace them. */
+    --tw-space-y-reverse: 0;
+  }
+
+  #nostr-output > * + * {
+    margin-top: 0;
+  }
+
+  /* The feed column sits inside a panel that draws its own rounded border. */
+  main .nox-feed-panel {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    background: transparent;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* Matches the specificity and !important of the themed card rule above,
+     which would otherwise keep the rounded chrome. */
+  .theme-nox .event-container {
+    border: none !important;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none;
+    padding-left: calc(1rem + var(--nox-safe-left));
+    padding-right: calc(1rem + var(--nox-safe-right));
+  }
+
+  .theme-nox .event-container:hover {
+    background: rgba(148, 163, 184, 0.06) !important;
+  }
+
+  /* Sits above the tab bar rather than on top of it. */
+  #nav-compose {
+    bottom: calc(var(--nox-tabbar-height) + var(--nox-safe-bottom) + 1rem);
+    right: calc(1rem + var(--nox-safe-right));
+  }
+
+  /* The drawer opens over the content, so it needs the same clearance. */
+  #sidebar {
+    padding-bottom: calc(var(--nox-tabbar-height) + var(--nox-safe-bottom));
+  }
+}
+
+/* Wide screens keep the sidebar layout, so the tab bar must not reserve space. */
+@media (min-width: 1024px) {
+  .nox-tabbar {
+    display: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  /* The timeline is set in monospace, which reads as a terminal rather than a
+     feed. Use the platform UI font on small screens; the desktop layout keeps
+     the original treatment. */
+  #nostr-output {
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+      sans-serif;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+
+  /* A branded masthead costs a fifth of a phone screen and tells the user
+     nothing they do not already know. Collapse it to a slim bar. */
+  .nox-header .nox-kicker {
+    display: none;
+  }
+
+  .nox-header .nox-title {
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+
+  .nox-header-shell {
+    /* Must include the inset: the activity draws under the status bar, and a
+       plain padding value here would put the title beneath the clock. */
+    padding-top: calc(var(--nox-safe-top) + 0.5rem);
+    padding-bottom: 0.5rem;
+  }
+
+  .nox-header {
+    /* The decorative gradient is what makes it look like a landing page. */
+    background: var(--nox-panel-strong);
+  }
+}

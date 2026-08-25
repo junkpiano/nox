@@ -64,6 +64,24 @@ export function loadAboutPage(options: AboutPageOptions): void {
         </p>
       </section>
 
+      <section class="bg-white border border-gray-200 rounded-lg p-5">
+        <h3 class="text-lg font-bold text-gray-900 mb-3">How It Works</h3>
+        <div class="nox-welcome-grid">
+          <div class="nox-feature-card">
+            <strong>Direct relay view</strong>
+            <span>Posts come from your configured relay set, not from an app server in the middle.</span>
+          </div>
+          <div class="nox-feature-card">
+            <strong>Cache-first rendering</strong>
+            <span>IndexedDB keeps feeds, profiles, and timelines close for faster revisits.</span>
+          </div>
+          <div class="nox-feature-card">
+            <strong>Protocol-visible UI</strong>
+            <span>Relay management, reply context, NIP-65, and profile identity stay accessible.</span>
+          </div>
+        </div>
+      </section>
+
       <section class="bg-indigo-50 border border-indigo-200 rounded-lg p-5">
         <h3 class="text-base font-bold text-indigo-900 mb-3">What Makes nox Different</h3>
         <ul class="space-y-2 list-disc list-inside">

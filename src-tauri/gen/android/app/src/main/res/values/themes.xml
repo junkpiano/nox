@@ -1,6 +1,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Theme.nox" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <!-- The insets padding exposes the window background around the
+             web view, so it has to match the app, not the platform default. -->
+        <item name="android:windowBackground">@color/nox_background</item>
     </style>
 </resources>
