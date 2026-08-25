@@ -65,6 +65,8 @@ export function setupNavigation(options: NavigationOptions): void {
   const settingsButton: HTMLElement | null =
     document.getElementById('nav-settings');
   const aboutButton: HTMLElement | null = document.getElementById('nav-about');
+  const walletButton: HTMLElement | null =
+    document.getElementById('nav-wallet');
   const logoutButton: HTMLElement | null =
     document.getElementById('nav-logout');
   const mobileMenuButton: HTMLElement | null =
@@ -227,6 +229,15 @@ export function setupNavigation(options: NavigationOptions): void {
       'click',
       wrapNavigationHandler((): void => {
         options.navigateTo('/about');
+      }),
+    );
+  }
+
+  if (walletButton) {
+    walletButton.addEventListener(
+      'click',
+      wrapNavigationHandler((): void => {
+        options.navigateTo('/wallet');
       }),
     );
   }

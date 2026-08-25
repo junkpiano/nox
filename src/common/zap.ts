@@ -2,6 +2,7 @@ import { bech32 } from '@scure/base';
 import { finalizeEvent, nip57 } from 'nostr-tools';
 import * as QRCode from 'qrcode';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
+import { getWalletConnection } from '../features/wallet/wallet-store.js';
 import { crossOriginFetch } from './native-http.js';
 
 interface ZapOverlayOptions {
@@ -400,6 +401,24 @@ function extractPaymentPreimage(result: unknown): string | null {
 }
 
 async function payInvoice(invoice: string): Promise<WebLnPaymentResult> {
+  // A connected NWC wallet is tried first. WebLN needs a browser extension,
+  // which does not exist on mobile, so on the app it is the only route that
+  // can actually pay without leaving for another app.
+  const connection = getWalletConnection();
+  if (connection) {
+    try {
+      const { payInvoice: payViaNwc } = await import(
+        '../features/wallet/nwc-client.js'
+      );
+      const result = await payViaNwc(connection, invoice);
+      return { verified: Boolean(result.preimage) };
+    } catch (error: unknown) {
+      // Fall through to WebLN and the QR code rather than dead-ending: the
+      // wallet may be offline while another route still works.
+      console.warn('[zap] Wallet payment failed:', error);
+    }
+  }
+
   const webln: WindowWithNostrAndWebLn['webln'] = (
     window as WindowWithNostrAndWebLn
   ).webln;

@@ -19,9 +19,14 @@
   <header class="nox-header">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div class="nox-header-shell">
-        <div>
-          <p class="nox-kicker">Nox / Nostr Client</p>
-          <h1 class="nox-title">nox</h1>
+        <div class="flex items-center gap-3">
+          <button id="mobile-menu-button" class="nox-header-menu lg:hidden" aria-label="Open menu">
+            <span aria-hidden="true">☰</span>
+          </button>
+          <div>
+            <p class="nox-kicker">Nox / Nostr Client</p>
+            <h1 class="nox-title">nox</h1>
+          </div>
         </div>
         <div class="nox-header-meta">
         </div>
@@ -48,6 +53,10 @@
             <span>👤</span>
             <span>Profile</span>
           </a>
+          <button id="nav-wallet" class="nox-nav-button w-full text-left px-4 py-3 hover:bg-gray-100 transition-colors font-semibold text-gray-700 flex items-center gap-2">
+            <span>⚡</span>
+            <span>Wallet</span>
+          </button>
           <button id="nav-notifications" class="nox-nav-button w-full text-left px-4 py-3 hover:bg-gray-100 transition-colors font-semibold text-gray-700 flex items-center gap-2">
             <span>🔔</span>
             <span>Notifications</span>
@@ -146,9 +155,9 @@
       <span class="nox-tab-icon" aria-hidden="true">🏠</span>
       <span class="nox-tab-label">Home</span>
     </button>
-    <button class="nox-tab" data-nav-target="nav-global" data-nav-path="/global" aria-label="Global">
-      <span class="nox-tab-icon" aria-hidden="true">🌍</span>
-      <span class="nox-tab-label">Global</span>
+    <button class="nox-tab" data-nav-target="nav-wallet" data-nav-path="/wallet" aria-label="Wallet">
+      <span class="nox-tab-icon" aria-hidden="true">⚡</span>
+      <span class="nox-tab-label">Wallet</span>
     </button>
     <button class="nox-tab" data-nav-target="nav-notifications" data-nav-path="/notifications" aria-label="Notifications">
       <span class="nox-tab-icon" aria-hidden="true">🔔</span>
@@ -157,10 +166,6 @@
     <button class="nox-tab" data-nav-target="nav-profile" data-nav-path="__profile__" aria-label="Profile">
       <span class="nox-tab-icon" aria-hidden="true">👤</span>
       <span class="nox-tab-label">Profile</span>
-    </button>
-    <button id="mobile-menu-button" class="nox-tab" aria-label="More">
-      <span class="nox-tab-icon" aria-hidden="true">☰</span>
-      <span class="nox-tab-label">More</span>
     </button>
   </nav>
 

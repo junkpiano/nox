@@ -25,6 +25,10 @@ import { setupModerationOverlay } from '../features/moderation/moderation-overla
 import { clearNotifications } from '../features/notifications/notifications.js';
 import { recordRelayFailure } from '../features/relays/relays.js';
 import {
+  clearWalletConnection,
+  loadWalletConnection,
+} from '../features/wallet/wallet-store.js';
+import {
   configureRouteDependencies,
   handleRoute,
   loadGlobalPage,
@@ -235,6 +239,9 @@ function handleLogout(): void {
   clearNotifications();
   // Otherwise the next account inherits this one's mute list.
   clearMuteList();
+  // The connection secret can spend money. Leaving it behind would hand the
+  // next person to sign in on this device a working wallet permission.
+  void clearWalletConnection();
 
   appState.cachedHomeTimeline = null;
 
@@ -476,6 +483,10 @@ document.addEventListener('DOMContentLoaded', (): void => {
   });
 
   setupBottomTabs();
+
+  // Loaded once so the zap flow can tell synchronously whether a wallet is
+  // available, instead of reaching for the credential store mid-payment.
+  void loadWalletConnection();
 
   // Setup navigation
   setupNavigation({

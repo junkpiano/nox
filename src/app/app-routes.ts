@@ -56,6 +56,12 @@ function getRouteDependencies(): RouteDependencies {
   return routeDependencies;
 }
 
+async function getWalletPageModule(): Promise<
+  typeof import('../features/wallet/wallet-page.js')
+> {
+  return import('../features/wallet/wallet-page.js');
+}
+
 async function getAboutPageModule(): Promise<
   typeof import('../features/about/about-page.js')
 > {
@@ -390,6 +396,17 @@ export function handleRoute(scrollRestoreState?: unknown): void {
       const { loadSettingsPage } = await getSettingsPageModule();
       await loadSettingsPage({
         getRelays: (): string[] => appState.relays,
+        closeAllWebSockets,
+        stopBackgroundFetch,
+        clearNotification: clearNewPostsNotification,
+        setActiveNav,
+        profileSection,
+        output,
+      });
+    } else if (path === '/wallet') {
+      resetNotificationsButtonState();
+      const { loadWalletPage } = await getWalletPageModule();
+      loadWalletPage({
         closeAllWebSockets,
         stopBackgroundFetch,
         clearNotification: clearNewPostsNotification,
