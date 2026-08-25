@@ -6,19 +6,24 @@ import type {
   PubkeyHex,
 } from '../../types/nostr';
 import {
-  getCachedTimeline,
   getProfile as getCachedDbProfile,
+  getCachedTimeline,
 } from '../common/db/index.js';
 import { renderEvent } from '../common/event-render.js';
-import { getCachedProfile as getPersistentCachedProfile } from '../features/profile/profile-cache.js';
 import { publishEventToRelays } from '../features/profile/follow.js';
-import { getRelays, didUserConfigureRelays, setRelays } from '../features/relays/relays.js';
+import { getCachedProfile as getPersistentCachedProfile } from '../features/profile/profile-cache.js';
 import {
   fetchNip65RelayList,
   signNip65RelayListEvent,
 } from '../features/relays/nip65.js';
+import {
+  didUserConfigureRelays,
+  getRelays,
+  setRelays,
+} from '../features/relays/relays.js';
 
-export const output: HTMLElement | null = document.getElementById('nostr-output');
+export const output: HTMLElement | null =
+  document.getElementById('nostr-output');
 export const profileSection: HTMLElement | null =
   document.getElementById('profile-section');
 export const composeButton: HTMLElement | null =
@@ -124,7 +129,10 @@ export async function maybeSyncRelaysFromNip65OnLogin(): Promise<void> {
   }
 }
 
-export function renderLoadingState(message: string, subMessage: string = ''): void {
+export function renderLoadingState(
+  message: string,
+  subMessage: string = '',
+): void {
   if (!output) {
     return;
   }
@@ -217,6 +225,9 @@ export function pushAppHistoryPath(path: string): void {
     scrollY: 0,
   };
   window.history.pushState(nextState, '', path);
+  // pushState fires no event, so views that track the current route (the bottom
+  // tab bar) would otherwise never learn the path changed.
+  window.dispatchEvent(new CustomEvent('app-route-changed'));
 }
 
 export function replaceAppHistoryPath(path: string): void {
@@ -305,7 +316,8 @@ export async function restoreTimelineFromCache(params: {
   const profiles: Array<NostrProfile | null> = await Promise.all(
     uniquePubkeys.map(async (pk: PubkeyHex): Promise<NostrProfile | null> => {
       try {
-        const cachedDbProfile: NostrProfile | null = await getCachedDbProfile(pk);
+        const cachedDbProfile: NostrProfile | null =
+          await getCachedDbProfile(pk);
         if (cachedDbProfile) {
           return cachedDbProfile;
         }

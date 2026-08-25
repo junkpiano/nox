@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="nox - relay-first feed client" />
   <meta property="og:title" content="nox" />
   <meta property="og:description" content="nox - relay-first feed client" />
@@ -29,10 +29,6 @@
     </div>
   </header>
 
-  <!-- Mobile menu button -->
-  <button id="mobile-menu-button" class="nox-fab lg:hidden fixed bottom-20 left-4 z-40 h-14 w-14 rounded-full shadow-xl transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500">
-    <span class="text-2xl leading-none">☰</span>
-  </button>
 
   <main class="w-full max-w-7xl mx-auto mt-6 sm:mt-10 px-4 sm:px-6 lg:px-8 pb-24">
     <div class="flex flex-col lg:flex-row gap-6">
@@ -144,6 +140,30 @@
   >
     <span class="text-2xl leading-none">+</span>
   </button>
+  <!-- Bottom tab bar (narrow viewports only) -->
+  <nav id="bottom-tabs" class="nox-tabbar lg:hidden" aria-label="Primary">
+    <button class="nox-tab" data-nav-target="nav-home" data-nav-path="/home" aria-label="Home">
+      <span class="nox-tab-icon" aria-hidden="true">🏠</span>
+      <span class="nox-tab-label">Home</span>
+    </button>
+    <button class="nox-tab" data-nav-target="nav-global" data-nav-path="/global" aria-label="Global">
+      <span class="nox-tab-icon" aria-hidden="true">🌍</span>
+      <span class="nox-tab-label">Global</span>
+    </button>
+    <button class="nox-tab" data-nav-target="nav-notifications" data-nav-path="/notifications" aria-label="Notifications">
+      <span class="nox-tab-icon" aria-hidden="true">🔔</span>
+      <span class="nox-tab-label">Alerts</span>
+    </button>
+    <button class="nox-tab" data-nav-target="nav-profile" data-nav-path="__profile__" aria-label="Profile">
+      <span class="nox-tab-icon" aria-hidden="true">👤</span>
+      <span class="nox-tab-label">Profile</span>
+    </button>
+    <button id="mobile-menu-button" class="nox-tab" aria-label="More">
+      <span class="nox-tab-icon" aria-hidden="true">☰</span>
+      <span class="nox-tab-label">More</span>
+    </button>
+  </nav>
+
   <script type="module" src="/app/main.ts"></script>
   <div id="compose-overlay" style="display: none;" class="fixed inset-0 z-50 h-dvh">
     <div id="compose-overlay-backdrop" class="absolute inset-0 bg-black/60"></div>
