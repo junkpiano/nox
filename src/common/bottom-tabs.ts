@@ -147,5 +147,22 @@ export function setupBottomTabs(): void {
   // Routing is driven by pushState, which fires no event of its own.
   window.addEventListener('app-route-changed', syncActiveTab);
 
+  // The route event fires at the start of handleRoute, before the destination
+  // page has loaded and named itself, so reading the heading then yields the
+  // previous page's title. Watching the element instead removes the ordering
+  // assumption entirely: whenever a page sets its heading, the label follows.
+  const heading = document.getElementById('posts-header');
+  if (heading) {
+    new MutationObserver((): void => {
+      syncPageContext(
+        window.location.pathname === '/' ? '/home' : window.location.pathname,
+      );
+    }).observe(heading, {
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+  }
+
   syncActiveTab();
 }
