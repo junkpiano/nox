@@ -333,7 +333,7 @@ export function loadWalletPage(options: WalletPageOptions): void {
     document.getElementById('nav-relays'),
     document.getElementById('nav-profile'),
     document.getElementById('nav-settings'),
-    null,
+    document.getElementById('nav-wallet'),
   );
 
   const postsHeader: HTMLElement | null =

@@ -530,7 +530,7 @@ export function loadMessagesPage(options: MessagesPageOptions): void {
     document.getElementById('nav-relays'),
     document.getElementById('nav-profile'),
     document.getElementById('nav-settings'),
-    null,
+    document.getElementById('nav-messages'),
   );
 
   const postsHeader: HTMLElement | null =

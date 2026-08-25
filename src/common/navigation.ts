@@ -3,44 +3,31 @@ interface NavigationOptions {
   onLogout: () => void;
 }
 
+/**
+ * Highlights one navigation entry and clears the rest.
+ *
+ * Clears every `.nox-nav-button` rather than an enumerated list. The previous
+ * version named the buttons it knew about, so each destination added later -
+ * messages, wallet, notifications - kept its highlight forever, and two entries
+ * could look selected at once. Enumerating meant every new screen had to
+ * remember to opt in, which is a rule that only holds until someone forgets.
+ *
+ * The parameters are kept so existing call sites do not have to change; only
+ * `activeButton` is still read.
+ */
 export function setActiveNav(
-  homeButton: HTMLElement | null,
-  globalButton: HTMLElement | null,
-  relaysButton: HTMLElement | null,
-  profileLink: HTMLElement | null,
-  settingsButton: HTMLElement | null,
+  _homeButton: HTMLElement | null,
+  _globalButton: HTMLElement | null,
+  _relaysButton: HTMLElement | null,
+  _profileLink: HTMLElement | null,
+  _settingsButton: HTMLElement | null,
   activeButton: HTMLElement | null,
 ): void {
-  if (homeButton) {
-    homeButton.classList.remove('bg-indigo-100', 'text-indigo-700');
-    homeButton.classList.add('text-gray-700');
-  }
-  if (globalButton) {
-    globalButton.classList.remove('bg-indigo-100', 'text-indigo-700');
-    globalButton.classList.add('text-gray-700');
-  }
-  if (relaysButton) {
-    relaysButton.classList.remove('bg-indigo-100', 'text-indigo-700');
-    relaysButton.classList.add('text-gray-700');
-  }
-  if (profileLink) {
-    profileLink.classList.remove('bg-indigo-100', 'text-indigo-700');
-    profileLink.classList.add('text-gray-700');
-  }
-  if (settingsButton) {
-    settingsButton.classList.remove('bg-indigo-100', 'text-indigo-700');
-    settingsButton.classList.add('text-gray-700');
-  }
-  const aboutButton: HTMLElement | null = document.getElementById('nav-about');
-  if (aboutButton) {
-    aboutButton.classList.remove('bg-indigo-100', 'text-indigo-700');
-    aboutButton.classList.add('text-gray-700');
-  }
-  const reactionsButton: HTMLElement | null =
-    document.getElementById('nav-reactions');
-  if (reactionsButton) {
-    reactionsButton.classList.remove('bg-indigo-100', 'text-indigo-700');
-    reactionsButton.classList.add('text-gray-700');
+  for (const button of document.querySelectorAll<HTMLElement>(
+    '.nox-nav-button',
+  )) {
+    button.classList.remove('bg-indigo-100', 'text-indigo-700');
+    button.classList.add('text-gray-700');
   }
 
   if (activeButton) {
