@@ -1,10 +1,11 @@
 import { finalizeEvent, nip19 } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { deleteEvents } from '../../common/db/index.js';
+import { isMuted } from '../../common/mute-state.js';
+import { setActiveNav } from '../../common/navigation.js';
 import { filterDeletedReactionEvents } from '../../common/reaction-interactions.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getSessionPrivateKey } from '../../common/session.js';
-import { setActiveNav } from '../../common/navigation.js';
 import { recordRelayFailure } from '../relays/relays.js';
 
 interface LoadReactionsPageOptions {
@@ -139,7 +140,12 @@ async function fetchReactionDeletionEvents(
           const req: [
             string,
             string,
-            { kinds: number[]; authors: string[]; '#e': string[]; limit: number },
+            {
+              kinds: number[];
+              authors: string[];
+              '#e': string[];
+              limit: number;
+            },
           ] = [
             'REQ',
             subId,
@@ -168,7 +174,10 @@ async function fetchReactionDeletionEvents(
         };
       });
     } catch (error: unknown) {
-      console.warn(`Failed to load reaction deletions from ${relayUrl}:`, error);
+      console.warn(
+        `Failed to load reaction deletions from ${relayUrl}:`,
+        error,
+      );
     }
   });
 
@@ -329,7 +338,18 @@ export async function loadReactionsPage(
   list.className = 'space-y-3';
   output.appendChild(list);
 
-  if (events.length === 0) {
+  // The reaction's `p` tag names the author of the post that was liked, so a
+  // muted account stays out of this list too.
+  const visibleEvents: NostrEvent[] = events.filter(
+    (reactionEvent: NostrEvent): boolean => {
+      const targetAuthor: string | undefined = reactionEvent.tags.find(
+        (tag: string[]): boolean => tag[0] === 'p',
+      )?.[1];
+      return !targetAuthor || !isMuted(targetAuthor);
+    },
+  );
+
+  if (visibleEvents.length === 0) {
     const empty: HTMLDivElement = document.createElement('div');
     empty.className = 'text-sm text-gray-500';
     empty.textContent = 'No reactions yet.';
@@ -337,7 +357,7 @@ export async function loadReactionsPage(
     return;
   }
 
-  events.forEach((reactionEvent: NostrEvent): void => {
+  visibleEvents.forEach((reactionEvent: NostrEvent): void => {
     const targetEventId: string | null = getTargetEventId(reactionEvent);
     const timeLabel: string = formatEventTimeLabel(reactionEvent.created_at);
     const createdAt: string = new Date(

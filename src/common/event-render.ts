@@ -27,6 +27,8 @@ import {
   getCachedDeletionStatus,
   isEventDeleted,
 } from './events-queries.js';
+import { isMuted } from './mute-state.js';
+import type { ReactionAggregate } from './reaction-interactions.js';
 import {
   applyOptimisticReactionState,
   filterDeletedReactionEvents,
@@ -37,7 +39,6 @@ import {
   mergeReactionEvents,
   normalizeReaction,
 } from './reaction-interactions.js';
-import type { ReactionAggregate } from './reaction-interactions.js';
 import { createRelayWebSocket } from './relay-socket.js';
 import { getSessionPrivateKey } from './session.js';
 import { openZapComposer } from './zap.js';
@@ -62,7 +63,10 @@ const reactionCache: Map<
   Promise<Map<string, ReactionAggregate>>
 > = new Map();
 const reactionEventsCache: Map<string, Promise<NostrEvent[]>> = new Map();
-const optimisticReactionEvents: Map<string, Map<string, NostrEvent>> = new Map();
+const optimisticReactionEvents: Map<
+  string,
+  Map<string, NostrEvent>
+> = new Map();
 const optimisticRemovedReactionEventIds: Map<string, Set<string>> = new Map();
 
 function invalidateReactionCaches(eventId: string): void {
@@ -443,8 +447,9 @@ async function fetchReactions(
     return cached;
   }
 
-  const request: Promise<Map<string, ReactionAggregate>> =
-    (async (): Promise<Map<string, ReactionAggregate>> => {
+  const request: Promise<Map<string, ReactionAggregate>> = (async (): Promise<
+    Map<string, ReactionAggregate>
+  > => {
     const events: NostrEvent[] = await fetchReactionEvents(eventId, relays);
     const counts: Map<string, ReactionAggregate> = new Map();
 
@@ -541,7 +546,9 @@ async function fetchReactionEvents(
         );
         const reactionAuthors: string[] = Array.from(
           new Set(
-            list.map((reactionEvent: NostrEvent): string => reactionEvent.pubkey),
+            list.map(
+              (reactionEvent: NostrEvent): string => reactionEvent.pubkey,
+            ),
           ),
         );
 
@@ -607,12 +614,13 @@ async function fetchReactionDeletionEvents(
           const req: [
             string,
             string,
-            { kinds: number[]; authors: string[]; '#e': string[]; limit: number },
-          ] = [
-            'REQ',
-            subId,
-            { kinds: [5], authors, '#e': reactionIds, limit },
-          ];
+            {
+              kinds: number[];
+              authors: string[];
+              '#e': string[];
+              limit: number;
+            },
+          ] = ['REQ', subId, { kinds: [5], authors, '#e': reactionIds, limit }];
           socket.send(JSON.stringify(req));
         };
 
@@ -758,9 +766,8 @@ async function refreshReactionUi(
   const reactionsContainer: HTMLElement | null = eventCard.querySelector(
     '.reactions-container',
   );
-  const detailsContainer: HTMLElement | null = eventCard.querySelector(
-    '.reactions-details',
-  );
+  const detailsContainer: HTMLElement | null =
+    eventCard.querySelector('.reactions-details');
 
   if (detailsContainer) {
     closeReactionDetails(detailsContainer);
@@ -1168,6 +1175,12 @@ export function renderEvent(
   pubkey: PubkeyHex,
   output: HTMLElement,
 ): void {
+  // Single choke point for muting: every timeline, the search page, profiles
+  // and reply threads render through here, so one guard covers them all.
+  if (isMuted(event.pubkey)) {
+    return;
+  }
+
   const renderProfile: NostrProfile | null = getAuthoritativeProfile(
     pubkey,
     profile,
@@ -1194,6 +1207,11 @@ export function renderEvent(
     storedPubkey && storedPubkey === event.pubkey,
   );
   const isLoggedIn: boolean = Boolean(storedPubkey);
+  // Moderation applies to other people's posts; muting yourself is meaningless
+  // and reporting yourself is noise for relay operators.
+  const canModerate: boolean = Boolean(
+    storedPubkey && storedPubkey !== event.pubkey,
+  );
   const canZapTarget: boolean = Boolean(
     renderProfile?.lud16 || renderProfile?.lud06,
   );
@@ -1229,6 +1247,7 @@ export function renderEvent(
 
   const deleteButtonTitle: string = 'Delete post';
   const deleteButtonClasses: string = `${actionBtnBase} delete-event-btn text-red-600 hover:text-red-800 hover:bg-red-50`;
+  const moderationBtnClasses: string = `${actionBtnBase} text-gray-400 hover:text-gray-600 hover:bg-gray-100`;
 
   const actionBarHtml: string = `
           <div class="flex items-center gap-1">
@@ -1265,6 +1284,21 @@ export function renderEvent(
                       <path stroke-linecap="round" stroke-linejoin="round" d="M14 11v6" />
                       <path stroke-linecap="round" stroke-linejoin="round" d="M6 7l1 14h10l1-14" />
                       <path stroke-linecap="round" stroke-linejoin="round" d="M9 7V4h6v3" />
+                    </svg>
+                  </button>`
+                : ''
+            }
+            ${
+              canModerate
+                ? `<button class="${moderationBtnClasses} mute-user-btn" aria-label="Mute this account" title="Mute this account" data-mute-pubkey="${escapeHtmlAttribute(event.pubkey)}" data-mute-name="${safeName}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17 9l4 6m0-6l-4 6" />
+                    </svg>
+                  </button>
+                  <button class="${moderationBtnClasses} report-event-btn" aria-label="Report this post" title="Report this post" data-report-pubkey="${escapeHtmlAttribute(event.pubkey)}" data-report-event-id="${escapeHtmlAttribute(event.id)}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 21V4h11l-1 3h6l-2 4 2 4h-8l1-3H6" />
                     </svg>
                   </button>`
                 : ''
@@ -1521,6 +1555,36 @@ export function renderEvent(
         },
       });
       window.dispatchEvent(replyEvent);
+    });
+  }
+
+  const muteButton: HTMLButtonElement | null = div.querySelector(
+    '.mute-user-btn',
+  ) as HTMLButtonElement | null;
+  if (muteButton) {
+    muteButton.addEventListener('click', (e: MouseEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent('request-mute-user', {
+          detail: { pubkey: event.pubkey, name },
+        }),
+      );
+    });
+  }
+
+  const reportButton: HTMLButtonElement | null = div.querySelector(
+    '.report-event-btn',
+  ) as HTMLButtonElement | null;
+  if (reportButton) {
+    reportButton.addEventListener('click', (e: MouseEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent('request-report-content', {
+          detail: { pubkey: event.pubkey, eventId: event.id, name },
+        }),
+      );
     });
   }
 
@@ -1907,10 +1971,7 @@ async function enrichMentionDisplayNames(
         mentionedProfile,
       );
       const mentionedNpub: Npub = nip19.npubEncode(mentionedPubkey);
-      const displayName: string = getDisplayName(
-        mentionedNpub,
-        renderProfile,
-      );
+      const displayName: string = getDisplayName(mentionedNpub, renderProfile);
 
       // Handle both npub and nprofile mentions
       const npubAnchors: NodeListOf<HTMLAnchorElement> =
