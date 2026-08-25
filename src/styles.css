@@ -1075,3 +1075,9 @@ body.theme-nox textarea {
   font-size: 1.125rem;
   line-height: 1;
 }
+
+/* A tab with nothing behind it until you sign in. Dimmed rather than hidden:
+   the row should not reshuffle the moment someone logs in. */
+.nox-tab.is-unavailable {
+  opacity: 0.45;
+}
