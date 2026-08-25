@@ -1435,7 +1435,7 @@ export function renderEvent(
     ? `<span class="ml-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-900 text-xs font-semibold px-2 py-0.5">🔁 Repost</span>`
     : '';
   const contentHtml: string = hasContent
-    ? `<div class="whitespace-pre-wrap break-words break-all mb-2 text-sm text-gray-700">${contentWithCustomEmoji}</div>`
+    ? `<div class="nox-post-text whitespace-pre-wrap break-words mb-2 text-sm text-gray-700">${contentWithCustomEmoji}</div>`
     : '';
   const contentAreaHtml: string = contentWarning.hasWarning
     ? `
@@ -2191,7 +2191,7 @@ async function renderReferencedEventCards(
 
       const referencedPreviewHtml: string = referencedContentWarning.hasWarning
         ? `<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">${getContentWarningSummary(referencedContentWarning.reason)}. Open post to view.</div>`
-        : `<div class="text-sm text-gray-800 whitespace-pre-wrap break-words">${referencedText || '(no content)'}</div>`;
+        : `<div class="nox-post-text text-sm text-gray-800 whitespace-pre-wrap break-words">${referencedText || '(no content)'}</div>`;
 
       card.innerHTML = `
                 <a href="${safeReferencedPath}" class="block hover:bg-indigo-100 rounded transition-colors p-1">
