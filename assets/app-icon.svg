@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1226"/>
+      <stop offset="1" stop-color="#040713"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#72e5ff"/>
+      <stop offset="1" stop-color="#b98cff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.5">
+      <stop offset="0" stop-color="#72e5ff" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#72e5ff" stop-opacity="0"/>
+    </radialGradient>
+    <!-- The crescent is the ring minus an offset disc, which keeps the shape
+         readable at 48px where a thin outline would disappear. -->
+    <mask id="eclipse">
+      <rect width="1024" height="1024" fill="black"/>
+      <circle cx="512" cy="512" r="300" fill="white"/>
+      <circle cx="628" cy="430" r="272" fill="black"/>
+    </mask>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <circle cx="512" cy="430" r="440" fill="url(#glow)"/>
+  <circle cx="512" cy="512" r="300" fill="url(#ring)" mask="url(#eclipse)"/>
+</svg>
