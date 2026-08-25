@@ -2,3 +2,7 @@
 # will have compiled files and executables
 /target/
 /gen/schemas
+
+# The Xcode project is regenerated on every CI run, so it must not be
+# committed: a stale copy would silently drift from tauri.conf.json.
+/gen/apple
