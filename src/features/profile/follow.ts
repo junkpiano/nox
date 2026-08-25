@@ -29,13 +29,18 @@ export async function setupFollowToggle(
     return;
   }
 
+  // Follow keeps its label: it is the primary action and its state matters.
+  // Message is a destination, not a decision, so an icon carries it.
   container.innerHTML = `
     <div class="flex flex-wrap items-center justify-center gap-2">
       <button id="follow-toggle" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
         Follow
       </button>
-      <button id="profile-message" type="button" class="nox-muted-button font-semibold py-2 px-4 rounded-lg transition-colors">
-        Message
+      <button id="profile-message" type="button" class="nox-muted-button rounded-lg p-2 transition-colors" aria-label="Message" title="Message">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-5 h-5 block" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 7l9 6 9-6" />
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+        </svg>
       </button>
       <button id="profile-mute-toggle" type="button" class="nox-muted-button font-semibold py-2 px-4 rounded-lg transition-colors">
         ${isMuted(targetPubkey) ? 'Unmute' : 'Mute'}

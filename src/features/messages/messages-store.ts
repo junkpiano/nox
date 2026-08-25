@@ -101,6 +101,53 @@ function persist(): void {
  * Returns true when anything was new, so callers can avoid re-rendering for a
  * batch that turned out to be entirely known.
  */
+/** Prefix for the copy added on send, before the relay echoes it back. */
+const LOCAL_ID_PREFIX: string = 'local-';
+
+/** Widened for the timestamp jitter NIP-59 applies to wraps. */
+const ECHO_WINDOW_SECONDS: number = 172_800;
+
+/**
+ * Drops the optimistic copy once the real one arrives.
+ *
+ * A sent message is added locally so the thread updates immediately, then comes
+ * back from the relay carrying its real id. Without this the two never match
+ * and every message the user sends appears twice.
+ */
+function dropLocalEcho(rumor: ChatRumor): boolean {
+  for (const [id, existing] of messages) {
+    if (!id.startsWith(LOCAL_ID_PREFIX)) {
+      continue;
+    }
+    if (
+      existing.author === rumor.pubkey &&
+      existing.content === rumor.content &&
+      Math.abs(existing.createdAt - rumor.created_at) <= ECHO_WINDOW_SECONDS
+    ) {
+      messages.delete(id);
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True when a real message already carries this content from this author. */
+function hasEquivalentMessage(rumor: ChatRumor): boolean {
+  for (const [id, existing] of messages) {
+    if (id.startsWith(LOCAL_ID_PREFIX)) {
+      continue;
+    }
+    if (
+      existing.author === rumor.pubkey &&
+      existing.content === rumor.content &&
+      Math.abs(existing.createdAt - rumor.created_at) <= ECHO_WINDOW_SECONDS
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function addMessages(
   rumors: ChatRumor[],
   viewerPubkey: PubkeyHex,
@@ -114,6 +161,16 @@ export function addMessages(
     const peer: PubkeyHex | null = resolvePeer(rumor, viewerPubkey);
     if (!peer) {
       continue;
+    }
+
+    if (rumor.id.startsWith(LOCAL_ID_PREFIX)) {
+      // The real copy may already have arrived from a relay, in which case the
+      // placeholder is redundant rather than pending.
+      if (hasEquivalentMessage(rumor)) {
+        continue;
+      }
+    } else if (dropLocalEcho(rumor)) {
+      changed = true;
     }
 
     messages.set(rumor.id, {

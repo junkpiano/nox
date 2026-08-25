@@ -152,6 +152,24 @@ export async function sendDirectMessage(params: {
     message: params.message,
   });
 
+  // Recorded before publishing, not after. The subscription is live, so the
+  // relay can echo the sender's own copy back within milliseconds; adding the
+  // placeholder afterwards left it with nothing to replace, and the message
+  // appeared twice.
+  addMessages(
+    [
+      {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        pubkey: params.senderPubkey,
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 14,
+        tags: [['p', params.recipientPubkey]],
+        content: params.message,
+      },
+    ],
+    params.senderPubkey,
+  );
+
   // Each copy goes where its reader will look for it. A gift wrap left on
   // relays the recipient never reads is delivered nowhere, which is the whole
   // reason kind 10050 exists.
@@ -184,20 +202,6 @@ export async function sendDirectMessage(params: {
       : Promise.resolve(),
     ownWrap ? publishEventToRelays(ownWrap, ownTargets) : Promise.resolve(),
   ]);
-
-  addMessages(
-    [
-      {
-        id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        pubkey: params.senderPubkey,
-        created_at: Math.floor(Date.now() / 1000),
-        kind: 14,
-        tags: [['p', params.recipientPubkey]],
-        content: params.message,
-      },
-    ],
-    params.senderPubkey,
-  );
 
   return {
     deliveredToRecipientRelays:
