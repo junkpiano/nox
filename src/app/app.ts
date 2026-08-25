@@ -44,6 +44,7 @@ import {
   output,
   profileSection,
   pushAppHistoryPath,
+  replaceAppHistoryPath,
   saveScrollToHistoryState,
   seenEventIds,
   syncRelays,
@@ -482,7 +483,11 @@ document.addEventListener('DOMContentLoaded', (): void => {
       return;
     }
     saveScrollToHistoryState();
-    pushAppHistoryPath(path);
+    if (event.detail?.replace === true) {
+      replaceAppHistoryPath(path);
+    } else {
+      pushAppHistoryPath(path);
+    }
     handleRoute();
   }) as EventListener);
 

@@ -116,7 +116,28 @@ export function setupBottomTabs(): void {
         return;
       }
 
-      // Delegating a click keeps one implementation of each destination.
+      // Tabs are peers, not a trail. Walking back through every tab the user
+      // happened to visit is browser behaviour; on Android, back is expected to
+      // return to the start destination and then leave the app.
+      //
+      // So exactly one entry separates Home from wherever they are: leaving
+      // Home pushes, moving between other tabs replaces.
+      const path: string | null = resolveTabPath(tab);
+      if (path) {
+        const atHome: boolean =
+          window.location.pathname === '/' ||
+          window.location.pathname === '/home';
+        window.dispatchEvent(
+          new CustomEvent('navigate-to-path', {
+            detail: { path, replace: !atHome },
+          }),
+        );
+        syncActiveTab();
+        return;
+      }
+
+      // No resolvable path (the profile tab before its npub is known), so fall
+      // back to the sidebar button, which knows how to work it out.
       document.getElementById(targetId)?.click();
       syncActiveTab();
     });
