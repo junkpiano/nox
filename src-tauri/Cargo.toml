@@ -39,3 +39,12 @@ windows-native-keyring-store = "1.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 linux-keyutils-keyring-store = "1.0.0"
+
+# No [profile.release] overrides are set, and one in particular must not be.
+#
+# `panic = "abort"` would disable the catch_unwind in src/secret_store.rs. The
+# Android keyring backend panics rather than returning an error when its JNI
+# context is missing, so aborting there takes the whole app down at launch on
+# any device where the credential store cannot start, instead of falling back
+# to frontend storage. Size is not a problem today: the release AAB is ~26 MB
+# and Play delivers roughly 19 MB per device.

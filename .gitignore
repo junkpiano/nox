@@ -4,3 +4,11 @@ dist
 *.local
 .DS_Store
 .tmp
+
+# Signing keys. gen/android/.gitignore already covers keystore.properties, but
+# a keystore dropped anywhere else in the tree must never be committed: losing
+# it or leaking it both end the ability to ship updates safely.
+*.jks
+*.keystore
+keystore.properties
+key.properties
