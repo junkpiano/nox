@@ -38,6 +38,9 @@ interface MessagesPageOptions {
 /** Which conversation is open, or null for the list. */
 let openPeer: PubkeyHex | null = null;
 
+/** Held so a repeat visit can detach the previous one. */
+let messagesUpdatedListener: (() => void) | null = null;
+
 /** True while picking a recipient for a conversation that does not exist yet. */
 let composing: boolean = false;
 
@@ -572,10 +575,17 @@ export function loadMessagesPage(options: MessagesPageOptions): void {
     await startMessageSync(viewerPubkey, options.getRelays());
   })();
 
-  window.addEventListener('dm-messages-updated', (): void => {
+  // Replaced rather than added. Every visit to the tab used to register another
+  // listener, so after a few navigations one store change repainted the page
+  // several times over.
+  if (messagesUpdatedListener) {
+    window.removeEventListener('dm-messages-updated', messagesUpdatedListener);
+  }
+  messagesUpdatedListener = (): void => {
     // Only repaint while this page is still the one on screen.
     if (document.getElementById('posts-header')?.textContent === 'Messages') {
       render(options);
     }
-  });
+  };
+  window.addEventListener('dm-messages-updated', messagesUpdatedListener);
 }
