@@ -17,7 +17,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "android:dev": "tauri android dev",
-    "android:build": "tauri android build"
+    "android:build": "tauri android build",
+    "android:bundle": "tauri android build --aab"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
