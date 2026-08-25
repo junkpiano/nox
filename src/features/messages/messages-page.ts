@@ -10,6 +10,7 @@ import type { PubkeyHex } from '../../../types/nostr';
 import type { SetActiveNavFn } from '../../common/types.js';
 import {
   fetchDmRelayList,
+  fetchNip65ReadRelays,
   invalidateDmRelayCache,
   signDmRelayListEvent,
 } from './dm-relays.js';
@@ -317,6 +318,7 @@ function renderThread(
         ← Conversations
       </button>
       <p id="dm-peer" class="break-all font-mono text-xs opacity-70"></p>
+      <p id="dm-peer-warning" class="text-xs text-amber-300" role="status"></p>
       <div id="dm-thread" class="space-y-2"></div>
       <div class="flex gap-2">
         <input
@@ -337,6 +339,29 @@ function renderThread(
   if (peerEl) {
     peerEl.textContent = shortPeer(peer);
   }
+
+  // Checked on open rather than only after sending, so the warning arrives
+  // before the message does.
+  void (async (): Promise<void> => {
+    const recipientRelays: string[] = await fetchDmRelayList(
+      peer,
+      options.getRelays(),
+    );
+    if (recipientRelays.length > 0) {
+      return;
+    }
+    const readRelays: string[] = await fetchNip65ReadRelays(
+      peer,
+      options.getRelays(),
+    );
+    const warning = output.querySelector('#dm-peer-warning');
+    if (warning) {
+      warning.textContent =
+        readRelays.length > 0
+          ? 'This account has not set up private messaging. Messages will go to their public relays, which may not reach them.'
+          : 'This account publishes no relays. Messages to them may never arrive.';
+    }
+  })();
 
   const thread = output.querySelector('#dm-thread');
   if (thread) {
@@ -378,13 +403,26 @@ function renderThread(
       sendButton.disabled = true;
       sendButton.classList.add('opacity-60', 'cursor-not-allowed');
       try {
-        await sendDirectMessage({
+        const result = await sendDirectMessage({
           senderPubkey: viewerPubkey,
           recipientPubkey: peer,
           message: text,
           relays: options.getRelays(),
         });
         if (input) input.value = '';
+        if (status) {
+          // "Sent" and "sent where they will see it" are different claims, and
+          // conflating them is what makes a silent non-delivery baffling.
+          if (!result.deliveredToRecipientRelays) {
+            status.textContent =
+              'Sent, but this account publishes no relays at all. It may never arrive.';
+          } else if (result.usedFallback) {
+            status.textContent =
+              'Sent. This account has not set up private messaging, so delivery used their public relays and is not guaranteed.';
+          } else {
+            status.textContent = '';
+          }
+        }
       } catch (error: unknown) {
         if (status) {
           status.textContent =

@@ -18,6 +18,7 @@ import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getSessionPrivateKey } from '../../common/session.js';
 
 export const DM_RELAY_LIST_KIND: number = 10050;
+const NIP65_RELAY_LIST_KIND: number = 10002;
 
 /** Cached per pubkey: sending a message should not refetch this every time. */
 const cache: Map<PubkeyHex, string[]> = new Map();
@@ -45,15 +46,11 @@ function parseRelayTags(event: NostrEvent): string[] {
  * Returns an empty array when they have not published one, which is different
  * from a lookup failure only in that both leave the caller to fall back.
  */
-export async function fetchDmRelayList(
+async function fetchNewestEvent(
+  kind: number,
   pubkey: PubkeyHex,
   searchRelays: string[],
-): Promise<string[]> {
-  const cached: string[] | undefined = cache.get(pubkey);
-  if (cached) {
-    return cached;
-  }
-
+): Promise<NostrEvent | null> {
   // Held in an object so the type survives the socket callbacks.
   const newest: { event: NostrEvent | null } = { event: null };
 
@@ -81,7 +78,7 @@ export async function fetchDmRelayList(
               JSON.stringify([
                 'REQ',
                 `dmr-${Math.random().toString(36).slice(2)}`,
-                { kinds: [DM_RELAY_LIST_KIND], authors: [pubkey], limit: 1 },
+                { kinds: [kind], authors: [pubkey], limit: 1 },
               ]),
             );
           };
@@ -91,7 +88,7 @@ export async function fetchDmRelayList(
               if (frame[0] === 'EVENT') {
                 const event = frame[2] as NostrEvent;
                 if (
-                  event?.kind === DM_RELAY_LIST_KIND &&
+                  event?.kind === kind &&
                   (!newest.event || event.created_at >= newest.event.created_at)
                 ) {
                   newest.event = event;
@@ -113,8 +110,30 @@ export async function fetchDmRelayList(
     }),
   );
 
-  const resolved: NostrEvent | null = newest.event;
-  const urls: string[] = resolved ? parseRelayTags(resolved) : [];
+  return newest.event;
+}
+
+/**
+ * Reads someone's DM relay list.
+ *
+ * Returns an empty array when they have not published one, which is different
+ * from a lookup failure only in that both leave the caller to fall back.
+ */
+export async function fetchDmRelayList(
+  pubkey: PubkeyHex,
+  searchRelays: string[],
+): Promise<string[]> {
+  const cached: string[] | undefined = cache.get(pubkey);
+  if (cached) {
+    return cached;
+  }
+
+  const event: NostrEvent | null = await fetchNewestEvent(
+    DM_RELAY_LIST_KIND,
+    pubkey,
+    searchRelays,
+  );
+  const urls: string[] = event ? parseRelayTags(event) : [];
   cache.set(pubkey, urls);
   return urls;
 }
@@ -157,6 +176,40 @@ export async function signDmRelayListEvent(params: {
 }
 
 /**
+ * Reads the relays someone says they receive on, from NIP-65.
+ *
+ * Used only as a fallback when they have published no DM relay list. The
+ * `read` marker is the one that matters here: it is where they look for things
+ * addressed to them, which is exactly what a gift wrap is. An unmarked `r` tag
+ * means both, so it counts too.
+ */
+export async function fetchNip65ReadRelays(
+  pubkey: PubkeyHex,
+  searchRelays: string[],
+): Promise<string[]> {
+  const event: NostrEvent | null = await fetchNewestEvent(
+    NIP65_RELAY_LIST_KIND,
+    pubkey,
+    searchRelays,
+  );
+  if (!event) {
+    return [];
+  }
+
+  const urls: string[] = [];
+  for (const tag of event.tags) {
+    if (!Array.isArray(tag) || tag[0] !== 'r' || typeof tag[1] !== 'string') {
+      continue;
+    }
+    const marker: unknown = tag[2];
+    if (marker === undefined || marker === '' || marker === 'read') {
+      urls.push(tag[1].trim());
+    }
+  }
+  return Array.from(new Set(urls));
+}
+
+/**
  * Chooses where to deliver a gift wrap.
  *
  * The recipient's own list wins, because it is the only statement of where
@@ -166,8 +219,17 @@ export async function signDmRelayListEvent(params: {
 export function resolveDeliveryRelays(
   recipientDmRelays: string[],
   ownRelays: string[],
+  recipientReadRelays: string[] = [],
 ): string[] {
-  const target: string[] =
-    recipientDmRelays.length > 0 ? recipientDmRelays : ownRelays;
-  return Array.from(new Set(target));
+  if (recipientDmRelays.length > 0) {
+    return Array.from(new Set(recipientDmRelays));
+  }
+
+  // No DM relay list. Their NIP-65 read relays are the next best statement of
+  // where they look, and in practice the difference decides whether a message
+  // arrives: two people with no relay in common never see each other's
+  // messages, however correctly both clients behave.
+  //
+  // Own relays stay in the set so the message is still reachable from here.
+  return Array.from(new Set([...recipientReadRelays, ...ownRelays]));
 }
