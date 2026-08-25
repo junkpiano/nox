@@ -237,6 +237,9 @@ export function replaceAppHistoryPath(path: string): void {
     scrollY: 0,
   };
   window.history.replaceState(nextState, '', path);
+  // Same reason as pushAppHistoryPath: replaceState fires no event, and views
+  // that track the current route would not learn it changed.
+  window.dispatchEvent(new CustomEvent('app-route-changed'));
 }
 
 export async function restoreScrollFromState(state: unknown): Promise<void> {
