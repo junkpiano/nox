@@ -1,0 +1,128 @@
+name: iOS TestFlight
+
+# Building for iOS needs macOS, which no maintainer machine here has. This
+# workflow is the only way to produce an iOS build, so it also has to be the
+# place where iOS breakage is noticed.
+on:
+  # Compile-only check, so a PR cannot silently break the iOS target. Runs
+  # without any Apple credentials.
+  pull_request:
+    branches: [main]
+  push:
+    tags: ['v*']
+  # Upload to TestFlight on demand.
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload the build to TestFlight
+        type: boolean
+        default: true
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust with iOS targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: bun install --frozen-lockfile
+
+      # Decides whether this run can sign and upload. Pull requests from forks
+      # cannot read secrets, and the credentials may simply not be set up yet,
+      # so the workflow degrades to a compile check instead of failing.
+      - name: Resolve run mode
+        id: mode
+        env:
+          HAS_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+        run: |
+          if [ "$HAS_API_KEY" = "true" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Apple credentials available - building unsigned as a compile check only."
+          fi
+
+      # gen/apple is not committed, so it is created fresh on every run. This
+      # also means a stale generated project can never drift from the config.
+      - name: Initialise the iOS project
+        run: bunx tauri ios init --ci
+
+      - name: Build (unsigned compile check)
+        if: steps.mode.outputs.signed == 'false'
+        run: bunx tauri ios build --ci --export-method debugging
+
+      - name: Write App Store Connect API key
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          # The key is only downloadable once from App Store Connect, so it is
+          # stored base64-encoded in the secret rather than pasted raw.
+          echo "$KEY_CONTENT" | base64 --decode > ~/private_keys/AuthKey_${KEY_ID}.p8
+          echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey_${KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - name: Build and sign for App Store Connect
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: bunx tauri ios build --ci --export-method app-store-connect
+
+      - name: Locate the IPA
+        if: steps.mode.outputs.signed == 'true'
+        id: ipa
+        run: |
+          IPA=$(find src-tauri/gen/apple/build -name '*.ipa' -print -quit)
+          if [ -z "$IPA" ]; then
+            echo "::error::Build reported success but produced no .ipa"
+            exit 1
+          fi
+          echo "path=$IPA" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to TestFlight
+        if: >-
+          steps.mode.outputs.signed == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.upload)
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          xcrun altool --upload-app --type ios \
+            --file "${{ steps.ipa.outputs.path }}" \
+            --apiKey "$APPLE_API_KEY_ID" \
+            --apiIssuer "$APPLE_API_ISSUER"
+
+      - name: Keep the IPA as an artifact
+        if: steps.mode.outputs.signed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nox-ios
+          path: ${{ steps.ipa.outputs.path }}
+          retention-days: 14
+
+      # The private key must not outlive the job, even though the runner is
+      # ephemeral.
+      - name: Remove the API key
+        if: always()
+        run: rm -rf ~/private_keys
