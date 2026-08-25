@@ -88,46 +88,29 @@ export function setupNavigation(options: NavigationOptions): void {
   // Mobile menu toggle
   let isMobileMenuOpen = false;
 
+  // The drawer is driven by one class rather than a dozen utility toggles, so
+  // the open and closed states are described in CSS and can be animated. A
+  // panel that appears in place reads as a dialog; one that slides in from the
+  // edge reads as a drawer, which is what it is.
   const closeMobileMenu = (): void => {
-    if (sidebar) {
-      sidebar.classList.add('hidden');
-      sidebar.classList.remove(
-        'fixed',
-        'inset-0',
-        'z-50',
-        'bg-black/50',
-        'flex',
-        'items-start',
-        'pt-20',
-        'px-4',
-      );
-      const sidebarContent = sidebar.querySelector('div');
-      if (sidebarContent) {
-        sidebarContent.classList.remove('w-full', 'max-w-sm');
-      }
-      isMobileMenuOpen = false;
+    if (!sidebar) {
+      return;
     }
+    sidebar.classList.remove('is-open');
+    document.body.classList.remove('nox-drawer-open');
+    isMobileMenuOpen = false;
   };
 
   const openMobileMenu = (): void => {
-    if (sidebar) {
-      sidebar.classList.remove('hidden');
-      sidebar.classList.add(
-        'fixed',
-        'inset-0',
-        'z-50',
-        'bg-black/50',
-        'flex',
-        'items-start',
-        'pt-20',
-        'px-4',
-      );
-      const sidebarContent = sidebar.querySelector('div');
-      if (sidebarContent) {
-        sidebarContent.classList.add('w-full', 'max-w-sm');
-      }
-      isMobileMenuOpen = true;
+    if (!sidebar) {
+      return;
     }
+    // The element carries `hidden` for the desktop layout, where the sidebar is
+    // a column rather than a drawer; the drawer styles override it.
+    sidebar.classList.add('is-open');
+    // Stops the page scrolling underneath the open drawer.
+    document.body.classList.add('nox-drawer-open');
+    isMobileMenuOpen = true;
   };
 
   if (mobileMenuButton) {
@@ -140,7 +123,7 @@ export function setupNavigation(options: NavigationOptions): void {
     });
   }
 
-  // Close mobile menu when clicking outside
+  // Close mobile menu when tapping the dimmed area beside the drawer
   if (sidebar) {
     sidebar.addEventListener('click', (event: MouseEvent): void => {
       if (event.target === sidebar) {
@@ -148,6 +131,18 @@ export function setupNavigation(options: NavigationOptions): void {
       }
     });
   }
+
+  // Escape closes it, and so does the system back gesture via popstate.
+  window.addEventListener('keydown', (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && isMobileMenuOpen) {
+      closeMobileMenu();
+    }
+  });
+  window.addEventListener('popstate', (): void => {
+    if (isMobileMenuOpen) {
+      closeMobileMenu();
+    }
+  });
 
   // Auto-close mobile menu after navigation
   const wrapNavigationHandler = (handler: () => void): (() => void) => {
