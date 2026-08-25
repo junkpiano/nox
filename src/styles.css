@@ -1081,3 +1081,70 @@ body.theme-nox textarea {
 .nox-tab.is-unavailable {
   opacity: 0.45;
 }
+
+/* ---------------------------------------------------------------------------
+   Subtraction pass for small screens
+
+   The phone layout had stacked five surfaces: a page background, a grid
+   overlay, a glow overlay, a bordered panel with its own gradient and blur, and
+   a heading strip - before any content. Each was defensible alone; together
+   they read as clutter, and none of them carried information.
+
+   Desktop keeps the original treatment, where the extra surfaces separate a
+   three-column layout that phones do not have.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 1023px) {
+  /* Decorative only. The grid and glow exist to make a wide page feel
+     composed; on a phone they sit behind content that already fills the
+     screen. */
+  body.theme-nox::before,
+  body.theme-nox::after {
+    display: none;
+  }
+
+  /* One surface, not two. The feed is the page here, so it does not need a
+     card to sit in. */
+  main .nox-feed-panel {
+    border: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    padding: 0;
+  }
+
+  /* The tab bar already says where you are; the header carries the rest. */
+  .nox-feed-header,
+  #posts-header {
+    display: none;
+  }
+
+  /* The wordmark is on the launcher icon and the app switcher already. */
+  .nox-header .nox-kicker,
+  .nox-header .nox-title {
+    display: none;
+  }
+
+  .nox-header {
+    background: none;
+    border-bottom: none;
+  }
+
+  .nox-header-shell {
+    gap: 0.75rem;
+    padding-top: calc(var(--nox-safe-top) + 0.375rem);
+    padding-bottom: 0.375rem;
+  }
+}
+
+.nox-page-context {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Empty on tabbed screens, and an empty element should take no space. */
+.nox-page-context:empty {
+  display: none;
+}
