@@ -29,10 +29,33 @@ export async function setupFollowToggle(
   }
 
   container.innerHTML = `
-    <button id="follow-toggle" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
-      Follow
-    </button>
+    <div class="flex items-center justify-center gap-2">
+      <button id="follow-toggle" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
+        Follow
+      </button>
+      <button id="profile-message" type="button" class="nox-muted-button font-semibold py-2 px-4 rounded-lg transition-colors">
+        Message
+      </button>
+    </div>
   `;
+
+  document
+    .getElementById('profile-message')
+    ?.addEventListener('click', (): void => {
+      void (async (): Promise<void> => {
+        // Imported on demand: the messages module is lazy-loaded, and a profile
+        // view should not pull it in just to render a button.
+        const { openConversationWith } = await import(
+          '../messages/messages-page.js'
+        );
+        openConversationWith(targetPubkey);
+        window.dispatchEvent(
+          new CustomEvent('navigate-to-path', {
+            detail: { path: '/messages' },
+          }),
+        );
+      })();
+    });
 
   const button: HTMLButtonElement | null = document.getElementById(
     'follow-toggle',

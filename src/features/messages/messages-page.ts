@@ -16,6 +16,7 @@ import {
 } from './messages-store.js';
 import { sendDirectMessage, startMessageSync } from './messages-sync.js';
 import { canUseDirectMessages } from './nip17.js';
+import { resolveRecipient } from './resolve-recipient.js';
 
 interface MessagesPageOptions {
   closeAllWebSockets: () => void;
@@ -29,6 +30,21 @@ interface MessagesPageOptions {
 
 /** Which conversation is open, or null for the list. */
 let openPeer: PubkeyHex | null = null;
+
+/** True while picking a recipient for a conversation that does not exist yet. */
+let composing: boolean = false;
+
+/**
+ * Set by other pages to open a conversation on arrival.
+ *
+ * The profile page uses this so "Message" lands in the right thread instead of
+ * making the user find the person again.
+ */
+let pendingPeer: PubkeyHex | null = null;
+
+export function openConversationWith(peer: PubkeyHex): void {
+  pendingPeer = peer;
+}
 
 function shortPeer(pubkey: PubkeyHex): string {
   try {
@@ -55,27 +71,56 @@ function renderUnavailable(output: HTMLElement): void {
   `;
 }
 
+function wireNewMessage(
+  output: HTMLElement,
+  options: MessagesPageOptions,
+): void {
+  output.querySelector('#dm-new')?.addEventListener('click', (): void => {
+    composing = true;
+    render(options);
+  });
+}
+
 function renderConversationList(
   output: HTMLElement,
   options: MessagesPageOptions,
 ): void {
   const conversations: Conversation[] = getConversations();
 
+  // The new-message button is rendered in both states: with no conversations
+  // yet, it is the only way in, and an empty screen with no action is a dead
+  // end.
+  const startButtonHtml: string = `
+    <button id="dm-new" type="button" class="nox-primary-button w-full rounded px-4 py-2 font-semibold">
+      New message
+    </button>
+  `;
+
   if (conversations.length === 0) {
     output.innerHTML = `
-      <section class="nox-panel p-4 text-sm">
-        <h3 class="mb-2 font-semibold">No messages yet</h3>
-        <p>
-          Messages sent to you appear here. They are end-to-end encrypted, and
-          relays cannot see who you are talking to.
-        </p>
-      </section>
+      <div class="space-y-3">
+        <section class="nox-panel p-4 text-sm">
+          <h3 class="mb-2 font-semibold">No messages yet</h3>
+          <p>
+            Messages sent to you appear here. They are end-to-end encrypted, and
+            relays cannot see who you are talking to.
+          </p>
+        </section>
+        ${startButtonHtml}
+      </div>
     `;
+    wireNewMessage(output, options);
     return;
   }
 
-  output.innerHTML =
-    '<div id="dm-list" class="divide-y divide-white/10"></div>';
+  output.innerHTML = `
+    <div class="space-y-3">
+      ${startButtonHtml}
+      <div id="dm-list" class="divide-y divide-white/10"></div>
+    </div>
+  `;
+  wireNewMessage(output, options);
+
   const list = output.querySelector('#dm-list');
   if (!list) {
     return;
@@ -110,6 +155,78 @@ function renderConversationList(
     });
     list.appendChild(row);
   }
+}
+
+function renderCompose(
+  output: HTMLElement,
+  options: MessagesPageOptions,
+): void {
+  output.innerHTML = `
+    <div class="space-y-3">
+      <button id="dm-cancel" type="button" class="nox-muted-button rounded px-3 py-1 text-sm font-semibold">
+        ← Conversations
+      </button>
+      <label class="nox-field-label" for="dm-to">To</label>
+      <input
+        id="dm-to"
+        type="text"
+        spellcheck="false"
+        placeholder="npub1… or user@example.com"
+        class="nox-input w-full rounded p-2 text-sm"
+      />
+      <p id="dm-compose-status" class="text-sm" role="status"></p>
+      <button id="dm-start" type="button" class="nox-primary-button w-full rounded px-4 py-2 font-semibold">
+        Start conversation
+      </button>
+    </div>
+  `;
+
+  output.querySelector('#dm-cancel')?.addEventListener('click', (): void => {
+    composing = false;
+    render(options);
+  });
+
+  const input = output.querySelector('#dm-to') as HTMLInputElement | null;
+  const startButton = output.querySelector(
+    '#dm-start',
+  ) as HTMLButtonElement | null;
+  const status = output.querySelector('#dm-compose-status');
+
+  const start = (): void => {
+    void (async (): Promise<void> => {
+      if (!startButton) {
+        return;
+      }
+      startButton.disabled = true;
+      startButton.classList.add('opacity-60', 'cursor-not-allowed');
+      if (status) status.textContent = '';
+
+      try {
+        // Resolved before opening the thread, so a bad address fails here
+        // rather than on the first message.
+        const peer: PubkeyHex = await resolveRecipient(input?.value ?? '');
+        composing = false;
+        openPeer = peer;
+        render(options);
+      } catch (error: unknown) {
+        if (status) {
+          status.textContent =
+            error instanceof Error
+              ? error.message
+              : 'Could not find that user.';
+        }
+        startButton.disabled = false;
+        startButton.classList.remove('opacity-60', 'cursor-not-allowed');
+      }
+    })();
+  };
+
+  startButton?.addEventListener('click', start);
+  input?.addEventListener('keydown', (event: KeyboardEvent): void => {
+    if (event.key === 'Enter') {
+      start();
+    }
+  });
 }
 
 function renderThread(
@@ -230,7 +347,9 @@ function render(options: MessagesPageOptions): void {
     return;
   }
 
-  if (openPeer) {
+  if (composing) {
+    renderCompose(output, options);
+  } else if (openPeer) {
     renderThread(output, openPeer, viewerPubkey, options);
   } else {
     renderConversationList(output, options);
@@ -279,9 +398,12 @@ export function loadMessagesPage(options: MessagesPageOptions): void {
     return;
   }
 
-  // Always start on the list: arriving at a thread left open from a previous
-  // visit would be disorienting.
-  openPeer = null;
+  // Start on the list unless another page asked for a specific conversation.
+  // Arriving at a thread left open from a previous visit would be disorienting,
+  // but arriving where the user just asked to go is the whole point.
+  openPeer = pendingPeer;
+  pendingPeer = null;
+  composing = false;
 
   void (async (): Promise<void> => {
     await loadCachedMessages();

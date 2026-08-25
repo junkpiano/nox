@@ -474,6 +474,18 @@ document.addEventListener('DOMContentLoaded', (): void => {
 
   setupBottomTabs();
 
+  // Lets a deeply nested view request navigation without being handed the
+  // router; the profile page uses this to open a conversation.
+  window.addEventListener('navigate-to-path', ((event: CustomEvent): void => {
+    const path: unknown = event.detail?.path;
+    if (typeof path !== 'string') {
+      return;
+    }
+    saveScrollToHistoryState();
+    pushAppHistoryPath(path);
+    handleRoute();
+  }) as EventListener);
+
   // Loaded once so the zap flow can tell synchronously whether a wallet is
   // available, instead of reaching for the credential store mid-payment.
   void loadWalletConnection();
