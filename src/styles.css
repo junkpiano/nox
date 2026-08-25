@@ -1243,3 +1243,24 @@ body.theme-nox textarea {
     overflow: hidden;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Post text wrapping
+
+   Post bodies carried `break-all`, which breaks between any two characters -
+   a rule meant for unbroken strings like URLs, applied to everything. English
+   words were being split mid-word.
+
+   `overflow-wrap: anywhere` breaks only what cannot otherwise fit, so a long
+   URL still wraps while ordinary words stay whole.
+   --------------------------------------------------------------------------- */
+
+.nox-post-text {
+  overflow-wrap: anywhere;
+  word-break: normal;
+  /* Japanese has its own rules about which characters may start or end a line;
+     without this, closing brackets and small kana drift to the wrong side. */
+  line-break: strict;
+  /* Latin text mixed into Japanese hyphenates rather than leaving gaps. */
+  hyphens: auto;
+}
