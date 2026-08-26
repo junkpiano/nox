@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds install alongside the release app under a .debug package id, and
+  with the same name and icon the two were indistinguishable in the launcher.
+  This names and marks the development one.
+-->
+<resources>
+    <string name="app_name">"nox dev"</string>
+    <string name="main_activity_title">"nox dev"</string>
+</resources>
