@@ -124,8 +124,8 @@ export function loadAboutPage(options: AboutPageOptions): void {
 	          developer never receives your data.
 	        </p>
 	        <ul class="space-y-2 list-disc list-inside">
-	          <li><a href="https://github.com/junkpiano/nox/blob/main/docs/privacy-policy.md" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">Privacy Policy</a></li>
-	          <li><a href="https://github.com/junkpiano/nox/blob/main/docs/terms-of-use.md" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">Terms of Use</a></li>
+	          <li><a href="/privacy" class="text-blue-600 underline">Privacy Policy</a></li>
+	          <li><a href="/terms" class="text-blue-600 underline">Terms of Use</a></li>
 	        </ul>
 	        <p class="mt-3 text-xs text-gray-600">
 	          Content comes from the Nostr network and is not moderated by nox. Mute and
