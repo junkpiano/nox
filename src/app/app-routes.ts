@@ -56,6 +56,12 @@ function getRouteDependencies(): RouteDependencies {
   return routeDependencies;
 }
 
+async function getLegalPageModule(): Promise<
+  typeof import('../features/legal/legal-page.js')
+> {
+  return import('../features/legal/legal-page.js');
+}
+
 async function getMessagesPageModule(): Promise<
   typeof import('../features/messages/messages-page.js')
 > {
@@ -435,6 +441,18 @@ export function handleRoute(scrollRestoreState?: unknown): void {
         setActiveNav,
         profileSection,
         output,
+      });
+    } else if (path === '/privacy' || path === '/terms') {
+      resetNotificationsButtonState();
+      const { loadLegalPage } = await getLegalPageModule();
+      loadLegalPage({
+        closeAllWebSockets,
+        stopBackgroundFetch,
+        clearNotification: clearNewPostsNotification,
+        setActiveNav,
+        profileSection,
+        output,
+        document: path === '/privacy' ? 'privacy' : 'terms',
       });
     } else if (path === '/about') {
       resetNotificationsButtonState();
