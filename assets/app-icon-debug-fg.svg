@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#72e5ff"/>
+      <stop offset="1" stop-color="#b98cff"/>
+    </linearGradient>
+    <mask id="eclipse">
+      <rect width="1024" height="1024" fill="black"/>
+      <circle cx="512" cy="512" r="330" fill="white"/>
+      <circle cx="639" cy="422" r="300" fill="black"/>
+    </mask>
+  </defs>
+  <circle cx="512" cy="512" r="330" fill="url(#ring)" mask="url(#eclipse)"/>
+  <!-- A horizontal band across the lower third. The launcher masks the outer
+       ~25% to a circle and the foreground is scaled down again, so an angled
+       corner banner loses its text; a straight band through the centre
+       survives both. -->
+  <rect x="176" y="640" width="672" height="168" rx="28" fill="#f5a524"/>
+  <text x="512" y="762" font-family="Helvetica, Arial, sans-serif" font-size="118"
+        font-weight="700" letter-spacing="16" text-anchor="middle" fill="#1a1200">DEV</text>
+</svg>
