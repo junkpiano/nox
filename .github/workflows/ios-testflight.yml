@@ -3,11 +3,14 @@ name: iOS TestFlight
 # Building for iOS needs macOS, which no maintainer machine here has. This
 # workflow is the only way to produce an iOS build, so it also has to be the
 # place where iOS breakage is noticed.
+# Not run on pull requests. The unsigned compile check this used to attempt
+# does not exist: xcodebuild refuses to build without a development team, so
+# every PR run failed with "Signing for nox_iOS requires a development team"
+# and told us nothing. A check that cannot pass is noise, not a safety net.
+#
+# Once an Apple account is configured, adding `pull_request` back will give a
+# real check, because the credentials it needs will be there.
 on:
-  # Compile-only check, so a PR cannot silently break the iOS target. Runs
-  # without any Apple credentials.
-  pull_request:
-    branches: [main]
   push:
     tags: ['v*']
   # Upload to TestFlight on demand.
@@ -53,21 +56,19 @@ jobs:
         env:
           HAS_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
         run: |
-          if [ "$HAS_API_KEY" = "true" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+          if [ "$HAS_API_KEY" = "true" ]; then
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No Apple credentials available - building unsigned as a compile check only."
+            echo "::warning::No Apple credentials configured - nothing to build. See docs/ios-testflight.md."
           fi
 
       # gen/apple is not committed, so it is created fresh on every run. This
       # also means a stale generated project can never drift from the config.
       - name: Initialise the iOS project
+        if: steps.mode.outputs.signed == 'true'
         run: bunx tauri ios init --ci
 
-      - name: Build (unsigned compile check)
-        if: steps.mode.outputs.signed == 'false'
-        run: bunx tauri ios build --ci --export-method debugging
 
       - name: Write App Store Connect API key
         if: steps.mode.outputs.signed == 'true'
