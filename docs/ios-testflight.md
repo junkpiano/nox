@@ -8,14 +8,17 @@ and also the only place iOS breakage gets noticed.
 
 | Trigger | Behaviour |
 |---|---|
-| Pull request | Unsigned compile check. No credentials, no upload. |
 | Tag `v*` | Signed build, uploaded to TestFlight. |
 | Manual run | Signed build; the `upload` input decides whether it ships. |
 
-The workflow checks whether credentials exist before trying to use them. With
-none configured it drops to a compile check and says so, rather than failing.
-That way the iOS target stays covered on every PR from the moment this merges,
-without waiting on an Apple account.
+**Not run on pull requests.** An earlier version tried an unsigned compile
+check there, on the assumption that one was possible. It is not: xcodebuild
+refuses to build without a development team, so every run failed with the same
+error and told us nothing.
+
+Once the credentials below are configured, adding `pull_request` back to the
+workflow will give a check that can actually pass. Until then the workflow warns
+rather than pretending to build.
 
 ## What has to exist before a build can ship
 
