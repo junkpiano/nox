@@ -1,0 +1,87 @@
+name: Android
+
+# Android is built on maintainer machines, so nothing catches a break until
+# someone happens to run a build. iOS already has this safety net; Android had
+# none, despite being the platform that ships first.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install the NDK
+        run: |
+          sdkmanager --install "ndk;27.2.12479018"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Install Rust with Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: bun install --frozen-lockfile
+
+      # Catches type and lint breakage before spending minutes on Rust and
+      # Gradle, which is where the time goes.
+      - name: Check the web build
+        run: |
+          bun run build
+          bun run test
+
+      # gen/android is not committed, so it is generated fresh on every run and
+      # cannot drift from tauri.conf.json.
+      - name: Initialise the Android project
+        run: bunx tauri android init --ci
+
+      # Release rather than debug: a debug APK is ten times the size and does
+      # not exercise minification, which is where a build is most likely to
+      # break silently. Unsigned, since signing keys stay off CI for now.
+      - name: Build
+        run: bunx tauri android build --apk
+
+      - name: Report the artifact size
+        run: |
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -print -quit)
+          if [ -z "$APK" ]; then
+            echo "::error::Build reported success but produced no APK"
+            exit 1
+          fi
+          echo "### Android build" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$(basename "$APK")\` — $(du -h "$APK" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nox-android-unsigned
+          path: ${{ env.APK_PATH }}
+          retention-days: 14
