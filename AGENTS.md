@@ -98,12 +98,15 @@ src/
 │   ├── event/               # Single event page (nevent / note)
 │   ├── global/              # Global timeline
 │   ├── home/                # Home timeline (follows)
+│   ├── messages/            # NIP-17 private messages (gift wrap, DM relays)
+│   ├── moderation/          # Mute list (NIP-51) and reports (NIP-56)
 │   ├── profile/             # Profile view + follow/unfollow
-│   ├── reactions/           # Liked posts view
+│   ├── reactions/           # Posts you liked (labelled "Likes" in the UI)
 │   ├── relays/              # Relay config, NIP-65, rx-nostr client
-│   ├── notifications/       # New post notifications
+│   ├── notifications/       # Reactions, replies and mentions addressed to you
 │   ├── search/              # Search results page
 │   ├── settings/            # Settings UI
+│   ├── wallet/              # Lightning wallet over NIP-47 (NWC)
 │   ├── about/               # About / supported NIPs page
 │   └── broadcast/           # Broadcast mode (relay stress test)
 │
@@ -181,8 +184,10 @@ Client-side routing via History API (`pushState` / `popstate`):
 |-------|------|
 | `/`, `/home` | Home timeline or welcome screen |
 | `/global` | Global timeline |
+| `/messages` | Private messages (NIP-17) |
+| `/wallet` | Lightning wallet (NIP-47) |
 | `/notifications` | Notifications |
-| `/reactions` | Liked posts |
+| `/reactions` | Posts you liked, shown as "Likes" |
 | `/search` | Search |
 | `/relays` | Relay settings |
 | `/settings` | App settings |
@@ -191,6 +196,47 @@ Client-side routing via History API (`pushState` / `popstate`):
 | `/nevent1…`, `/note1…` | Single event view |
 
 nginx is configured to serve `index.html` for all routes (SPA behavior).
+
+## Native Shell (Tauri v2)
+
+The same frontend ships as a web app and as a Tauri app for Android, desktop and
+(via CI) iOS. `src-tauri/` wraps `dist/` as-is; there is no separate codebase.
+
+Build: `bun run android:dev`, `bun run android:build`, `bun run android:bundle`.
+Signing and release steps are in `docs/android-release.md`; iOS CI is in
+`docs/ios-testflight.md`.
+
+### Deciding what is native-only
+
+Layout branches on **viewport width**, not on the runtime, so the mobile web
+build gets the same treatment as the app and there is one layout to maintain.
+`isNativeRuntime()` from `src/common/native-http.ts` gates only what is
+meaningless in a browser tab.
+
+### Things that behave differently under Tauri
+
+These were each found the hard way; the workaround is already in the code.
+
+- **`env(safe-area-inset-*)` is always 0 in Android's WebView**, even under
+  edge-to-edge. `MainActivity` pads the content view from the real
+  `WindowInsets` instead. The CSS is still correct for iOS and the web.
+- **Service workers cannot be registered** from the custom protocol origin, so
+  background sync is web-only and skipped natively.
+- **CORS does not apply** to requests issued from Rust, so OGP, oEmbed and LNURL
+  are fetched directly on native and through the proxy worker on web.
+- **Tauri does not populate `ndk_context`**, which the Android keyring backend
+  needs, and that backend *panics* rather than returning an error when it is
+  missing. `secret_store.rs` defers store creation and wraps it in
+  `catch_unwind`; never set `panic = "abort"` in `[profile.release]`.
+- **`nostr-tools` NIP-17/47 helpers require a raw private key**, which a NIP-07
+  extension never provides. The sealing and request layers are written locally
+  so both key sources work.
+
+### Secrets
+
+The Nostr private key and the NWC connection secret both live in the platform
+credential store via `src/common/secret-store.ts`, never in `localStorage`. Both
+are cleared on logout.
 
 ## Code Style Guidelines
 
@@ -239,9 +285,20 @@ import { renderEvent } from '../common/event-render.js';
 | 5 | Deletion request |
 | 6 | Repost |
 | 7 | Reaction |
+| 13 | Seal (NIP-59, inside a gift wrap) |
+| 14 | Chat message (NIP-17, never signed or published directly) |
+| 1059 | Gift wrap (NIP-59, the only public part of a DM) |
+| 1984 | Report (NIP-56) |
+| 10000 | Mute list (NIP-51, entries encrypted to self) |
 | 10002 | Relay list metadata (NIP-65) |
+| 10050 | DM relay list (NIP-17) |
+| 23194/23195 | Wallet request / response (NIP-47) |
 
-**Supported NIPs:** NIP-01, NIP-02, NIP-03 (OGP), NIP-05, NIP-07, NIP-10 (reply threading), NIP-19, NIP-25 (reactions), NIP-36 (content warnings), NIP-42 (AUTH), NIP-65
+**Supported NIPs:** NIP-01, NIP-02, NIP-05, NIP-07, NIP-10 (reply threading),
+NIP-17 (private messages), NIP-19, NIP-25 (reactions), NIP-30 (custom emoji),
+NIP-36 (content warnings), NIP-42 (AUTH), NIP-44 (encryption), NIP-47 (wallet
+connect), NIP-51 (mute list), NIP-56 (reports), NIP-57 (zaps), NIP-59 (gift
+wrap), NIP-65 (relay list)
 
 ## TypeScript Configuration
 
