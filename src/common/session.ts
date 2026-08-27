@@ -134,11 +134,14 @@ export function updateLogoutButton(composeButton: HTMLElement | null): void {
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
 
   if (logoutButton) {
-    if (storedPubkey) {
-      logoutButton.style.display = '';
-    } else {
-      logoutButton.style.display = 'none';
-    }
+    logoutButton.style.display = storedPubkey ? '' : 'none';
+  }
+
+  // The way in, in the place the way out would be.
+  const signInButton: HTMLElement | null =
+    document.getElementById('nav-signin');
+  if (signInButton) {
+    signInButton.style.display = storedPubkey ? 'none' : '';
   }
 
   if (profileLink) {

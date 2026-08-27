@@ -30,6 +30,7 @@ import {
   output,
   profileSection,
   publishRelaysToNip65,
+  pushAppHistoryPath,
   renderLoadingState,
   replaceAppHistoryPath,
   restoreScrollFromState,
@@ -116,6 +117,47 @@ async function getWelcomeModule(): Promise<
   return import('../features/home/welcome.js');
 }
 
+async function getSignInGateModule(): Promise<
+  typeof import('../features/auth/sign-in-gate.js')
+> {
+  return import('../features/auth/sign-in-gate.js');
+}
+
+/**
+ * The sign-in page.
+ *
+ * The same form the home timeline used to fall back to, given a route of its
+ * own so the gate has somewhere to send people and so signing in is a place a
+ * visitor can be, not a state a page happens to be in.
+ */
+async function loadSignInPage(): Promise<void> {
+  closeAllWebSockets();
+  stopBackgroundFetch();
+  clearNewPostsNotification();
+  setActiveNav(null, null, null, null, null, null);
+
+  const { showInputForm } = await getWelcomeModule();
+  await showInputForm({
+    output,
+    profileSection,
+    composeButton,
+    updateLogoutButton,
+    clearSessionPrivateKey,
+    setSessionPrivateKeyFromRaw,
+    handleRoute,
+  });
+
+  // The mobile header mirrors this heading, and the form hides it on the way
+  // in - which left the placeholder "Posts:" naming the sign-in page. Named
+  // after the fact, for the same reason the legal pages name themselves.
+  const postsHeader: HTMLElement | null =
+    document.getElementById('posts-header');
+  if (postsHeader) {
+    postsHeader.textContent = 'Sign in';
+    postsHeader.style.display = '';
+  }
+}
+
 async function getNotificationsModule(): Promise<
   typeof import('../features/notifications/notifications-page.js')
 > {
@@ -197,6 +239,27 @@ function resetNotificationsButtonState(): void {
   }
 }
 
+/**
+ * The routes a signed-out visitor may read.
+ *
+ * The global timeline is the shop window, settings and about have to work
+ * before there is an account to configure, and the legal documents are
+ * required to be reachable by both app stores - a gate in front of a privacy
+ * policy fails review. Everything else asks first.
+ */
+const PUBLIC_PATHS: ReadonlySet<string> = new Set([
+  '/global',
+  '/settings',
+  '/about',
+  '/privacy',
+  '/terms',
+  '/signin',
+]);
+
+function isPublicPath(path: string): boolean {
+  return PUBLIC_PATHS.has(path);
+}
+
 export function handleRoute(scrollRestoreState?: unknown): void {
   const isRouteActive: () => boolean = createRouteGuard();
   const url: URL = new URL(window.location.href);
@@ -208,18 +271,45 @@ export function handleRoute(scrollRestoreState?: unknown): void {
   // refresh. pushState alone would miss it.
   window.dispatchEvent(new CustomEvent('app-route-changed'));
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
-  const notificationsButton: HTMLElement | null =
-    document.getElementById('nav-notifications');
-  if (notificationsButton) {
-    notificationsButton.style.display = storedPubkey ? '' : 'none';
-  }
-  const reactionsButton: HTMLElement | null =
-    document.getElementById('nav-reactions');
-  if (reactionsButton) {
-    reactionsButton.style.display = storedPubkey ? '' : 'none';
-  }
 
   void (async (): Promise<void> => {
+    if (!storedPubkey && !isPublicPath(path)) {
+      // The root is where a visitor lands with no intent of their own, so it
+      // asks rather than refusing something they never requested.
+      if (path === '/' || path === '') {
+        replaceAppHistoryPath('/signin');
+      }
+      const { showSignInGate } = await getSignInGateModule();
+      if (path === '/' || path === '') {
+        await loadSignInPage();
+      } else {
+        showSignInGate({
+          closeAllWebSockets,
+          stopBackgroundFetch,
+          clearNotification: clearNewPostsNotification,
+          setActiveNav,
+          navigateTo: (target: string): void => {
+            pushAppHistoryPath(target);
+            handleRoute();
+          },
+          output,
+          profileSection,
+        });
+      }
+      return;
+    }
+
+    if (path === '/signin') {
+      if (storedPubkey) {
+        // Nothing to sign in to.
+        replaceAppHistoryPath('/home');
+        await loadHomePage(isRouteActive);
+        return;
+      }
+      await loadSignInPage();
+      return;
+    }
+
     if (path === '/' || path === '') {
       // Redirect to /home
       replaceAppHistoryPath('/home');
@@ -766,17 +856,11 @@ export async function loadHomePage(
       }
     }
   } else {
-    // User not logged in, show welcome screen
-    const { showInputForm } = await getWelcomeModule();
-    showInputForm({
-      output,
-      profileSection,
-      composeButton,
-      updateLogoutButton,
-      clearSessionPrivateKey,
-      setSessionPrivateKeyFromRaw,
-      handleRoute,
-    });
+    // Signing out mid-session can land here before the router has re-run.
+    // Signing in is its own route now, so send them to it rather than
+    // rendering a second copy of the form inside the home timeline.
+    replaceAppHistoryPath('/signin');
+    await loadSignInPage();
   }
 }
 
