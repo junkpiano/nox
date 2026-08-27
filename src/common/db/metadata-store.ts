@@ -59,6 +59,26 @@ export async function getMetadata<T = unknown>(key: string): Promise<T | null> {
 }
 
 /**
+ * Reads every metadata entry.
+ *
+ * Used when the database has to be rebuilt: the metadata store is small and
+ * holds things worth carrying across, unlike events and profiles which are
+ * refetchable by design.
+ */
+export async function getAllMetadata(): Promise<Metadata[]> {
+  if (!isIndexedDBAvailable()) return [];
+
+  try {
+    const tx = await createTransaction(STORE_NAMES.METADATA, 'readonly');
+    const store = tx.objectStore(STORE_NAMES.METADATA);
+    return await requestToPromise<Metadata[]>(store.getAll());
+  } catch (error) {
+    console.error('[MetadataStore] Failed to read all metadata:', error);
+    return [];
+  }
+}
+
+/**
  * Deletes a metadata value
  */
 export async function deleteMetadata(key: string): Promise<void> {

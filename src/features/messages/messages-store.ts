@@ -5,10 +5,16 @@
  * cached rather than recomputed on every visit. The cache lives in the same
  * IndexedDB the rest of the app uses; these messages are already on this
  * device, and re-fetching them would mean decrypting them again anyway.
+ *
+ * Cached, but not in the clear: the blob is encrypted with a device-local key
+ * (see `message-crypto.ts`). Nothing here is ever written anywhere else. There
+ * is no export, no backup and no sync, because this client does not carry
+ * private messages - the relays the user chose do.
  */
 
 import type { PubkeyHex } from '../../../types/nostr';
 import { getMetadata, setMetadata } from '../../common/db/index.js';
+import { decryptJson, destroyCacheKey, encryptJson } from './message-crypto.js';
 import type { ChatRumor } from './nip17.js';
 
 const CACHE_KEY: string = 'dm_messages_v1';
@@ -63,7 +69,15 @@ export async function loadCachedMessages(): Promise<void> {
     return;
   }
   try {
-    const cached = await getMetadata<StoredMessage[]>(CACHE_KEY);
+    const stored: unknown = await getMetadata(CACHE_KEY);
+
+    // A bare array is a cache written before this was encrypted. Read it, then
+    // rewrite it below so the plaintext copy does not survive the upgrade.
+    const legacy: boolean = Array.isArray(stored);
+    const cached: StoredMessage[] | null = legacy
+      ? (stored as StoredMessage[])
+      : await decryptJson<StoredMessage[]>(stored);
+
     if (Array.isArray(cached)) {
       messages = new Map(
         cached.map((message: StoredMessage): [string, StoredMessage] => [
@@ -72,11 +86,22 @@ export async function loadCachedMessages(): Promise<void> {
         ]),
       );
     }
+    if (legacy) {
+      persist();
+    }
   } catch (error: unknown) {
     console.warn('[dm] Failed to load cached messages:', error);
   }
   loaded = true;
 }
+
+/**
+ * Writes are serialised.
+ *
+ * Each one rewrites the whole blob, so two in flight can finish out of order
+ * and leave the older snapshot on disk.
+ */
+let pendingWrite: Promise<void> = Promise.resolve();
 
 function persist(): void {
   const ordered: StoredMessage[] = Array.from(messages.values())
@@ -92,7 +117,22 @@ function persist(): void {
       message,
     ]),
   );
-  void setMetadata(CACHE_KEY, ordered);
+
+  pendingWrite = pendingWrite
+    .then(async (): Promise<void> => {
+      const payload = await encryptJson(ordered);
+      if (!payload) {
+        // No key means no safe way to write. Drop whatever is on disk and keep
+        // this session in memory only - a cache that has to be rebuilt is a
+        // better outcome than private messages stored in the clear.
+        await setMetadata(CACHE_KEY, null);
+        return;
+      }
+      await setMetadata(CACHE_KEY, payload);
+    })
+    .catch((error: unknown): void => {
+      console.warn('[dm] Failed to persist messages:', error);
+    });
 }
 
 /**
@@ -190,6 +230,34 @@ export function addMessages(
   return changed;
 }
 
+/**
+ * Waits for queued cache writes to land.
+ *
+ * Persisting is fire-and-forget everywhere else, but the migration has to know
+ * what is actually on disk before it rebuilds the database around it.
+ */
+export function flushMessageCache(): Promise<void> {
+  return pendingWrite;
+}
+
+/**
+ * Takes messages read out of a cache written before encryption existed.
+ *
+ * Seeds them and writes them back encrypted. Safe to call twice: the migration
+ * does exactly that, once to replace the plaintext value and again once the
+ * database has been rebuilt underneath it.
+ */
+export function adoptMessages(list: StoredMessage[]): void {
+  messages = new Map(
+    list.map((message: StoredMessage): [string, StoredMessage] => [
+      message.id,
+      message,
+    ]),
+  );
+  loaded = true;
+  persist();
+}
+
 /** Conversations, most recently active first. */
 export function getConversations(): Conversation[] {
   const byPeer: Map<PubkeyHex, StoredMessage[]> = new Map();
@@ -229,6 +297,17 @@ export function getConversation(peer: PubkeyHex): StoredMessage[] {
 export function clearMessages(): void {
   messages = new Map();
   loaded = true;
-  void setMetadata(CACHE_KEY, []);
+
+  pendingWrite = pendingWrite
+    .then(async (): Promise<void> => {
+      await setMetadata(CACHE_KEY, null);
+      // Deleting the row asks the database to forget it. Destroying the key
+      // means it no longer matters whether it did.
+      await destroyCacheKey();
+    })
+    .catch((error: unknown): void => {
+      console.warn('[dm] Failed to clear messages:', error);
+    });
+
   announceChange();
 }

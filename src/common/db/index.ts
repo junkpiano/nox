@@ -34,6 +34,7 @@ export {
 export {
   clearMetadata,
   deleteMetadata,
+  getAllMetadata,
   getCacheStats,
   getMetadata,
   getSyncStatus,

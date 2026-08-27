@@ -9,14 +9,27 @@ import {
 let dbInstance: IDBDatabase | null = null;
 
 /**
+ * The open in progress, shared by everyone who asks while it is running.
+ *
+ * Without this, callers that arrive in the same tick each issue their own
+ * `indexedDB.open`. Only the last one to resolve is kept in `dbInstance`; the
+ * rest become connections nothing holds a reference to and `closeDb` cannot
+ * close - which is enough to block `deleteDatabase` indefinitely.
+ */
+let openInFlight: Promise<IDBDatabase> | null = null;
+
+/**
  * Opens or retrieves the cached IndexedDB connection
  */
 export async function openDb(): Promise<IDBDatabase> {
   if (dbInstance && dbInstance.version === DB_VERSION) {
     return dbInstance;
   }
+  if (openInFlight) {
+    return openInFlight;
+  }
 
-  return new Promise<IDBDatabase>((resolve, reject) => {
+  openInFlight = new Promise<IDBDatabase>((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
       reject(new Error('IndexedDB not available'));
       return;
@@ -98,12 +111,23 @@ export async function openDb(): Promise<IDBDatabase> {
       );
     };
   });
+
+  try {
+    return await openInFlight;
+  } finally {
+    // Cleared either way: on success the connection is in `dbInstance`, and on
+    // failure the next caller should be free to try again.
+    openInFlight = null;
+  }
 }
 
 /**
  * Closes the database connection
  */
 export function closeDb(): void {
+  // An open still in flight would otherwise resolve into an untracked
+  // connection moments after this returns.
+  openInFlight = null;
   if (dbInstance) {
     dbInstance.close();
     dbInstance = null;
