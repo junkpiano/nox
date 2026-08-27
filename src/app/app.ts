@@ -22,6 +22,7 @@ import {
 import { setupZapOverlay } from '../common/zap.js';
 import { clearMessages } from '../features/messages/messages-store.js';
 import { stopMessageSync } from '../features/messages/messages-sync.js';
+import { migrateLegacyMessageCache } from '../features/messages/plaintext-cache-migration.js';
 import { refreshMuteListFromRelays } from '../features/moderation/moderation-actions.js';
 import { setupModerationOverlay } from '../features/moderation/moderation-overlay.js';
 import { clearNotifications } from '../features/notifications/notifications.js';
@@ -605,15 +606,25 @@ document.addEventListener('DOMContentLoaded', (): void => {
   // Handle initial route.
   // The key is restored first because routing kicks off the initial timeline
   // load, and NIP-42 AUTH during that load needs the key already in memory.
-  void Promise.all([restoreSessionPrivateKey(), loadCachedMuteList()]).finally(
-    (): void => {
+  //
+  // The message cache migration runs ahead of both. It can rebuild the
+  // database, and a read already in flight when that happens never returns.
+  // For everyone past the upgrade it is a single metadata lookup.
+  void migrateLegacyMessageCache()
+    .catch((error: unknown): void => {
+      console.warn('[dm] Message cache migration failed:', error);
+    })
+    .then(
+      (): Promise<unknown> =>
+        Promise.all([restoreSessionPrivateKey(), loadCachedMuteList()]),
+    )
+    .finally((): void => {
       updateLogoutButton(composeButton);
       handleRoute();
       // Refreshed in the background: the cached list already filters the first
       // render, and a relay round-trip should not delay it.
       void refreshMuteListFromRelays(appState.relays);
-    },
-  );
+    });
 });
 
 // Cleanup background fetch on page unload

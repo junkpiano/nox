@@ -230,6 +230,34 @@ export function addMessages(
   return changed;
 }
 
+/**
+ * Waits for queued cache writes to land.
+ *
+ * Persisting is fire-and-forget everywhere else, but the migration has to know
+ * what is actually on disk before it rebuilds the database around it.
+ */
+export function flushMessageCache(): Promise<void> {
+  return pendingWrite;
+}
+
+/**
+ * Takes messages read out of a cache written before encryption existed.
+ *
+ * Seeds them and writes them back encrypted. Safe to call twice: the migration
+ * does exactly that, once to replace the plaintext value and again once the
+ * database has been rebuilt underneath it.
+ */
+export function adoptMessages(list: StoredMessage[]): void {
+  messages = new Map(
+    list.map((message: StoredMessage): [string, StoredMessage] => [
+      message.id,
+      message,
+    ]),
+  );
+  loaded = true;
+  persist();
+}
+
 /** Conversations, most recently active first. */
 export function getConversations(): Conversation[] {
   const byPeer: Map<PubkeyHex, StoredMessage[]> = new Map();
