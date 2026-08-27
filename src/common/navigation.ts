@@ -58,6 +58,8 @@ export function setupNavigation(options: NavigationOptions): void {
     document.getElementById('nav-messages');
   const logoutButton: HTMLElement | null =
     document.getElementById('nav-logout');
+  const signInButton: HTMLElement | null =
+    document.getElementById('nav-signin');
   const mobileMenuButton: HTMLElement | null =
     document.getElementById('mobile-menu-button');
   const sidebar: HTMLElement | null = document.getElementById('sidebar');
@@ -157,6 +159,15 @@ export function setupNavigation(options: NavigationOptions): void {
     );
   }
 
+  if (signInButton) {
+    signInButton.addEventListener(
+      'click',
+      wrapNavigationHandler((): void => {
+        options.navigateTo('/signin');
+      }),
+    );
+  }
+
   if (notificationsButton) {
     notificationsButton.addEventListener(
       'click',
@@ -179,7 +190,12 @@ export function setupNavigation(options: NavigationOptions): void {
     profileLink.addEventListener('click', (event: MouseEvent): void => {
       const href: string | null = profileLink.getAttribute('href');
       if (!href || !href.startsWith('/')) {
-        closeMobileMenu();
+        // Signed out there is no profile to open. Asking for one is the same
+        // as asking to sign in.
+        event.preventDefault();
+        wrapNavigationHandler((): void => {
+          options.navigateTo('/signin');
+        })();
         return;
       }
 
