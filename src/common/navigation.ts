@@ -159,6 +159,31 @@ export function setupNavigation(options: NavigationOptions): void {
     );
   }
 
+  // Real hrefs, so they can be opened in a new tab or copied like any link,
+  // but routed in-app on a plain click.
+  for (const link of document.querySelectorAll<HTMLAnchorElement>(
+    '.nox-legal-link',
+  )) {
+    link.addEventListener('click', (event: MouseEvent): void => {
+      if (
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.button !== 0
+      ) {
+        return;
+      }
+      const href: string | null = link.getAttribute('href');
+      if (!href || !href.startsWith('/')) {
+        return;
+      }
+      event.preventDefault();
+      wrapNavigationHandler((): void => {
+        options.navigateTo(href);
+      })();
+    });
+  }
+
   if (signInButton) {
     signInButton.addEventListener(
       'click',
