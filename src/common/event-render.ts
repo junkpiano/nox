@@ -1773,6 +1773,10 @@ export function renderEvent(
         target.closest('input') ||
         target.closest('textarea') ||
         target.closest('select') ||
+        // Images open the gallery. That listener sits on the document, so it
+        // runs after this one and cannot call the click off - the exclusion
+        // has to happen here or the post opens out from under the overlay.
+        target.closest('.event-image') ||
         target.closest('.reactions-container') ||
         target.closest('.reactions-details')
       ) {
