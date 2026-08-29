@@ -1,5 +1,6 @@
 import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import { withClientTag } from './client-tag.js';
 import { storeEvent } from './db/index.js';
 import type { ImageUploadResult } from './image-upload.js';
 import { uploadImage } from './image-upload.js';
@@ -286,13 +287,13 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
             : imageUrl
           : textContent;
 
-      const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
+      const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = withClientTag({
         kind: 1,
         pubkey: storedPubkey as PubkeyHex,
         created_at: Math.floor(Date.now() / 1000),
         tags,
         content,
-      };
+      });
 
       let signedEvent: NostrEvent;
       if (hasExtension) {

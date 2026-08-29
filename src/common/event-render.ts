@@ -18,6 +18,7 @@ import {
   isTwitterURL,
   replaceEmojiShortcodes,
 } from '../utils/utils.js';
+import { withClientTag } from './client-tag.js';
 import { deleteEvents, removeEventFromTimeline } from './db/index.js';
 import { computeTimelineRemovalTargets } from './deletion-targets.js';
 import { getCachedEvent, setCachedEvent } from './event-cache.js';
@@ -993,7 +994,7 @@ async function publishReaction(
     return null;
   }
 
-  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
+  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = withClientTag({
     kind: 7,
     pubkey: storedPubkey as PubkeyHex,
     created_at: Math.floor(Date.now() / 1000),
@@ -1002,7 +1003,7 @@ async function publishReaction(
       ['p', targetPubkey],
     ],
     content: reaction.content,
-  };
+  });
   if (reaction.shortcode && reaction.imageUrl) {
     unsignedEvent.tags.push(['emoji', reaction.shortcode, reaction.imageUrl]);
   }
@@ -1064,7 +1065,7 @@ async function publishRepost(targetEvent: NostrEvent): Promise<void> {
     return;
   }
 
-  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
+  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = withClientTag({
     kind: 6,
     pubkey: storedPubkey as PubkeyHex,
     created_at: Math.floor(Date.now() / 1000),
@@ -1073,7 +1074,7 @@ async function publishRepost(targetEvent: NostrEvent): Promise<void> {
       ['p', targetEvent.pubkey],
     ],
     content: JSON.stringify(targetEvent),
-  };
+  });
 
   let signedEvent: NostrEvent;
   if ((window as any).nostr?.signEvent) {
@@ -1989,13 +1990,13 @@ async function deleteEventOnRelays(targetEvent: NostrEvent): Promise<void> {
     throw new Error('You can only delete your own posts.');
   }
 
-  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
+  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = withClientTag({
     kind: 5,
     pubkey: storedPubkey as PubkeyHex,
     created_at: Math.floor(Date.now() / 1000),
     tags: [['e', targetEvent.id]],
     content: '',
-  };
+  });
 
   let signedEvent: NostrEvent;
   if ((window as any).nostr?.signEvent) {
