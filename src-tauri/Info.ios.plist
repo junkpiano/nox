@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged into the generated Xcode project, which is why this lives here rather
+  than in gen/apple: that directory is regenerated on every build and is not
+  committed.
+
+  Both keys exist for one element - the image picker behind the compose
+  button's file input. iOS terminates an app that opens the picker without a
+  usage description for the source the person chooses, so a missing key here is
+  a crash rather than a denied permission.
+-->
+<plist version="1.0">
+  <dict>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Attach a photo to a post.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Take a photo to attach to a post.</string>
+  </dict>
+</plist>

@@ -68,6 +68,42 @@ The first build to reach App Store Connect usually takes 10-30 minutes to
 finish processing before it appears in TestFlight, and Apple emails about any
 missing export-compliance answers.
 
+## What is wired, and what is only assumed
+
+The iOS pieces that could be settled by reading the code are in place:
+
+- `src-tauri/Info.ios.plist` carries the photo library and camera usage
+  descriptions. The compose button's file input opens the system picker, and
+  iOS terminates an app that reaches the picker without a description for the
+  source the person chose - a crash, not a denied permission. Tauri picks this
+  file up from beside `tauri.conf.json`, so it survives the regeneration of
+  `gen/apple`.
+- `bundle.iOS.minimumSystemVersion` is `15.0`. The stylesheet uses the `inset`
+  shorthand, which Safari only understands from 14.5; autoprefixer does not
+  expand shorthands, so on iOS 14 those elements lose their positioning
+  outright. Tauri's default is 13.0, which would ship that breakage.
+- The keyring, the HTTP plugin, the capability set and the safe-area handling
+  are all platform-neutral already. Safe areas in particular need nothing
+  iOS-specific: `env(safe-area-inset-*)` reports zero on Android, where
+  `MainActivity` pads from the real insets instead, so each platform is served
+  by the mechanism that works there.
+
+The rest cannot be confirmed without a build, and is listed here so the first
+one knows where to look rather than rediscovering it:
+
+- **Keychain.** `apple-native-keyring-store` backs the private key, the DM
+  cache key and the wallet secret. Nothing has exercised it on a device.
+- **Secure context.** Message cache encryption needs `crypto.subtle`, which
+  browsers withhold outside a secure context. Whether `tauri://localhost`
+  counts as one is untested. If it does not, the cache simply stops persisting
+  rather than falling back to plaintext, so the failure is a refetch on every
+  launch, not a leak.
+- **`PrivacyInfo.xcprivacy`.** Apple requires a privacy manifest for App Store
+  submission. Which required-reason APIs Tauri and WKWebView actually touch can
+  only be read off a real build, and a declaration written from guesswork is
+  itself grounds for rejection, so this is deliberately absent until there is a
+  build to inspect.
+
 ## Notes
 
 `src-tauri/gen/apple` is not committed. The workflow runs `tauri ios init` on
