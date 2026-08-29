@@ -1,0 +1,5 @@
+# Lightning address (LNURL-pay). Browser wallets fetch this cross-origin, so it
+# needs CORS; without it web clients cannot resolve zap@nox.garden.
+/.well-known/*
+  Access-Control-Allow-Origin: *
+  Content-Type: application/json

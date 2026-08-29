@@ -17,3 +17,7 @@ key.properties
 # with, not to keep: the decisions that survive belong in docs/ or in the
 # comment next to the code they explain.
 docs/superpowers/
+
+# Wrangler's local state. cache/wrangler-account.json carries the Cloudflare
+# account id, and the tmp/ and state/ trees are build scratch, not source.
+.wrangler/
