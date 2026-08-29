@@ -1,0 +1,25 @@
+# Netlify builds a preview per pull request, so a change can be looked at in a
+# browser before it is merged rather than after. Production stays on Cloudflare
+# Workers - see wrangler.jsonc - and nox.garden does not point here.
+#
+# The OGP proxy answers with a CORS header only for origins it knows, so the
+# preview hostnames are allowed there as well; without that, link cards fail on
+# every preview.
+
+[build]
+  command = "bun run build"
+  publish = "dist"
+
+[build.environment]
+  # Three lockfiles are checked in and Netlify picks a package manager from
+  # whichever it finds. CI installs with bun, so this says so out loud rather
+  # than leaving previews to build from whichever lockfile wins.
+  BUN_VERSION = "1"
+
+# The app routes on the client, so every path has to reach index.html. Without
+# this, /signin and /privacy are 404s that only appear on the preview - the
+# Cloudflare side handles it through not_found_handling instead.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
