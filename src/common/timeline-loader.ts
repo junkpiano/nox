@@ -8,6 +8,17 @@ import type {
   Npub,
   PubkeyHex,
 } from '../../types/nostr.js';
+import {
+  fetchProfile,
+  getAuthoritativeProfile,
+} from '../features/profile/profile.js';
+import { getCachedProfile as getPersistentCachedProfile } from '../features/profile/profile-cache.js';
+import { getRelays } from '../features/relays/relays.js';
+import {
+  createBackwardReq,
+  getRxNostr,
+} from '../features/relays/rx-nostr-client.js';
+import { getAvatarURL, getDisplayName } from '../utils/utils.js';
 import type { CachedTimelineResult, TimelineType } from './db/index.js';
 import {
   appendEventsToTimeline,
@@ -18,14 +29,7 @@ import {
 } from './db/index.js';
 import { renderEvent } from './event-render.js';
 import { fetchingProfiles, profileCache } from './timeline-cache.js';
-import { getAvatarURL, getDisplayName } from '../utils/utils.js';
-import {
-  fetchProfile,
-  getAuthoritativeProfile,
-} from '../features/profile/profile.js';
-import { getCachedProfile as getPersistentCachedProfile } from '../features/profile/profile-cache.js';
-import { getRelays } from '../features/relays/relays.js';
-import { createBackwardReq, getRxNostr } from '../features/relays/rx-nostr-client.js';
+import { applyStatusesToTimeline } from './timeline-status.js';
 
 type TimelineRenderMode = 'append' | 'sorted-batch';
 type TimelineReceiveMode = 'immediate' | 'buffered';
@@ -139,7 +143,10 @@ function updateRenderedProfile(
         nameEl.textContent = `👤 ${getDisplayName(npubStr, renderProfile)}`;
       }
       if (avatarEl) {
-        (avatarEl as HTMLImageElement).src = getAvatarURL(event.pubkey, renderProfile);
+        (avatarEl as HTMLImageElement).src = getAvatarURL(
+          event.pubkey,
+          renderProfile,
+        );
       }
     }
   });
@@ -247,7 +254,9 @@ function renderTimelineEvent(
   renderEvent(event, profile, npubStr, event.pubkey, output);
 }
 
-export async function loadTimeline(options: LoadTimelineOptions): Promise<void> {
+export async function loadTimeline(
+  options: LoadTimelineOptions,
+): Promise<void> {
   const routeIsActive: () => boolean = options.isRouteActive || (() => true);
   const relays: string[] = getRelays();
   if (!routeIsActive()) {
@@ -278,7 +287,8 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
   let clearedPlaceholder: boolean =
     options.output.querySelectorAll('.event-container').length > 0;
 
-  const isInitialLoad: boolean = currentUntilTimestamp >= Date.now() / 1000 - 60;
+  const isInitialLoad: boolean =
+    currentUntilTimestamp >= Date.now() / 1000 - 60;
   const originalUntilTimestamp: number = currentUntilTimestamp;
 
   let filter: NostrFilter = options.createFilter(currentUntilTimestamp);
@@ -309,7 +319,8 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
         { limit: activeCacheOptions.limit || 50 },
       );
       const newestTimestamp: number =
-        activeCacheOptions.getNewestTimestamp?.(cached) ?? cached.newestTimestamp;
+        activeCacheOptions.getNewestTimestamp?.(cached) ??
+        cached.newestTimestamp;
       const cacheAgeMinutes = cached.hasCache
         ? Math.floor((Date.now() / 1000 - newestTimestamp) / 60)
         : 0;
@@ -347,12 +358,7 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
                 profileMode,
                 options.staticProfile || null,
               );
-              renderTimelineEvent(
-                options.output,
-                event,
-                profile,
-                'append',
-              );
+              renderTimelineEvent(options.output, event, profile, 'append');
             }
           }
 
@@ -450,7 +456,9 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
     });
 
     const eventIds: string[] = bufferedEvents.map((event) => event.id);
-    const timestamps: number[] = bufferedEvents.map((event) => event.created_at);
+    const timestamps: number[] = bufferedEvents.map(
+      (event) => event.created_at,
+    );
     const newestTimestamp: number = Math.max(...timestamps);
     const oldestTimestamp: number = Math.min(...timestamps);
 
@@ -461,7 +469,10 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
         eventIds,
         newestTimestamp,
       ).catch((error) => {
-        console.error(`[${options.logPrefix}] Failed to update timeline:`, error);
+        console.error(
+          `[${options.logPrefix}] Failed to update timeline:`,
+          error,
+        );
       });
       return;
     }
@@ -487,6 +498,10 @@ export async function loadTimeline(options: LoadTimelineOptions): Promise<void> 
 
     flushBufferedEvents();
     persistBufferedTimeline();
+
+    // After the cards exist and before anyone scrolls: one lookup covering
+    // whoever ended up on screen.
+    void applyStatusesToTimeline(options.output, getRelays());
 
     const hasRenderedEvents: boolean =
       options.output.querySelectorAll('.event-container').length > 0;
