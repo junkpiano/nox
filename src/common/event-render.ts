@@ -1511,6 +1511,7 @@ export function renderEvent(
                 }
 			          ${clientNameHtml}
 			        </div>
+			        <p class="event-status hidden text-xs text-gray-500 mb-1 truncate"></p>
 		        ${repostBadgeHtml}
               ${eventPermalink ? `<a class="event-permalink" href="${eventPermalink}" aria-hidden="true" tabindex="-1" style="display:none;"></a>` : ''}
 		            <div class="reply-badge-container mb-1.5"></div>

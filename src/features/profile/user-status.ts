@@ -134,12 +134,41 @@ export async function fetchUserStatus(params: {
   relays: string[];
   timeoutMs?: number;
 }): Promise<UserStatus | null> {
+  const statuses = await fetchUserStatuses({
+    pubkeys: [params.pubkeyHex],
+    relays: params.relays,
+    ...(params.timeoutMs === undefined ? {} : { timeoutMs: params.timeoutMs }),
+  });
+  return statuses.get(params.pubkeyHex) ?? null;
+}
+
+/**
+ * Reads statuses for a whole timeline at once.
+ *
+ * A Nostr filter takes a list of authors, so everyone visible costs one
+ * subscription rather than one each. Per author it would have been a socket
+ * round trip per card, which is the reason a timeline was not worth showing
+ * these on before.
+ *
+ * Authors with no status, an expired one, or one this refuses to read are
+ * simply absent from the map.
+ */
+export async function fetchUserStatuses(params: {
+  pubkeys: PubkeyHex[];
+  relays: string[];
+  timeoutMs?: number;
+}): Promise<Map<PubkeyHex, UserStatus>> {
+  const authors: PubkeyHex[] = Array.from(new Set(params.pubkeys));
+  const result: Map<PubkeyHex, UserStatus> = new Map();
+  if (authors.length === 0 || params.relays.length === 0) {
+    return result;
+  }
+
   const timeoutMs: number = Number.isFinite(params.timeoutMs)
     ? Math.max(500, Math.floor(params.timeoutMs as number))
     : 4000;
 
-  // Held in an object so the type survives the socket callbacks.
-  const newest: { event: NostrEvent | null } = { event: null };
+  const newest: Map<PubkeyHex, NostrEvent> = new Map();
 
   await Promise.allSettled(
     params.relays.map(async (relayUrl: string): Promise<void> => {
@@ -167,9 +196,9 @@ export async function fetchUserStatus(params: {
                 `status-${Math.random().toString(36).slice(2)}`,
                 {
                   kinds: [USER_STATUS_KIND],
-                  authors: [params.pubkeyHex],
+                  authors,
                   '#d': [GENERAL],
-                  limit: 1,
+                  limit: authors.length,
                 },
               ]),
             );
@@ -180,11 +209,13 @@ export async function fetchUserStatus(params: {
               const frame: unknown[] = JSON.parse(msg.data);
               if (frame[0] === 'EVENT') {
                 const event = frame[2] as NostrEvent;
-                if (
-                  event?.kind === USER_STATUS_KIND &&
-                  (!newest.event || event.created_at >= newest.event.created_at)
-                ) {
-                  newest.event = event;
+                if (event?.kind !== USER_STATUS_KIND) {
+                  return;
+                }
+                const author = event.pubkey as PubkeyHex;
+                const held = newest.get(author);
+                if (!held || event.created_at >= held.created_at) {
+                  newest.set(author, event);
                 }
                 return;
               }
@@ -204,7 +235,12 @@ export async function fetchUserStatus(params: {
     }),
   );
 
-  return newest.event
-    ? parseUserStatus(newest.event, Math.floor(Date.now() / 1000))
-    : null;
+  const now: number = Math.floor(Date.now() / 1000);
+  for (const [author, event] of newest) {
+    const status: UserStatus | null = parseUserStatus(event, now);
+    if (status) {
+      result.set(author, status);
+    }
+  }
+  return result;
 }

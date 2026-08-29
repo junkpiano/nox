@@ -17,3 +17,6 @@ key.properties
 # with, not to keep: the decisions that survive belong in docs/ or in the
 # comment next to the code they explain.
 docs/superpowers/
+
+# wrangler's local miniflare state, written by `wrangler dev` and by deploys.
+.wrangler/
