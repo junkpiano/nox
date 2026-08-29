@@ -66,6 +66,9 @@ src/
 │
 ├── common/                  # Shared utilities
 │   ├── event-render.ts      # Event card HTML generation
+│   ├── client-tag.ts        # NIP-89 client tag: writes "nox", reads others'
+│   ├── media-type.ts        # Image vs video, and the video poster frame
+│   ├── timeline-status.ts   # Batched NIP-38 statuses for a whole timeline
 │   ├── events-queries.ts    # Follow list, event fetch, delete checks
 │   ├── relay-socket.ts      # Raw WebSocket relay communication + NIP-42 AUTH
 │   ├── compose.ts           # Post composition overlay
@@ -100,7 +103,7 @@ src/
 │   ├── home/                # Home timeline (follows)
 │   ├── messages/            # NIP-17 private messages (gift wrap, DM relays)
 │   ├── moderation/          # Mute list (NIP-51) and reports (NIP-56)
-│   ├── profile/             # Profile view + follow/unfollow
+│   ├── profile/             # Profile view + follow/unfollow, NIP-38 status
 │   ├── reactions/           # Posts you liked (labelled "Likes" in the UI)
 │   ├── relays/              # Relay config, NIP-65, rx-nostr client
 │   ├── notifications/       # Reactions, replies and mentions addressed to you
@@ -197,6 +200,48 @@ Client-side routing via History API (`pushState` / `popstate`):
 
 nginx is configured to serve `index.html` for all routes (SPA behavior).
 
+### Rendering someone else's media
+
+Extensions decide the element. `classifyMediaUrl()` reads the extension off the
+URL's *path*, so a signed link keeps its type and a host like `mp4.example.com`
+does not acquire one. Images and videos were once one branch, which put videos
+in an `<img>`: a browser cannot decode one there, but it downloads the whole
+file before finding that out, and the gallery then fetched it again on tap.
+
+Videos carry `preload="metadata"` and a `#t=0.1` fragment so the browser paints
+a frame rather than a black box, and they are kept out of the gallery's image
+list - the gallery is an `<img>`, which is exactly what a video must not be
+handed to.
+
+### Strings other people wrote
+
+Client names (NIP-89) and user statuses (NIP-38) are rendered next to a name,
+and both are chosen by whoever published the event. Each is flattened to one
+line, capped, and escaped; a URL attached to a status is followed only if it is
+`http`. A newline in a one-line field is either a mistake or an attempt to take
+more room than the line.
+
+The client tag is written on an **allow-list** of kinds, never a deny-list: the
+events that must not carry an extra tag - relay AUTH, HTTP auth, wallet
+requests, anything reaching a gift wrap - are exactly the ones nobody remembers
+to exclude.
+
+## Deployment
+
+| | |
+|---|---|
+| Production | Cloudflare Workers, `nox.garden`, `npm run deploy` from a maintainer machine |
+| Pull request previews | Netlify, `deploy-preview-<n>--nox-preview.netlify.app` |
+
+`netlify.toml` names bun explicitly because three lockfiles are checked in and
+Netlify picks one by detection, and it carries the SPA redirect that
+`wrangler.jsonc` expresses as `not_found_handling`.
+
+The OGP proxy (a separate Worker, `junkpiano/nostr-proxy`) answers with a CORS
+header only for origins it knows. `nox.garden`, the preview site and its
+`<alias>--` namespace are allowed there; a new deploy origin needs a change in
+that repository or every link card on it fails silently.
+
 ## Native Shell (Tauri v2)
 
 The same frontend ships as a web app and as a Tauri app for Android, desktop and
@@ -292,13 +337,15 @@ import { renderEvent } from '../common/event-render.js';
 | 10000 | Mute list (NIP-51, entries encrypted to self) |
 | 10002 | Relay list metadata (NIP-65) |
 | 10050 | DM relay list (NIP-17) |
+| 30315 | User status (NIP-38, read only) |
 | 23194/23195 | Wallet request / response (NIP-47) |
 
 **Supported NIPs:** NIP-01, NIP-02, NIP-05, NIP-07, NIP-10 (reply threading),
 NIP-17 (private messages), NIP-19, NIP-25 (reactions), NIP-30 (custom emoji),
-NIP-36 (content warnings), NIP-42 (AUTH), NIP-44 (encryption), NIP-47 (wallet
-connect), NIP-51 (mute list), NIP-56 (reports), NIP-57 (zaps), NIP-59 (gift
-wrap), NIP-65 (relay list)
+NIP-36 (content warnings), NIP-38 (user status, read only), NIP-42 (AUTH),
+NIP-44 (encryption), NIP-47 (wallet connect), NIP-51 (mute list), NIP-56
+(reports), NIP-57 (zaps), NIP-59 (gift
+wrap), NIP-65 (relay list), NIP-89 (client tag), NIP-92 (`imeta`, read only)
 
 ## TypeScript Configuration
 
