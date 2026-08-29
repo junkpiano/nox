@@ -12,3 +12,8 @@ dist
 *.keystore
 keystore.properties
 key.properties
+
+# Design and spec documents from the brainstorming workflow. Written to think
+# with, not to keep: the decisions that survive belong in docs/ or in the
+# comment next to the code they explain.
+docs/superpowers/
