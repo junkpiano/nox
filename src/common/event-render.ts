@@ -28,6 +28,7 @@ import {
   getCachedDeletionStatus,
   isEventDeleted,
 } from './events-queries.js';
+import { classifyMediaUrl } from './media-type.js';
 import { isMuted } from './mute-state.js';
 import type { ReactionAggregate } from './reaction-interactions.js';
 import {
@@ -1413,16 +1414,28 @@ export function renderEvent(
         return url;
       }
 
-      if (safeUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|mp4|webm|mov|avi)$/i)) {
-        const imageIndex: number = imageUrls.length;
-        imageUrls.push(safeUrl);
+      const mediaKind = classifyMediaUrl(safeUrl);
 
+      if (mediaKind) {
         // In energy saving mode, show link instead of loading media
         if (isEnergySavingMode) {
           const fileName: string = safeUrl.split('/').pop() || 'media';
-          return `<div class="my-2 p-2 bg-gray-100 rounded border border-gray-300"><span class="text-gray-600 text-xs">🖼️ Image: </span><a href="${escapeHtmlAttribute(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline text-sm">${escapeHtmlAttribute(fileName)}</a></div>`;
+          const label: string =
+            mediaKind === 'video' ? '🎬 Video: ' : '🖼️ Image: ';
+          return `<div class="my-2 p-2 bg-gray-100 rounded border border-gray-300"><span class="text-gray-600 text-xs">${label}</span><a href="${escapeHtmlAttribute(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline text-sm">${escapeHtmlAttribute(fileName)}</a></div>`;
         }
 
+        if (mediaKind === 'video') {
+          // preload="metadata" so a timeline full of videos costs a few
+          // headers rather than the files themselves, and no autoplay: a feed
+          // that starts moving on its own is a feed you have to fight.
+          // Deliberately outside imageUrls - the gallery is an <img>, which is
+          // exactly what a video must not be handed to.
+          return `<video src="${escapeHtmlAttribute(safeUrl)}" class="event-video my-2 max-w-full rounded shadow" controls preload="metadata" playsinline></video>`;
+        }
+
+        const imageIndex: number = imageUrls.length;
+        imageUrls.push(safeUrl);
         return `<img src="${escapeHtmlAttribute(safeUrl)}" alt="Image" class="my-2 max-w-full rounded shadow cursor-zoom-in event-image" loading="lazy" data-image-index="${imageIndex}" />`;
       }
 
@@ -1787,6 +1800,7 @@ export function renderEvent(
         // runs after this one and cannot call the click off - the exclusion
         // has to happen here or the post opens out from under the overlay.
         target.closest('.event-image') ||
+        target.closest('.event-video') ||
         target.closest('.reactions-container') ||
         target.closest('.reactions-details')
       ) {
