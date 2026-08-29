@@ -1,5 +1,14 @@
 import type { SetActiveNavFn } from '../../common/types.js';
 
+/**
+ * Where donations for nox go.
+ *
+ * Served from our own domain rather than the wallet provider's, so the wallet
+ * behind it can be swapped without reprinting the address everywhere it has
+ * already been published — including a shipped Android build.
+ */
+const ZAP_ADDRESS: string = 'zap@nox.garden';
+
 interface AboutPageOptions {
   closeAllWebSockets: () => void;
   stopBackgroundFetch: () => void;
@@ -140,7 +149,7 @@ export function loadAboutPage(options: AboutPageOptions): void {
 	        </p>
 	        <div class="mt-3 flex items-center gap-2 flex-wrap">
 	          <code class="px-2 py-1 bg-white border border-emerald-200 rounded font-mono text-emerald-900 text-xs">
-	            pay@yusuke.cloud
+	            ${ZAP_ADDRESS}
 	          </code>
 	          <button id="copy-zap-address" type="button" class="inline-flex items-center justify-center p-1 rounded text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-400/60" aria-label="Copy Lightning Address" title="Copy">
 	            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
@@ -159,7 +168,7 @@ export function loadAboutPage(options: AboutPageOptions): void {
   ) as HTMLButtonElement | null;
   const copyZapStatus: HTMLElement | null =
     options.output.querySelector('#copy-zap-status');
-  const zapAddress: string = 'pay@yusuke.cloud';
+  const zapAddress: string = ZAP_ADDRESS;
 
   if (copyZapButton) {
     copyZapButton.addEventListener('click', async (): Promise<void> => {

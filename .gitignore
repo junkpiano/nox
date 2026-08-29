@@ -18,5 +18,6 @@ key.properties
 # comment next to the code they explain.
 docs/superpowers/
 
-# wrangler's local miniflare state, written by `wrangler dev` and by deploys.
+# Wrangler's local state. cache/wrangler-account.json carries the Cloudflare
+# account id, and the tmp/ and state/ trees are build scratch, not source.
 .wrangler/
