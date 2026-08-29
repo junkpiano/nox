@@ -61,3 +61,39 @@ export function classifyMediaUrl(url: string): MediaKind | null {
   }
   return null;
 }
+
+/**
+ * The moment a video should show before anyone presses play.
+ *
+ * Not zero: some encoders put a black or near-black frame first, and a browser
+ * asked for 0 may simply not seek at all. A tenth of a second is past that and
+ * still the opening image.
+ */
+const POSTER_FRAGMENT: string = '#t=0.1';
+
+/**
+ * Asks the browser to paint a frame instead of a black rectangle.
+ *
+ * `preload="metadata"` fetches enough to know a video's duration and no more,
+ * which leaves it rendering as a black box until someone plays it - you cannot
+ * tell what you are about to watch. A `#t=` media fragment tells the browser to
+ * seek there and show that frame, one more range request rather than the file.
+ *
+ * A URL that already carries a fragment is returned unchanged: someone linking
+ * to a moment in a video means that moment.
+ *
+ * The obvious alternative was the thumbnail NIP-92 allows in an `imeta` tag. Of
+ * eight video posts sampled off live relays, three carried an `imeta` tag and
+ * none carried a thumbnail, so that path is not worth a branch yet.
+ */
+export function withPosterFrame(url: string): string {
+  const hash: number = url.indexOf('#');
+  if (hash < 0) {
+    return `${url}${POSTER_FRAGMENT}`;
+  }
+  // A bare trailing `#` says nothing, so it is ours to replace.
+  if (hash === url.length - 1) {
+    return `${url.slice(0, hash)}${POSTER_FRAGMENT}`;
+  }
+  return url;
+}
