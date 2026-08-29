@@ -1,14 +1,17 @@
 /**
- * The rule deciding which events say they came from nox.
+ * The rule deciding which events say they came from nox, and how a client
+ * name is read back off someone else's event.
  *
- * An allow-list rather than a deny-list, because the events that must never
- * carry an extra tag - relay AUTH, HTTP auth, wallet requests, anything inside
- * a gift wrap - are exactly the ones nobody remembers to exclude.
+ * Writing is an allow-list rather than a deny-list, because the events that
+ * must never carry an extra tag - relay AUTH, HTTP auth, wallet requests,
+ * anything inside a gift wrap - are exactly the ones nobody remembers to
+ * exclude. Reading is defensive for the mirror-image reason: the name is a
+ * string a stranger chose.
  */
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { withClientTag } from '../src/common/client-tag.js';
+import { readClientName, withClientTag } from '../src/common/client-tag.js';
 import type { NostrEvent, PubkeyHex } from '../types/nostr';
 
 const PUBKEY: PubkeyHex = 'a'.repeat(64) as PubkeyHex;
@@ -81,9 +84,54 @@ test('the tags already on the event survive, in order', () => {
   assert.deepEqual(tagged.tags[2], ['client', 'nox']);
 });
 
-test('the caller its given event is not mutated', () => {
+test('the event the caller passed in is not mutated', () => {
   const original = unsigned(1);
   const before = JSON.stringify(original);
   withClientTag(original);
   assert.equal(JSON.stringify(original), before);
+});
+
+test('reads the client name off an event', () => {
+  assert.equal(readClientName([['client', 'nox']]), 'nox');
+});
+
+test('reads the name out of the longer handler form other clients use', () => {
+  // nostter publishes ["client", name, "31990:<pubkey>:<d>", relay]. Only the
+  // name is for reading.
+  assert.equal(
+    readClientName([
+      ['client', 'nostter', '31990:83d5:1696997648659', 'wss://yabu.me/'],
+    ]),
+    'nostter',
+  );
+});
+
+test('an event with no client tag says nothing', () => {
+  assert.equal(readClientName([]), null);
+  assert.equal(readClientName([['e', 'a'.repeat(64)]]), null);
+});
+
+test('a client tag with nothing in it says nothing', () => {
+  assert.equal(readClientName([['client']]), null);
+  assert.equal(readClientName([['client', '']]), null);
+  assert.equal(readClientName([['client', '   ']]), null);
+  assert.equal(readClientName([['client', 42 as unknown as string]]), null);
+});
+
+test('a name is not allowed to take over the line', () => {
+  // Written by whoever published the event, so its length is their choice
+  // until it is ours.
+  const name = readClientName([['client', 'x'.repeat(200)]]);
+  assert.ok(name);
+  assert.ok(name.length <= 24, `got ${name.length} characters`);
+});
+
+test('a name cannot smuggle in line breaks or control characters', () => {
+  const withNewline = ['client', ['no', 'x'].join('\n')];
+  assert.equal(readClientName([withNewline]), 'nox');
+
+  const withTab = ['client', ['no', 'x'].join('\t')];
+  assert.equal(readClientName([withTab]), 'nox');
+
+  assert.equal(readClientName([['client', '  nox  ']]), 'nox');
 });

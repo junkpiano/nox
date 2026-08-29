@@ -57,3 +57,42 @@ export function withClientTag<T extends Taggable>(event: T): T {
 
   return { ...event, tags: [...event.tags, ['client', CLIENT_NAME]] };
 }
+
+/**
+ * The longest client name worth showing.
+ *
+ * The string belongs to whoever published the event, so its length is their
+ * choice until it is ours. A name beside a timestamp has room for a word.
+ */
+const MAX_NAME_LENGTH: number = 24;
+
+/**
+ * Reads the client name off an event, for showing beside its timestamp.
+ *
+ * Returns null when there is nothing worth showing, which callers render as
+ * nothing at all rather than as an empty separator.
+ *
+ * NIP-89 also allows a longer form - ["client", name, "31990:<pubkey>:<d>",
+ * relay] - that points at the publisher's app handler. Only the name is for
+ * reading; the rest addresses an event this client does not fetch.
+ */
+export function readClientName(tags: string[][]): string | null {
+  const tag: string[] | undefined = tags.find(
+    (candidate: string[]): boolean => candidate[0] === 'client',
+  );
+  const raw: unknown = tag?.[1];
+  if (typeof raw !== 'string') {
+    return null;
+  }
+
+  // Whitespace and control characters are stripped rather than escaped: this
+  // name sits inside one line beside a timestamp, and a newline or a tab in it
+  // is either a mistake or an attempt to break out of that line.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+  const name: string = raw.replace(/[\s\u0000-\u001f\u007f]/g, '');
+  if (!name) {
+    return null;
+  }
+
+  return name.slice(0, MAX_NAME_LENGTH);
+}
