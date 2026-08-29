@@ -28,7 +28,7 @@ import {
   getCachedDeletionStatus,
   isEventDeleted,
 } from './events-queries.js';
-import { classifyMediaUrl } from './media-type.js';
+import { classifyMediaUrl, withPosterFrame } from './media-type.js';
 import { isMuted } from './mute-state.js';
 import type { ReactionAggregate } from './reaction-interactions.js';
 import {
@@ -1431,7 +1431,7 @@ export function renderEvent(
           // that starts moving on its own is a feed you have to fight.
           // Deliberately outside imageUrls - the gallery is an <img>, which is
           // exactly what a video must not be handed to.
-          return `<video src="${escapeHtmlAttribute(safeUrl)}" class="event-video my-2 max-w-full rounded shadow" controls preload="metadata" playsinline></video>`;
+          return `<video src="${escapeHtmlAttribute(withPosterFrame(safeUrl))}" class="event-video my-2 max-w-full rounded shadow" controls preload="metadata" playsinline></video>`;
         }
 
         const imageIndex: number = imageUrls.length;
