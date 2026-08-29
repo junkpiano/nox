@@ -1,5 +1,6 @@
 import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
+import { withClientTag } from './client-tag.js';
 import { storeEvent } from './db/index.js';
 
 interface ReplyOverlayOptions {
@@ -137,7 +138,7 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
       // According to NIP-10:
       // - "e" tag with "reply" marker for the event being replied to
       // - "p" tag for the author being replied to
-      const unsignedEvent: any = {
+      const unsignedEvent: any = withClientTag({
         kind: 1,
         created_at: Math.floor(Date.now() / 1000),
         tags: [
@@ -145,7 +146,7 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
           ['p', currentReplyContext.eventPubkey],
         ],
         content,
-      };
+      });
 
       let signedEvent: NostrEvent;
 
