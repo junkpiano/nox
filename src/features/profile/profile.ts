@@ -10,8 +10,9 @@ import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
 import { openRelaySubscription } from '../../common/relay-socket.js';
 import { openZapComposer } from '../../common/zap.js';
 import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
-import { recordRelayFailure } from '../relays/relays.js';
+import { getRelays, recordRelayFailure } from '../relays/relays.js';
 import { getCachedProfile, setCachedProfile } from './profile-cache.js';
+import { fetchUserStatus } from './user-status.js';
 
 /**
  * Escapes text for safe HTML rendering.
@@ -495,7 +496,8 @@ export function renderProfile(
   const emojiTags: string[][] = renderProfileData?.emojiTags || [];
   const nip05: string | undefined = renderProfileData?.nip05?.trim();
   const hasNip05: boolean = !!nip05 && isNip05Identifier(nip05);
-  const websiteUrl: string | null = normalizeProfileWebsiteUrl(renderProfileData);
+  const websiteUrl: string | null =
+    normalizeProfileWebsiteUrl(renderProfileData);
   const websiteLabel: string =
     websiteUrl?.replace(/^https?:\/\//i, '').replace(/\/$/, '') || '';
   const isEnergySavingMode: boolean =
@@ -533,6 +535,7 @@ export function renderProfile(
           <span>${nameHtml}</span>
           <span id="nip05-verified" class="hidden inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[10px]" aria-label="NIP-05 verified" title="NIP-05 verified">✔</span>
         </h2>
+        <p id="profile-status" class="hidden text-sm mt-1 text-center max-w-2xl break-words px-4 ${banner && !isEnergySavingMode ? 'text-white/80 drop-shadow' : 'text-gray-500'}"></p>
         ${bioHtml ? `<p class="${banner && !isEnergySavingMode ? 'text-white/90 drop-shadow' : 'text-gray-600'} text-sm mt-1 text-center max-w-2xl break-words px-4 w-full whitespace-pre-wrap">${bioHtml}</p>` : ''}
         ${websiteUrl ? `<p class="text-sm mt-2 text-center ${banner && !isEnergySavingMode ? 'text-blue-100 drop-shadow' : 'text-blue-600'}"><a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener noreferrer" class="underline break-all">${escapeHtml(websiteLabel)}</a></p>` : ''}
         <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
@@ -544,6 +547,36 @@ export function renderProfile(
       </div>
     </div>
   `;
+
+  // Filled in after the fact, like the NIP-05 badge below: a status is
+  // decoration, and nothing about the profile should wait on it. A lookup that
+  // finds nothing and a lookup that fails render the same way, which is not at
+  // all.
+  void (async (): Promise<void> => {
+    const status = await fetchUserStatus({
+      pubkeyHex: pubkey,
+      relays: getRelays(),
+    });
+    if (!status) {
+      return;
+    }
+    const element: HTMLElement | null =
+      profileSection.querySelector('#profile-status');
+    if (!element) {
+      return;
+    }
+    element.textContent = status.text;
+    if (status.url) {
+      const link: HTMLAnchorElement = document.createElement('a');
+      link.href = status.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.className = 'underline';
+      link.textContent = status.text;
+      element.replaceChildren(link);
+    }
+    element.classList.remove('hidden');
+  })();
 
   if (hasNip05 && nip05) {
     void (async (): Promise<void> => {
