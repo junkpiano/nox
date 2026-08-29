@@ -18,7 +18,7 @@ import {
   isTwitterURL,
   replaceEmojiShortcodes,
 } from '../utils/utils.js';
-import { withClientTag } from './client-tag.js';
+import { readClientName, withClientTag } from './client-tag.js';
 import { deleteEvents, removeEventFromTimeline } from './db/index.js';
 import { computeTimelineRemovalTargets } from './deletion-targets.js';
 import { getCachedEvent, setCachedEvent } from './event-cache.js';
@@ -1196,6 +1196,14 @@ export function renderEvent(
   const safeNpub: string = escapeHtmlAttribute(npub);
   const createdAt: string = new Date(event.created_at * 1000).toLocaleString();
   const timeLabel: string = formatEventTimeLabel(event.created_at);
+
+  // Beside the timestamp, in the same size and the same grey: which client
+  // someone posted from is the kind of thing you look for, not the kind of
+  // thing that should catch your eye. Absent when the event does not say.
+  const clientName: string | null = readClientName(event.tags);
+  const clientNameHtml: string = clientName
+    ? `<span class="flex-none text-xs text-gray-500" title="Posted with ${escapeHtmlAttribute(clientName)}">\u00b7 ${escapeHtmlAttribute(clientName)}</span>`
+    : '';
   let eventPermalink: string | null = null;
   try {
     eventPermalink = `/${nip19.neventEncode({ id: event.id })}`;
@@ -1488,6 +1496,7 @@ export function renderEvent(
                     ? `<a href="${eventPermalink}" class="flex-none text-xs text-gray-500 hover:text-blue-600 transition-colors" title="${escapeHtmlAttribute(createdAt)}">${escapeHtmlAttribute(timeLabel)}</a>`
                     : `<span class="flex-none text-xs text-gray-500" title="${escapeHtmlAttribute(createdAt)}">${escapeHtmlAttribute(timeLabel)}</span>`
                 }
+			          ${clientNameHtml}
 			        </div>
 		        ${repostBadgeHtml}
               ${eventPermalink ? `<a class="event-permalink" href="${eventPermalink}" aria-hidden="true" tabindex="-1" style="display:none;"></a>` : ''}
