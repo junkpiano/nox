@@ -1226,7 +1226,7 @@ export function renderEvent(
     renderProfile?.lud16 || renderProfile?.lud06,
   );
   const actionBtnBase: string =
-    'event-action-btn inline-flex items-center justify-center p-1 rounded transition-colors';
+    'event-action-btn inline-flex items-center justify-center rounded transition-colors';
   const actionBtnDisabled: string = 'opacity-60 cursor-not-allowed';
 
   const replyButtonTitle: string = isLoggedIn
@@ -1260,7 +1260,7 @@ export function renderEvent(
   const moderationBtnClasses: string = `${actionBtnBase} text-gray-400 hover:text-gray-600 hover:bg-gray-100`;
 
   const actionBarHtml: string = `
-          <div class="flex items-center gap-1">
+          <div class="event-actions flex items-center">
             <button class="${replyButtonClasses}" aria-label="Reply to post" title="${replyButtonTitle}" data-event-id="${escapeHtmlAttribute(event.id)}" data-event-pubkey="${escapeHtmlAttribute(event.pubkey)}" data-event-author="${safeName}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 12c0 4.418-4.03 8-9 8a9.77 9.77 0 01-3.18-.52L3 20l1.35-3.6A7.76 7.76 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
