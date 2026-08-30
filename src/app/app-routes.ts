@@ -1072,7 +1072,7 @@ async function startAppCore(
     const { setupStatusEditor } = await import(
       '../features/profile/status-editor.js'
     );
-    setupStatusEditor(pubkeyHex, profileSection, true, {
+    setupStatusEditor(pubkeyHex, profileSection, {
       getRelays: (): string[] => appState.relays,
       publishEvent: publishEventToRelays,
       onPublished: (): void => {

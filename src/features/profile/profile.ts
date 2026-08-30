@@ -250,7 +250,7 @@ export function getAuthoritativeProfile(
   return remoteProfile;
 }
 
-function getStoredPubkey(): PubkeyHex | null {
+export function getStoredPubkey(): PubkeyHex | null {
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
   return storedPubkey ? (storedPubkey as PubkeyHex) : null;
 }

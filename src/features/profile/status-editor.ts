@@ -11,6 +11,7 @@
  */
 
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
+import { getStoredPubkey } from './profile.js';
 import { signUserStatusEvent } from './user-status.js';
 
 interface StatusEditorOptions {
@@ -80,13 +81,15 @@ function editorMarkup(current: string): string {
 /**
  * Turns the status line into its own editor for the person it belongs to.
  *
- * Does nothing at all on someone else's profile - the caller decides whose
- * this is, and passes `isOwner`.
+ * Does nothing at all on someone else's profile. Ownership is read here rather
+ * than accepted from the caller: a status can only be signed by the person it
+ * belongs to, so a caller that gets this wrong does not produce a status on
+ * someone else's profile - it produces one on yours, silently, which is what a
+ * hardcoded `true` here did.
  */
 export function setupStatusEditor(
   pubkey: PubkeyHex,
   profileSection: HTMLElement,
-  isOwner: boolean,
   options: StatusEditorOptions,
 ): void {
   const line: HTMLElement | null =
@@ -94,7 +97,8 @@ export function setupStatusEditor(
   const panel: HTMLElement | null = profileSection.querySelector(
     '#profile-status-editor',
   );
-  if (!line || !panel || !isOwner) {
+  const storedPubkey: PubkeyHex | null = getStoredPubkey();
+  if (!line || !panel || !storedPubkey || storedPubkey !== pubkey) {
     return;
   }
 
