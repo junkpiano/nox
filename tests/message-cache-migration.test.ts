@@ -21,20 +21,28 @@ const { getMetadata, setMetadata } = await import('../src/common/db/index.js');
 const { isEncryptedPayload } = await import(
   '../src/features/messages/message-crypto.js'
 );
-const { loadCachedMessages, getConversation, clearMessages } = await import(
-  '../src/features/messages/messages-store.js'
-);
+const {
+  clearMessages,
+  flushMessageCache,
+  getConversation,
+  loadCachedMessages,
+} = await import('../src/features/messages/messages-store.js');
 
 const CACHE_KEY: string = 'dm_messages_v1';
 const VIEWER: PubkeyHex = 'a'.repeat(64) as PubkeyHex;
 const PEER: PubkeyHex = 'b'.repeat(64) as PubkeyHex;
 const SECRET: string = 'meet me at the usual place';
 
-/** Writes are fire-and-forget; let the queued one land. */
+/**
+ * Waits for the queued write itself, not for a length of time.
+ *
+ * This used to sleep for a hundred milliseconds, which was long enough on a
+ * developer machine and not on CI: encrypting and writing took longer there,
+ * and two tests failed for being early rather than wrong. The store exposes
+ * the write promise, so there is a real thing to wait for.
+ */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 20; i += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
+  await flushMessageCache();
 }
 
 test('a plaintext cache is read once, then replaced with ciphertext', async () => {
