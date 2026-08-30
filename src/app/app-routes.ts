@@ -1065,6 +1065,20 @@ async function startAppCore(
         appState.profile = profile;
       },
     });
+
+    // Attached without waiting for the status to arrive: the editor watches
+    // the line and reapplies itself when the relays fill it in, so there is no
+    // ordering here to get wrong.
+    const { setupStatusEditor } = await import(
+      '../features/profile/status-editor.js'
+    );
+    setupStatusEditor(pubkeyHex, profileSection, true, {
+      getRelays: (): string[] => appState.relays,
+      publishEvent: publishEventToRelays,
+      onPublished: (): void => {
+        handleRoute();
+      },
+    });
   }
 
   try {
