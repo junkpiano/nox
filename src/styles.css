@@ -333,6 +333,12 @@ body.theme-nox textarea {
 
 .nox-input {
   width: 100%;
+  /* Not a typographic choice. WebKit and Chrome enlarge the whole page when a
+     focused field is under 16px, and the zoom stays after the field loses
+     focus - signing in left the app magnified, which no native app does.
+     `maximum-scale=1` on the viewport would also stop it, by taking pinch
+     zoom away from the people who need it most. */
+  font-size: 16px;
   border: 1px solid var(--nox-border-strong);
   border-radius: 1rem;
   background: rgba(5, 10, 24, 0.72);
@@ -957,7 +963,9 @@ body.theme-nox textarea {
   /* Clear the tab bar so the last post is never trapped behind it. */
   main {
     padding-bottom: calc(
-      var(--nox-tabbar-height) + var(--nox-safe-bottom) + 1rem
+      var(--nox-tabbar-height) +
+      var(--nox-safe-bottom) +
+      1rem
     );
   }
 
