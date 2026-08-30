@@ -13,8 +13,10 @@
  * make both wrong.
  */
 
+import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
+import { getSessionPrivateKey } from '../../common/session.js';
 
 export const USER_STATUS_KIND: number = 30315;
 
@@ -32,6 +34,37 @@ const STALE_AFTER_SECONDS: number = 7 * 86_400;
 
 /** One line under a name has room for a sentence, not a paragraph. */
 const MAX_TEXT_LENGTH: number = 140;
+
+/**
+ * The shape a status is stored in, before signing.
+ *
+ * Separate from publishing so the decisions - which `d`, whether an
+ * `expiration`, what empty means - can be read and tested without a relay or a
+ * key in the room.
+ */
+export function buildUserStatusEvent(params: {
+  pubkeyHex: PubkeyHex;
+  text: string;
+  expiresInSeconds: number | null;
+  now: number;
+}): Omit<NostrEvent, 'id' | 'sig'> {
+  const tags: string[][] = [['d', GENERAL]];
+  if (params.expiresInSeconds !== null) {
+    // Absolute, because a reader compares it against its own clock and has no
+    // way to know when a duration started.
+    tags.push(['expiration', String(params.now + params.expiresInSeconds)]);
+  }
+
+  return {
+    kind: USER_STATUS_KIND,
+    pubkey: params.pubkeyHex,
+    created_at: params.now,
+    tags,
+    // Held to the same shape this client imposes on everyone else's status.
+    // Publishing something nox would refuse to display would be strange.
+    content: flatten(params.text).slice(0, MAX_TEXT_LENGTH),
+  };
+}
 
 export interface UserStatus {
   text: string;
@@ -243,4 +276,43 @@ export async function fetchUserStatuses(params: {
     }
   }
   return result;
+}
+
+/**
+ * Signs a status with whatever holds the key.
+ *
+ * An extension when there is one, the session key otherwise - the same two
+ * routes every other published event takes.
+ */
+export async function signUserStatusEvent(params: {
+  pubkeyHex: PubkeyHex;
+  text: string;
+  expiresInSeconds: number | null;
+}): Promise<NostrEvent> {
+  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = buildUserStatusEvent({
+    pubkeyHex: params.pubkeyHex,
+    text: params.text,
+    expiresInSeconds: params.expiresInSeconds,
+    now: Math.floor(Date.now() / 1000),
+  });
+
+  const extension = (
+    window as unknown as {
+      nostr?: {
+        signEvent?: (e: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent>;
+      };
+    }
+  ).nostr;
+
+  if (extension?.signEvent) {
+    return extension.signEvent(unsignedEvent);
+  }
+
+  const privateKey: Uint8Array | null = getSessionPrivateKey();
+  if (!privateKey) {
+    throw new Error(
+      'No signing method available (extension or private key required).',
+    );
+  }
+  return finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
 }

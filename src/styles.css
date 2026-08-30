@@ -957,7 +957,9 @@ body.theme-nox textarea {
   /* Clear the tab bar so the last post is never trapped behind it. */
   main {
     padding-bottom: calc(
-      var(--nox-tabbar-height) + var(--nox-safe-bottom) + 1rem
+      var(--nox-tabbar-height) +
+      var(--nox-safe-bottom) +
+      1rem
     );
   }
 
@@ -1302,4 +1304,54 @@ body.theme-nox textarea {
 .nox-legal-link:hover {
   color: var(--nox-text-muted);
   text-decoration: underline;
+}
+
+/* The status line doubles as its own edit control on your own profile. It has
+   to look pressable without becoming a button: it is still a sentence about
+   what you are doing, and the page is quieter for keeping it one. */
+.nox-status-editable {
+  cursor: pointer;
+  border-radius: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  transition: background-color 120ms ease;
+}
+
+.nox-status-editable:hover,
+.nox-status-editable:focus-visible {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.nox-status-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  text-align: left;
+}
+
+.nox-status-expiry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--nox-text-dim);
+}
+
+.nox-status-expiry-label {
+  font-weight: 600;
+}
+
+.nox-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.nox-status-message:empty {
+  display: none;
+}
+
+.nox-status-message {
+  font-size: 0.8rem;
+  color: var(--nox-text-dim);
 }

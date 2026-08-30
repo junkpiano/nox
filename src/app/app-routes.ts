@@ -1065,6 +1065,19 @@ async function startAppCore(
         appState.profile = profile;
       },
     });
+
+    // The status line is fetched asynchronously, so the editor is attached
+    // after it settles rather than racing it for an empty element.
+    const { setupStatusEditor } = await import(
+      '../features/profile/status-editor.js'
+    );
+    setupStatusEditor(pubkeyHex, profileSection, true, {
+      getRelays: (): string[] => appState.relays,
+      publishEvent: publishEventToRelays,
+      onPublished: (): void => {
+        handleRoute();
+      },
+    });
   }
 
   try {
