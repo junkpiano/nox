@@ -1,3 +1,5 @@
+import { hidesWallet } from './platform.js';
+
 interface NavigationOptions {
   navigateTo: (path: string) => void;
   onLogout: () => void;
@@ -182,6 +184,16 @@ export function setupNavigation(options: NavigationOptions): void {
         options.navigateTo(href);
       })();
     });
+  }
+
+  // Where a store does not allow a wallet, the way in is removed rather than
+  // left to fail: an entry that leads nowhere is worse than no entry.
+  if (hidesWallet()) {
+    for (const element of document.querySelectorAll<HTMLElement>(
+      '#nav-wallet, [data-nav-target="nav-wallet"]',
+    )) {
+      element.style.display = 'none';
+    }
   }
 
   if (signInButton) {
