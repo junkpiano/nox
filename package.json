@@ -12,7 +12,7 @@
     "format:write": "biome format --write .",
     "lint": "biome lint .",
     "check": "biome check .",
-    "test": "tsc -p tsconfig.test.json && node --test .tmp/test-dist/tests/*.test.js",
+    "test": "rm -rf .tmp/test-dist && tsc -p tsconfig.test.json && node --test .tmp/test-dist/tests/*.test.js",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
