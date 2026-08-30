@@ -121,6 +121,10 @@ function showReportDialog(
     <p class="mb-3 text-sm">
       Reports are public and are sent to relay operators.
     </p>
+    <label class="mb-3 flex items-start gap-2 text-sm">
+      <input id="report-mute" type="checkbox" checked class="mt-0.5" />
+      <span>Also mute this account, so you stop seeing them here.</span>
+    </label>
     <label class="nox-field-label mb-1 block text-xs font-semibold uppercase tracking-wide" for="report-type">
       Reason
     </label>
@@ -169,8 +173,29 @@ function showReportDialog(
           ...(comment ? { comment } : {}),
           relays: options.getRelays(),
         });
+        // Reporting reaches relay operators, which is somebody else's queue and
+        // some other day. Muting is the part that changes what this person sees
+        // now, and a report that visibly does nothing is not protection.
+        const alsoMute: boolean =
+          (overlay.querySelector('#report-mute') as HTMLInputElement | null)
+            ?.checked ?? false;
+        let muted: boolean = false;
+        if (alsoMute && !isMuted(pubkey)) {
+          try {
+            await muteUser(pubkey, options.getRelays());
+            muted = true;
+          } catch (error: unknown) {
+            // The report went through; say so rather than implying it did not.
+            console.error('Failed to mute after reporting:', error);
+          }
+        }
+
         closeOverlay();
-        alert('Report submitted.');
+        alert(
+          muted
+            ? 'Report submitted. You will not see this account here any more.'
+            : 'Report submitted.',
+        );
       } catch (error: unknown) {
         console.error('Failed to report content:', error);
         confirmButton.disabled = false;
