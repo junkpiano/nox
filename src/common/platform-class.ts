@@ -9,9 +9,13 @@
  */
 
 import { isNativeRuntime } from './native-http.js';
+import { currentPlatform } from './platform.js';
 
 export function applyPlatformClass(): void {
   if (isNativeRuntime()) {
     document.documentElement.dataset.runtime = 'native';
   }
+  // Not for layout - that branches on width. This is for the handful of
+  // features a particular store does not allow.
+  document.documentElement.dataset.platform = currentPlatform();
 }

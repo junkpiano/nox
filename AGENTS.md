@@ -251,6 +251,23 @@ Build: `bun run android:dev`, `bun run android:build`, `bun run android:bundle`.
 Signing and release steps are in `docs/android-release.md`; iOS CI is in
 `docs/ios-testflight.md`.
 
+### Deciding what a particular store allows
+
+Layout branches on viewport width, not the runtime, and that stays true.
+`platform.ts` exists for a different question: the App Store treats a connected
+Lightning wallet as a wallet and asks that wallets come from developers
+registered as organisations, while Google's policy exempts non-custodial ones.
+So the wallet is hidden on **native iOS only** - a browser is `web` even on an
+iPhone, because nobody using Safari went through App Review.
+
+Zapping is unaffected. Without a connected wallet the composer shows the
+invoice as a QR code, which is a payment request rather than a wallet, and is
+how zapping worked before wallet support existed.
+
+Both the drawer entry and the route are closed. Hiding a nav item is not the
+same as closing a door someone can still type, link to, or reach through
+history.
+
 ### Deciding what is native-only
 
 Layout branches on **viewport width**, not on the runtime, so the mobile web

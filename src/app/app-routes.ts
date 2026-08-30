@@ -6,6 +6,7 @@ import {
 } from '../common/db/index.js';
 import { setActiveNav } from '../common/navigation.js';
 import { isNip05Identifier, resolveNip05 } from '../common/nip05.js';
+import { hidesWallet } from '../common/platform.js';
 import {
   clearSessionPrivateKey,
   setSessionPrivateKeyFromRaw,
@@ -521,6 +522,11 @@ export function handleRoute(scrollRestoreState?: unknown): void {
         output,
         getRelays: (): string[] => appState.relays,
       });
+    } else if (path === '/wallet' && hidesWallet()) {
+      // Hiding the drawer entry is not the same as closing the door: this
+      // route is reachable by typing it, by an old link, and by history.
+      replaceAppHistoryPath('/home');
+      await loadHomePage(isRouteActive);
     } else if (path === '/wallet') {
       resetNotificationsButtonState();
       const { loadWalletPage } = await getWalletPageModule();
