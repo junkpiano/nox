@@ -1066,8 +1066,9 @@ async function startAppCore(
       },
     });
 
-    // The status line is fetched asynchronously, so the editor is attached
-    // after it settles rather than racing it for an empty element.
+    // Attached without waiting for the status to arrive: the editor watches
+    // the line and reapplies itself when the relays fill it in, so there is no
+    // ordering here to get wrong.
     const { setupStatusEditor } = await import(
       '../features/profile/status-editor.js'
     );

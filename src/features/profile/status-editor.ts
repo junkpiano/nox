@@ -102,17 +102,70 @@ export function setupStatusEditor(
   // a first one.
   line.classList.remove('hidden');
   line.classList.add('nox-status-editable');
-  if (!line.textContent?.trim()) {
-    line.textContent = 'Set a status';
-    line.dataset.empty = 'true';
-  }
-  line.setAttribute('role', 'button');
-  line.setAttribute('tabindex', '0');
-  line.setAttribute('title', 'Set what you are up to');
+
+  /**
+   * Puts the label and the pencil back, whatever the line currently says.
+   *
+   * The status arrives from the relays after this runs, and filling it in
+   * replaces the line's contents - which would take the pencil with it. Rather
+   * than trying to be attached at the right moment, this watches and reapplies:
+   * there is no ordering to get wrong that way.
+   */
+  const decorate = (): void => {
+    const existing: HTMLElement | null = line.querySelector('.nox-status-text');
+    const text: string = (
+      existing ? existing.textContent : line.textContent
+    )?.trim();
+    const isEmpty: boolean = !text;
+
+    line.dataset.empty = isEmpty ? 'true' : 'false';
+    line.setAttribute('role', 'button');
+    line.setAttribute('tabindex', '0');
+    line.setAttribute(
+      'aria-label',
+      isEmpty ? 'Set a status' : `Edit your status: ${text}`,
+    );
+    line.setAttribute('title', 'Set what you are up to');
+
+    if (existing && line.querySelector('.nox-status-pencil')) {
+      return;
+    }
+
+    // A pencil, because without one this reads as someone's status rather than
+    // as a control - which is exactly how it reads on everyone else's profile.
+    const label: HTMLSpanElement = document.createElement('span');
+    label.className = 'nox-status-text';
+    label.textContent = isEmpty ? 'Set a status' : text;
+
+    const pencil: HTMLSpanElement = document.createElement('span');
+    pencil.className = 'nox-status-pencil';
+    pencil.setAttribute('aria-hidden', 'true');
+    pencil.textContent = '✎';
+
+    observer.disconnect();
+    // Pencil first: it stays put while the status beside it changes length,
+    // so the thing you press is always in the same place.
+    line.replaceChildren(pencil, label);
+    observer.observe(line, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  };
+
+  const observer: MutationObserver = new MutationObserver(decorate);
+  decorate();
+  observer.observe(line, {
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
 
   const open = (): void => {
     const current: string =
-      line.dataset.empty === 'true' ? '' : (line.textContent ?? '').trim();
+      line.dataset.empty === 'true'
+        ? ''
+        : (line.querySelector('.nox-status-text')?.textContent ?? '').trim();
     panel.innerHTML = editorMarkup(current);
     panel.classList.remove('hidden');
     line.classList.add('hidden');

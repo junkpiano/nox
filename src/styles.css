@@ -1437,3 +1437,23 @@ body.theme-nox textarea {
 .nox-status-button.is-primary:hover {
   background: var(--nox-accent-strong);
 }
+
+/* Your own status is a control; everyone else's is a sentence. The pencil is
+   the only thing that says so, so it travels with the line rather than sitting
+   in the corner of the card. */
+.nox-status-editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.nox-status-pencil {
+  flex: none;
+  opacity: 0.55;
+  font-size: 0.85em;
+}
+
+.nox-status-editable:hover .nox-status-pencil,
+.nox-status-editable:focus-visible .nox-status-pencil {
+  opacity: 0.9;
+}
