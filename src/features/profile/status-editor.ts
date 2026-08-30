@@ -46,23 +46,31 @@ function editorMarkup(current: string): string {
 
   return `
     <form id="status-form" class="nox-status-editor">
-      <input
-        id="status-text"
-        name="status-text"
-        type="text"
-        maxlength="140"
-        placeholder="What are you up to?"
-        class="nox-input px-3 py-2"
-        value="${current.replace(/"/g, '&quot;')}"
-      />
+      <div class="nox-status-field">
+        <input
+          id="status-text"
+          name="status-text"
+          type="text"
+          maxlength="140"
+          placeholder="What are you up to?"
+          class="nox-input px-3 py-2"
+          value="${current.replace(/"/g, '&quot;')}"
+        />
+        <button
+          type="button"
+          id="status-clear"
+          class="nox-status-clear"
+          aria-label="Clear status"
+          title="Clear your status"
+        >&times;</button>
+      </div>
       <div class="nox-status-expiry">
         <span class="nox-status-expiry-label">Clears after</span>
         ${choices}
       </div>
       <div class="nox-status-actions">
-        <button type="submit" class="nox-primary-button px-4 py-2">Save</button>
-        <button type="button" id="status-clear" class="nox-secondary-button px-4 py-2">Clear</button>
-        <button type="button" id="status-cancel" class="nox-muted-button px-4 py-2">Cancel</button>
+        <button type="submit" class="nox-status-button is-primary">Save</button>
+        <button type="button" id="status-cancel" class="nox-status-button">Cancel</button>
       </div>
       <p id="status-message" class="nox-status-message" role="status"></p>
     </form>
@@ -165,13 +173,32 @@ export function setupStatusEditor(
         void publish(text, EXPIRY_CHOICES[index]?.seconds ?? null);
       });
 
-    panel
-      .querySelector('#status-clear')
-      ?.addEventListener('click', (): void => {
-        // Clearing is publishing an empty status: NIP-38 has no delete, and
-        // every reader already treats empty as nothing to show.
-        void publish('', null);
-      });
+    // Empties the field and stops there. A cross inside an input means "clear
+    // this box" everywhere else, and making it reach the network instead would
+    // put a destructive, irreversible action behind a small unlabelled icon.
+    // Saving an empty status is what clears it, and that is one deliberate tap
+    // away.
+    const field: HTMLInputElement | null = panel.querySelector('#status-text');
+    const clearButton: HTMLElement | null =
+      panel.querySelector('#status-clear');
+
+    const syncClearVisibility = (): void => {
+      clearButton?.classList.toggle('hidden', !field?.value);
+    };
+    syncClearVisibility();
+    field?.addEventListener('input', syncClearVisibility);
+
+    clearButton?.addEventListener('click', (): void => {
+      if (!field) {
+        return;
+      }
+      field.value = '';
+      field.focus();
+      syncClearVisibility();
+      if (message) {
+        message.textContent = 'Save to clear your status.';
+      }
+    });
   };
 
   line.addEventListener('click', open);

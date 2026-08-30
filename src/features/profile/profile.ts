@@ -537,7 +537,7 @@ export function renderProfile(
         </h2>
         <p id="profile-status" class="hidden text-sm mt-1 text-center max-w-2xl break-words px-4 ${banner && !isEnergySavingMode ? 'text-white/80 drop-shadow' : 'text-gray-500'}"></p>
         <div id="profile-status-editor" class="hidden mt-2 w-full max-w-md px-4"></div>
-        ${bioHtml ? `<p class="${banner && !isEnergySavingMode ? 'text-white/90 drop-shadow' : 'text-gray-600'} text-sm mt-1 text-center max-w-2xl break-words px-4 w-full whitespace-pre-wrap">${bioHtml}</p>` : ''}
+        ${bioHtml ? `<p class="nox-post-text ${banner && !isEnergySavingMode ? 'text-white/90 drop-shadow' : 'text-gray-600'} text-sm mt-1 text-center max-w-2xl break-words px-4 w-full whitespace-pre-wrap">${bioHtml}</p>` : ''}
         ${websiteUrl ? `<p class="text-sm mt-2 text-center ${banner && !isEnergySavingMode ? 'text-blue-100 drop-shadow' : 'text-blue-600'}"><a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener noreferrer" class="underline break-all">${escapeHtml(websiteLabel)}</a></p>` : ''}
         <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
           <div id="profile-owner-action"></div>

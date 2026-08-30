@@ -1321,10 +1321,19 @@ body.theme-nox textarea {
   background: rgba(148, 163, 184, 0.12);
 }
 
+/* Its own surface, because what sits behind it is a photograph the person
+   chose. No text colour is safe against an arbitrary image, so the editor
+   brings its own ground rather than trying to contrast with everything. The
+   auth card solves the same problem the same way. */
 .nox-status-editor {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 1rem;
+  background: rgba(6, 11, 24, 0.86);
+  backdrop-filter: blur(8px);
   text-align: left;
 }
 
@@ -1334,11 +1343,19 @@ body.theme-nox textarea {
   align-items: center;
   gap: 0.75rem;
   font-size: 0.8rem;
-  color: var(--nox-text-dim);
+  color: var(--nox-text-muted);
 }
 
 .nox-status-expiry-label {
   font-weight: 600;
+}
+
+/* Tinted to the app rather than left as the browser's black circles, which
+   were invisible against the card and against the banner alike. */
+.nox-status-expiry input[type="radio"] {
+  accent-color: var(--nox-accent, #7c8cf8);
+  width: 1rem;
+  height: 1rem;
 }
 
 .nox-status-actions {
@@ -1354,4 +1371,69 @@ body.theme-nox textarea {
 .nox-status-message {
   font-size: 0.8rem;
   color: var(--nox-text-dim);
+}
+
+/* The clear control lives inside the field it clears. */
+.nox-status-field {
+  position: relative;
+  display: flex;
+}
+
+.nox-status-field .nox-input {
+  padding-right: 2.5rem;
+}
+
+.nox-status-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Comfortably tappable without crowding the text it sits beside. */
+  width: 1.75rem;
+  height: 1.75rem;
+  transform: translateY(-50%);
+  border: none;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--nox-text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nox-status-clear:hover {
+  background: rgba(148, 163, 184, 0.28);
+  color: var(--nox-text);
+}
+
+/* Matched to the Edit profile button a few pixels below, which is `rounded-lg`
+   with `text-sm font-semibold`. The pill-shaped primary button belongs to the
+   compose and auth flows; borrowing it here put two different button languages
+   on one screen. */
+.nox-status-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.5rem;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--nox-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.nox-status-button:hover {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.nox-status-button.is-primary {
+  border-color: transparent;
+  background: var(--nox-accent);
+  color: #0b1020;
+}
+
+.nox-status-button.is-primary:hover {
+  background: var(--nox-accent-strong);
 }
