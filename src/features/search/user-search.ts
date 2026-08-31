@@ -173,14 +173,22 @@ function rankOf(
 interface RankedResult {
   result: UserSearchResult;
   rank: number;
+  hasNip05: boolean;
 }
 
 /**
  * Orders results by how likely each is to be the person meant.
  *
- * Note this cannot run on a stream: the first profile to arrive is the one
- * edited most recently, which is exactly the ordering being discarded. The
- * whole set is collected before anything is drawn.
+ * Within a tier a claimed NIP-05 comes first, and only then edit recency.
+ * The tiers alone leave the exact-name tier a wall of identical strangers -
+ * a search for "jack" fills it - and inside that wall "edited most recently"
+ * is the very signal established as worthless. It is a weak tie-break, since
+ * the claim is not checked against the domain here, but claiming one at all
+ * is more than a throwaway does.
+ *
+ * Note none of this can run on a stream: the first profile to arrive is the
+ * one edited most recently, which is exactly the ordering being discarded.
+ * The whole set is collected before anything is drawn.
  */
 export function rankUserResults(
   results: UserSearchResult[],
@@ -192,13 +200,18 @@ export function rankUserResults(
       (result: UserSearchResult): RankedResult => ({
         result,
         rank: rankOf(result, query, followed),
+        hasNip05: Boolean(oneLine(result.profile.nip05, MAX_NIP05_LENGTH)),
       }),
     )
-    .sort((a: RankedResult, b: RankedResult): number =>
-      a.rank !== b.rank
-        ? a.rank - b.rank
-        : b.result.createdAt - a.result.createdAt,
-    )
+    .sort((a: RankedResult, b: RankedResult): number => {
+      if (a.rank !== b.rank) {
+        return a.rank - b.rank;
+      }
+      if (a.hasNip05 !== b.hasNip05) {
+        return a.hasNip05 ? -1 : 1;
+      }
+      return b.result.createdAt - a.result.createdAt;
+    })
     .map((entry: RankedResult): UserSearchResult => entry.result);
 }
 

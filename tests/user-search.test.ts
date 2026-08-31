@@ -112,7 +112,50 @@ test('a claimed NIP-05 outranks a profile with none', () => {
   assert.equal(ranked[0]?.pubkey, key('f'));
 });
 
-test('within one tier the more recently edited profile comes first', () => {
+test('within one tier a claimed NIP-05 comes before edit recency', () => {
+  // The exact-name tier is a wall of identical strangers - a search for
+  // "jack" fills it - and inside that wall "edited most recently" is the
+  // signal this whole ranking exists to discard.
+  const recent: UserSearchResult = result('1', { name: 'jack' }, 999);
+  const claimed: UserSearchResult = result(
+    '2',
+    { name: 'jack', nip05: 'jack@example.com' },
+    1,
+  );
+
+  const ranked: UserSearchResult[] = rankUserResults(
+    [recent, claimed],
+    'jack',
+    NOBODY,
+  );
+
+  assert.equal(ranked[0]?.pubkey, key('2'));
+});
+
+test('a NIP-05 does not promote anyone out of their tier', () => {
+  // A stranger with a verified-looking name must still lose to someone the
+  // viewer actually follows, and to an exact match.
+  const strangerWithNip05: UserSearchResult = result(
+    '1',
+    { name: 'jackpot', nip05: 'jackpot@example.com' },
+    999,
+  );
+  const followedBare: UserSearchResult = result('2', { name: 'jackal' }, 1);
+  const exactBare: UserSearchResult = result('3', { name: 'jack' }, 1);
+
+  const ranked: UserSearchResult[] = rankUserResults(
+    [strangerWithNip05, followedBare, exactBare],
+    'jack',
+    new Set<PubkeyHex>([key('2')]),
+  );
+
+  assert.deepEqual(
+    ranked.map((entry: UserSearchResult): PubkeyHex => entry.pubkey),
+    [key('2'), key('3'), key('1')],
+  );
+});
+
+test('edit recency still breaks a tie when NIP-05 cannot', () => {
   const older: UserSearchResult = result('1', { name: 'jackal' }, 100);
   const newer: UserSearchResult = result('2', { name: 'jackal' }, 200);
 
