@@ -33,7 +33,10 @@ const handlers: Map<AppEventName, Set<Handler>> = new Map();
 
 const hasWindow: boolean = ((): boolean => {
   try {
-    return typeof window !== 'undefined' && typeof window.dispatchEvent === 'function';
+    return (
+      typeof window !== 'undefined' &&
+      typeof window.dispatchEvent === 'function'
+    );
   } catch {
     return false;
   }

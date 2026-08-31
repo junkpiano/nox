@@ -25,7 +25,9 @@ export type Asker = (message: string) => boolean;
 
 const hasWindowConfirm: boolean = ((): boolean => {
   try {
-    return typeof window !== 'undefined' && typeof window.confirm === 'function';
+    return (
+      typeof window !== 'undefined' && typeof window.confirm === 'function'
+    );
   } catch {
     return false;
   }
