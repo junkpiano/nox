@@ -126,6 +126,33 @@ quietly come to mean two things is worse than one that fails loudly.
 - [ ] Keys: expo-secure-store, and signing
 - [ ] Profile, thread, notifications, messages, wallet, search, relays, settings
 
+## The storage layer is deliberately not done yet
+
+It is the obvious next piece and it was left alone on purpose.
+
+The shared stores do not use IndexedDB as a key/value box. They use compound
+indexes (`index('pubkey_created_at')`), cursors with a direction
+(`openCursor(range, 'prev')`), `IDBKeyRange` bounds and `count()`. A faithful
+shim over SQLite is four to six hundred lines whose correctness lives in key
+ordering, cursor direction and range boundaries - the parts that are easy to
+get almost right.
+
+Three things make "almost right" the wrong bet here:
+
+- the failure mode is a cache that quietly corrupts on someone's phone, which
+  looks like data loss rather than like a bug;
+- the web suite has no coverage of the DB layer at all - the only two tests
+  that touch it fail on `main` as well;
+- writing it means changing shipped web code, and this plan's own rule is that
+  the web app only changes for seams that are provably behaviour-identical.
+
+So it waits. Everything else on this branch is either native-only and additive,
+or a seam whose web behaviour is unchanged and checked by the existing suite.
+
+Until it exists, native fetches from relays every time. That is slower and it
+is not what CLAUDE.md asks for, and it is the honest state rather than a
+cache that might be lying.
+
 ## Order of work
 
 1. **Adapters first.** Nothing above them can be trusted until they exist.
