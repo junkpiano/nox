@@ -115,6 +115,16 @@ export async function publishNote(content: string): Promise<PublishResult> {
     key,
   ) as unknown as NostrEvent;
 
+  return publishSigned(event);
+}
+
+/**
+ * Sends an already-signed event to every configured relay.
+ *
+ * Split out so reactions and follow lists deliver by the same route a note
+ * does - one place that decides what "it worked" means, rather than three.
+ */
+export async function publishSigned(event: NostrEvent): Promise<PublishResult> {
   const relays: string[] = getRelays();
   const verdicts = await Promise.all(
     relays.map(

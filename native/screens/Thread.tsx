@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -30,6 +31,8 @@ import {
   isEventDeleted,
 } from '../../src/common/events-queries';
 import { getRelays } from '../../src/features/relays/relays';
+import { getSessionPrivateKey } from '../../src/common/session';
+import { likeEvent, NotSignedInError } from '../lib/interact';
 import type { RootStackParamList } from '../App';
 
 type ThreadRoute = RouteProp<RootStackParamList, 'Thread'>;
@@ -53,6 +56,8 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const { eventId } = route.params;
   const [data, setData] = useState<ThreadData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [liked, setLiked] = useState(false);
+  const [liking, setLiking] = useState(false);
   const navigation = useNavigation<Nav>();
 
   useEffect(() => {
@@ -121,6 +126,28 @@ export default function Thread({ route }: { route: ThreadRoute }) {
 
   const root: NostrEvent = data.root;
 
+  const like = async (): Promise<void> => {
+    setLiking(true);
+    try {
+      const result = await likeEvent(root);
+      if (result.accepted.length === 0) {
+        Alert.alert('Not sent', 'No relay accepted the reaction.');
+        return;
+      }
+      // Marked here rather than optimistically: a like nobody stored is not a
+      // like, and showing it as one would be a small lie that persists.
+      setLiked(true);
+    } catch (e: any) {
+      if (e instanceof NotSignedInError) {
+        Alert.alert('Not signed in', 'Add a key on the You tab to react.');
+      } else {
+        Alert.alert('Could not react', String(e?.message ?? e));
+      }
+    } finally {
+      setLiking(false);
+    }
+  };
+
   return (
     <FlatList
       style={styles.screen}
@@ -143,6 +170,21 @@ export default function Thread({ route }: { route: ThreadRoute }) {
               <Text style={styles.rootContent}>{root.content}</Text>
             )}
           </Pressable>
+          {getSessionPrivateKey() && !data.deleted ? (
+            <Pressable
+              onPress={like}
+              disabled={liking || liked}
+              style={({ pressed }) => [
+                styles.likeButton,
+                (pressed || liking) && styles.likeBusy,
+              ]}
+            >
+              <Text style={liked ? styles.likedText : styles.likeText}>
+                {liked ? 'Liked' : liking ? 'Sending...' : 'Like'}
+              </Text>
+            </Pressable>
+          ) : null}
+
           <Text style={styles.replyHeading}>
             {data.replies.length === 0
               ? 'No replies'
@@ -177,6 +219,18 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   meta: { color: '#5b6b88', fontSize: 11 },
+  likeButton: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  likeBusy: { opacity: 0.5 },
+  likeText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
+  likedText: { color: '#73f0c1', fontWeight: '700', fontSize: 14 },
   replyHeading: {
     color: '#8ea0c0',
     fontSize: 12,

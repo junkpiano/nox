@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import type { RouteProp } from '@react-navigation/native';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Linking,
@@ -23,9 +24,91 @@ import { nip19 } from 'nostr-tools';
 
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import { kvGet } from '../../src/common/kv';
+import { getSessionPrivateKey } from '../../src/common/session';
+import {
+  NotSignedInError,
+  readFollowing,
+  setFollowing,
+  UnknownFollowListError,
+} from '../lib/interact';
 import { loadProfile, type Profile as ProfileData } from '../lib/profile';
 
 type ProfileRoute = RouteProp<RootStackParamList, 'Profile'>;
+
+function viewerPubkey(): PubkeyHex | null {
+  const stored = kvGet('nostr_pubkey');
+  return stored && /^[0-9a-f]{64}$/i.test(stored)
+    ? (stored.toLowerCase() as PubkeyHex)
+    : null;
+}
+
+/**
+ * Follow, when there is a key to sign with.
+ *
+ * The button starts in an unknown state and says so, because the answer needs
+ * a round trip to the relays. Guessing "not following" and correcting later
+ * would show the wrong verb for a second and invite a tap that undoes what the
+ * person already has.
+ */
+function FollowButton({ target }: { target: PubkeyHex }) {
+  const viewer = viewerPubkey();
+  const [following, setFollowingState] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!viewer || !getSessionPrivateKey()) return;
+    void readFollowing(viewer, target)
+      .then(setFollowingState)
+      .catch((): void => setFollowingState(null));
+  }, [viewer, target]);
+
+  if (!viewer || !getSessionPrivateKey() || viewer === target) {
+    return null;
+  }
+
+  const toggle = async (): Promise<void> => {
+    if (following === null) return;
+    setBusy(true);
+    try {
+      const outcome = await setFollowing(viewer, target, !following);
+      if (outcome.result.accepted.length === 0) {
+        Alert.alert('Not sent', 'No relay accepted the change.');
+        return;
+      }
+      setFollowingState(outcome.following);
+    } catch (e: any) {
+      if (e instanceof UnknownFollowListError) {
+        // The refusal that keeps a failed fetch from wiping the whole list.
+        Alert.alert('Your follow list could not be read', String(e.message));
+      } else if (e instanceof NotSignedInError) {
+        Alert.alert('Not signed in', 'Add a key on the You tab to follow.');
+      } else {
+        Alert.alert('Could not change it', String(e?.message ?? e));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={toggle}
+      disabled={busy || following === null}
+      style={[styles.follow, (busy || following === null) && styles.followOff]}
+    >
+      <Text style={styles.followText}>
+        {following === null
+          ? 'Checking...'
+          : busy
+            ? 'Saving...'
+            : following
+              ? 'Unfollow'
+              : 'Follow'}
+      </Text>
+    </Pressable>
+  );
+}
 
 function Header({ profile }: { profile: ProfileData }) {
   const npub: string = nip19.npubEncode(profile.pubkey);
@@ -53,6 +136,8 @@ function Header({ profile }: { profile: ProfileData }) {
         )}
 
         {profile.about ? <Text style={styles.about}>{profile.about}</Text> : null}
+
+        <FollowButton target={profile.pubkey} />
 
         {profile.website ? (
           <Pressable
@@ -144,6 +229,16 @@ const styles = StyleSheet.create({
   npub: { color: '#5b6b88', fontSize: 12, marginTop: 2 },
   about: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 10 },
   website: { color: '#89a8ff', fontSize: 13, marginTop: 8 },
+  follow: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  followOff: { opacity: 0.5 },
+  followText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
   divider: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   post: { paddingHorizontal: 16, paddingVertical: 14 },
   postContent: { color: '#b9c6de', fontSize: 14, lineHeight: 20 },
