@@ -9,6 +9,7 @@ import 'react-native-get-random-values';
 import { registerRootComponent } from 'expo';
 
 import App from './App';
+import { installNativeHttp } from './platform/http';
 import { installNativeStorage } from './platform/storage';
 
 /**
@@ -20,5 +21,6 @@ import { installNativeStorage } from './platform/storage';
  * does, it gets the value rather than a crash.
  */
 installNativeStorage();
+installNativeHttp();
 
 registerRootComponent(App);

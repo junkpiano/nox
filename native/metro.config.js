@@ -36,8 +36,18 @@ config.resolver.nodeModulesPaths = [
  * extension is mapped back here, and only when the TypeScript file actually
  * exists. Anything else falls through to Metro untouched.
  */
+const TAURI_STUB = path.resolve(projectRoot, 'platform/tauri-stub.js');
+
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // The shared code reaches for Tauri behind an isNativeRuntime() guard, so
+  // under React Native the import never runs - but Metro still has to resolve
+  // it at bundle time, and the package is not installed here. The stub throws
+  // if it is ever actually called, which it should not be.
+  if (moduleName.startsWith('@tauri-apps/')) {
+    return { type: 'sourceFile', filePath: TAURI_STUB };
+  }
+
   if (moduleName.startsWith('.') && moduleName.endsWith('.js')) {
     const from = context.originModulePath
       ? path.dirname(context.originModulePath)
