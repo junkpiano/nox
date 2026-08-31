@@ -25,10 +25,15 @@ import {
   View,
 } from 'react-native';
 import { nip19 } from 'nostr-tools';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import type { PubkeyHex } from '../../types/nostr';
 import { kvGet, kvSet } from '../../src/common/kv';
+import type { RootStackParamList } from '../App';
 import { loadHomeTimeline, type TimelinePost } from '../lib/home-timeline';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /** The same key the web app stores the viewer's pubkey under. */
 const PUBKEY_KEY = 'nostr_pubkey';
@@ -75,14 +80,17 @@ function decodeIdentity(input: string): PubkeyHex | null {
   return null;
 }
 
-function Row({ post }: { post: TimelinePost }) {
+function Row({ post, onOpen }: { post: TimelinePost; onOpen: () => void }) {
   useEffect(() => {
     bumpMounted(1);
     return () => bumpMounted(-1);
   }, []);
 
   return (
-    <View style={styles.row}>
+    <Pressable
+      onPress={onOpen}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
       {post.picture ? (
         <Image source={{ uri: post.picture }} style={styles.avatar} />
       ) : (
@@ -104,7 +112,7 @@ function Row({ post }: { post: TimelinePost }) {
           {post.content}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -157,6 +165,7 @@ export default function Home() {
   const [offset, setOffset] = useState(0);
 
   const live = useMountedRows();
+  const navigation = useNavigation<Nav>();
 
   const load = useCallback(
     async (viewer: PubkeyHex): Promise<void> => {
@@ -214,7 +223,14 @@ export default function Home() {
         <FlatList
           data={posts}
           keyExtractor={(p) => p.id}
-          renderItem={({ item }) => <Row post={item} />}
+          renderItem={({ item }) => (
+            <Row
+              post={item}
+              onOpen={() =>
+                navigation.navigate('Profile', { pubkey: item.pubkey })
+              }
+            />
+          )}
           onScroll={(e) => setOffset(e.nativeEvent.contentOffset.y)}
           scrollEventThrottle={16}
           ItemSeparatorComponent={() => <View style={styles.sep} />}
@@ -253,6 +269,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   row: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
+  rowPressed: { backgroundColor: 'rgba(137,168,255,0.08)' },
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#25406e' },
   avatarBlank: { opacity: 0.5 },
   rowBody: { flex: 1 },

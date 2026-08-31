@@ -15,11 +15,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import type { PubkeyHex } from '../types/nostr';
 import Home from './screens/Home';
+import Profile from './screens/Profile';
 import SharedCodeCheck from './screens/SharedCodeCheck';
 
 export type RootStackParamList = {
   Home: undefined;
+  Profile: { pubkey: PubkeyHex };
   SharedCodeCheck: undefined;
 };
 
@@ -53,6 +56,11 @@ export default function App() {
             name="Home"
             component={Home}
             options={{ title: 'nox' }}
+          />
+          <Stack.Screen
+            name="Profile"
+            component={Profile}
+            options={{ title: 'Profile' }}
           />
           <Stack.Screen
             name="SharedCodeCheck"
