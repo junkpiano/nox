@@ -23,6 +23,7 @@ import { Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { PubkeyHex } from '../types/nostr';
+import Account from './screens/Account';
 import Global from './screens/Global';
 import Home from './screens/Home';
 import Notifications from './screens/Notifications';
@@ -44,6 +45,7 @@ export type TabParamList = {
   Search: undefined;
   Alerts: undefined;
   Relays: undefined;
+  Account: undefined;
   Checks: undefined;
 };
 
@@ -113,6 +115,11 @@ function TabBar() {
         name="Relays"
         component={Relays}
         options={{ title: 'Relays', tabBarIcon: icon('📡') }}
+      />
+      <Tabs.Screen
+        name="Account"
+        component={Account}
+        options={{ title: 'You', tabBarIcon: icon('👤') }}
       />
       <Tabs.Screen
         name="Checks"

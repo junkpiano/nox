@@ -12,6 +12,7 @@ import App from './App';
 import { installNativeDatabase } from './platform/database';
 import { installNativeHttp } from './platform/http';
 import { installNativeSecrets } from './platform/secrets';
+import { restoreSessionPrivateKey } from '../src/common/session';
 import { installNativeStorage } from './platform/storage';
 
 /**
@@ -26,5 +27,13 @@ installNativeStorage();
 installNativeHttp();
 installNativeDatabase();
 installNativeSecrets();
+
+/**
+ * The key lives in the credential store, which cannot be read synchronously.
+ * Warming the cache here means a signature is possible as soon as a screen
+ * asks for one, rather than only after that screen happens to await it - and
+ * NIP-42 AUTH can fire during the very first timeline load.
+ */
+void restoreSessionPrivateKey();
 
 registerRootComponent(App);
