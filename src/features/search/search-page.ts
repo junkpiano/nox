@@ -289,6 +289,18 @@ export async function loadSearchPage(
     routeIsActive,
   });
 
+  // A pasted key is not a phrase. Handing it to the post search as text gets
+  // it ignored as an unmatched term, and the relay answers with a hundred
+  // arbitrary recent posts under a header claiming they are results for that
+  // key. The person it names is the answer; there is nothing else to look for.
+  if (decodePubkeyQuery(query)) {
+    if (connectingMsg) {
+      connectingMsg.style.display = 'none';
+    }
+    updateSearchHeader(query, 0);
+    return;
+  }
+
   const seenEventIds: Set<string> = new Set();
   let renderedCount: number = 0;
   let completedRelays: number = 0;

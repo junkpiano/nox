@@ -379,7 +379,7 @@ function renderUserRow(result: UserSearchResult): string {
   const safePubkey: string = escapeHtml(result.pubkey);
 
   return `
-    <a href="/${safeNpub}" class="user-result flex items-start gap-3 p-3 rounded-lg hover:bg-gray-100 transition-colors" data-pubkey="${safePubkey}">
+    <a href="/${safeNpub}" class="user-result flex items-start gap-3 py-3 rounded-lg hover:bg-gray-100 transition-colors" data-pubkey="${safePubkey}">
       <img src="${escapeHtml(avatar)}" alt="" class="w-10 h-10 rounded-full object-cover flex-shrink-0"
            onerror="this.src='https://robohash.org/${safePubkey}.png';" />
       <div class="min-w-0 flex-1">
@@ -409,7 +409,7 @@ export function renderUserResults(
 
   container.style.display = '';
   container.innerHTML = `
-    <h3 class="font-semibold text-sm text-gray-700 mb-2">People (${results.length})</h3>
+    <h3 class="font-semibold text-sm text-gray-800 mb-2">People (${results.length})</h3>
     <div class="space-y-1 mb-6">
       ${results.map(renderUserRow).join('')}
     </div>
