@@ -13,15 +13,10 @@ a release build, not asserted from a passing type-check.
 | Thread | root post, deletion check, replies — all three from shared `events-queries.ts` |
 | Relay settings | add, remove, refuses to remove the last one; all shared logic |
 | Search | 100 found in 8.0s; the same ranking order the browser produced |
+| Notifications | 432 from others in 2.0s; tapping one opens the right thread |
 | Tabs + stack | native back gesture, pull to refresh |
 | Virtualisation | 51 of 745 rows mounted |
 
-## Built but NOT verified on the device
-
-**Notifications.** The phone went to `unauthorized` between building and
-installing - USB debugging consent drops when the screen locks. It type-checks
-and builds; nobody has watched it run. Re-grant on the phone and open the
-Alerts tab.
 
 Nothing here keeps a second copy of protocol logic. The crypto, the relay
 sockets, the follow list and the relay list are all imported straight out of
