@@ -7,11 +7,24 @@ import type {
 } from '../../../types/nostr';
 import { getProfile as getCachedDbProfile } from '../../common/db/index.js';
 import { renderEvent } from '../../common/event-render.js';
+import { fetchFollowList } from '../../common/events-queries.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { fetchingProfiles, profileCache } from '../../common/timeline-cache.js';
 import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
-import { fetchProfile, getAuthoritativeProfile } from '../profile/profile.js';
+import {
+  fetchProfile,
+  getAuthoritativeProfile,
+  getStoredPubkey,
+} from '../profile/profile.js';
 import { getCachedProfile as getPersistentCachedProfile } from '../profile/profile-cache.js';
+import { getRelays } from '../relays/relays.js';
+import {
+  decodePubkeyQuery,
+  rankUserResults,
+  renderUserResults,
+  searchUsers,
+  type UserSearchResult,
+} from './user-search.js';
 
 export interface SearchPageOptions {
   query: string;
@@ -33,10 +46,12 @@ function updateSearchInputs(query: string): void {
   const searchInputMobile: HTMLInputElement | null = document.getElementById(
     'search-input-mobile',
   ) as HTMLInputElement | null;
-  const clearSearchButton: HTMLElement | null =
-    document.getElementById('clear-search-button');
-  const clearSearchButtonMobile: HTMLElement | null =
-    document.getElementById('clear-search-button-mobile');
+  const clearSearchButton: HTMLElement | null = document.getElementById(
+    'clear-search-button',
+  );
+  const clearSearchButtonMobile: HTMLElement | null = document.getElementById(
+    'clear-search-button-mobile',
+  );
   if (searchInput) {
     searchInput.value = query;
   }
@@ -97,13 +112,124 @@ function updateRenderedProfile(
         nameEl.textContent = `👤 ${getDisplayName(npubStr, renderProfile)}`;
       }
       if (avatarEl) {
-        (avatarEl as HTMLImageElement).src = getAvatarURL(pubkey, renderProfile);
+        (avatarEl as HTMLImageElement).src = getAvatarURL(
+          pubkey,
+          renderProfile,
+        );
       }
     }
   });
 }
 
-export async function loadSearchPage(options: SearchPageOptions): Promise<void> {
+/**
+ * How many profiles to ask each relay for.
+ *
+ * Deliberately far more than are shown: the relay orders by edit recency, so a
+ * narrow ask returns a narrow slice of "recently edited" and the ranking has
+ * nothing better to promote out of it.
+ */
+const USER_SEARCH_LIMIT: number = 100;
+
+/** How many survive the ranking and reach the page, above the posts. */
+const USER_RESULTS_SHOWN: number = 8;
+
+interface UserResultsParams {
+  query: string;
+  relays: string[];
+  container: HTMLElement;
+  activeWebSockets: WebSocket[];
+  routeIsActive: () => boolean;
+}
+
+/**
+ * The viewer's follows, or an empty set when signed out or unreachable.
+ *
+ * Ranking degrades rather than fails without it: everyone simply falls through
+ * to the name and NIP-05 tiers.
+ */
+async function loadFollowedSet(): Promise<Set<PubkeyHex>> {
+  const storedPubkey: PubkeyHex | null = getStoredPubkey();
+  if (!storedPubkey) {
+    return new Set<PubkeyHex>();
+  }
+  try {
+    const followed: PubkeyHex[] = await fetchFollowList(
+      storedPubkey,
+      getRelays(),
+    );
+    return new Set<PubkeyHex>(followed);
+  } catch (error: unknown) {
+    console.warn('[Search] Follow list unavailable; ranking without it', error);
+    return new Set<PubkeyHex>();
+  }
+}
+
+/**
+ * Fills the People block, from a pasted key or from a name.
+ *
+ * Runs alongside the post search rather than before it, and renders into its
+ * own container, so a slow or empty people search never holds up the posts.
+ */
+async function loadUserResults(params: UserResultsParams): Promise<void> {
+  const { query, relays, container, activeWebSockets, routeIsActive } = params;
+
+  const pastedPubkey: PubkeyHex | null = decodePubkeyQuery(query);
+  if (pastedPubkey) {
+    // A key names one person exactly. There is nothing here for a search relay
+    // to match as text, so the profile comes from the viewer's own relays -
+    // and from the cache first, which is where fetchProfile looks.
+    try {
+      const profile: NostrProfile | null = await fetchProfile(
+        pastedPubkey,
+        getRelays(),
+      );
+      if (!routeIsActive()) {
+        return;
+      }
+      renderUserResults(container, [
+        {
+          pubkey: pastedPubkey,
+          npub: nip19.npubEncode(pastedPubkey),
+          // A key with no metadata anywhere is still a real person to open;
+          // the row falls back to a shortened npub.
+          profile: profile ?? {},
+          createdAt: 0,
+        },
+      ]);
+    } catch (error: unknown) {
+      console.warn('[Search] Could not resolve the pasted key', error);
+    }
+    return;
+  }
+
+  // The follow list is fetched alongside the search, not before it: ranking
+  // wants it, but a slow kind 3 must not delay the query.
+  const [results, followed]: [UserSearchResult[], Set<PubkeyHex>] =
+    await Promise.all([
+      searchUsers({
+        query,
+        relays,
+        limit: USER_SEARCH_LIMIT,
+        followed: new Set<PubkeyHex>(),
+        activeWebSockets,
+        isRouteActive: routeIsActive,
+      }),
+      loadFollowedSet(),
+    ]);
+
+  if (!routeIsActive()) {
+    return;
+  }
+
+  renderUserResults(
+    container,
+    rankUserResults(results, query, followed).slice(0, USER_RESULTS_SHOWN),
+  );
+}
+
+export async function loadSearchPage(
+  options: SearchPageOptions,
+): Promise<void> {
   const {
     query,
     relays,
@@ -131,7 +257,18 @@ export async function loadSearchPage(options: SearchPageOptions): Promise<void> 
     return;
   }
 
-  output.innerHTML = '';
+  // Two blocks, so that "no posts found" cannot erase the people above it.
+  output.innerHTML = `
+    <div id="search-users" style="display: none;"></div>
+    <div id="search-posts" class="space-y-4"></div>
+  `;
+  const usersContainer: HTMLElement = output.querySelector(
+    '#search-users',
+  ) as HTMLElement;
+  const postsContainer: HTMLElement = output.querySelector(
+    '#search-posts',
+  ) as HTMLElement;
+
   if (connectingMsg) {
     connectingMsg.style.display = '';
   }
@@ -141,6 +278,26 @@ export async function loadSearchPage(options: SearchPageOptions): Promise<void> 
     if (connectingMsg) {
       connectingMsg.style.display = 'none';
     }
+    return;
+  }
+
+  void loadUserResults({
+    query,
+    relays,
+    container: usersContainer,
+    activeWebSockets,
+    routeIsActive,
+  });
+
+  // A pasted key is not a phrase. Handing it to the post search as text gets
+  // it ignored as an unmatched term, and the relay answers with a hundred
+  // arbitrary recent posts under a header claiming they are results for that
+  // key. The person it names is the answer; there is nothing else to look for.
+  if (decodePubkeyQuery(query)) {
+    if (connectingMsg) {
+      connectingMsg.style.display = 'none';
+    }
+    updateSearchHeader(query, 0);
     return;
   }
 
@@ -158,7 +315,7 @@ export async function loadSearchPage(options: SearchPageOptions): Promise<void> 
     }
     updateSearchHeader(query, renderedCount);
     if (renderedCount === 0) {
-      showSearchMessage(output, 'No results found.');
+      showSearchMessage(postsContainer, 'No posts found.');
     }
   };
 
@@ -223,9 +380,8 @@ export async function loadSearchPage(options: SearchPageOptions): Promise<void> 
           let profile: NostrProfile | null =
             profileCache.get(event.pubkey) || null;
           if (!profileCache.has(event.pubkey)) {
-            const persistentProfile: NostrProfile | null = getPersistentCachedProfile(
-              event.pubkey as PubkeyHex,
-            );
+            const persistentProfile: NostrProfile | null =
+              getPersistentCachedProfile(event.pubkey as PubkeyHex);
             if (persistentProfile) {
               profile = persistentProfile;
               profileCache.set(event.pubkey, persistentProfile);
@@ -274,7 +430,7 @@ export async function loadSearchPage(options: SearchPageOptions): Promise<void> 
           }
 
           const npubStr: Npub = nip19.npubEncode(event.pubkey);
-          renderEvent(event, profile, npubStr, event.pubkey, output);
+          renderEvent(event, profile, npubStr, event.pubkey, postsContainer);
           updateSearchHeader(query, renderedCount);
           return;
         }
@@ -284,7 +440,10 @@ export async function loadSearchPage(options: SearchPageOptions): Promise<void> 
           completeRelay();
         }
       } catch (error: unknown) {
-        console.warn(`[Search] Failed to parse message from ${relayUrl}:`, error);
+        console.warn(
+          `[Search] Failed to parse message from ${relayUrl}:`,
+          error,
+        );
       }
     };
 

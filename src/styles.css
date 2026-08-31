@@ -1045,6 +1045,14 @@ main {
     background: rgba(148, 163, 184, 0.06) !important;
   }
 
+  /* The People block is a sibling of the post cards in the same feed, and the
+     feed panel drops its own gutter on a phone - so the block has to carry the
+     same one, or its heading sits flush against the edge of the screen. */
+  #search-users {
+    padding-left: calc(1rem + var(--nox-safe-left));
+    padding-right: calc(1rem + var(--nox-safe-right));
+  }
+
   /* Sits above the tab bar rather than on top of it. */
   #nav-compose {
     bottom: calc(var(--nox-tabbar-height) + var(--nox-safe-bottom) + 1rem);
