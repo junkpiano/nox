@@ -209,7 +209,13 @@ function normalizeHttpUrl(url: string): string | null {
   }
 }
 
-function normalizeAvatarUrl(url: string): string | null {
+/**
+ * Reduces a URL someone else chose to one an `<img>` may be pointed at.
+ *
+ * Exported because the search results render avatars too: a second call site
+ * that skipped this would happily put `javascript:` in a `src`.
+ */
+export function normalizeAvatarUrl(url: string): string | null {
   try {
     const parsed: URL = new URL(url);
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
