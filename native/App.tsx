@@ -15,9 +15,11 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import Home from './screens/Home';
 import SharedCodeCheck from './screens/SharedCodeCheck';
 
 export type RootStackParamList = {
+  Home: undefined;
   SharedCodeCheck: undefined;
 };
 
@@ -48,9 +50,14 @@ export default function App() {
       <NavigationContainer theme={theme}>
         <Stack.Navigator>
           <Stack.Screen
+            name="Home"
+            component={Home}
+            options={{ title: 'nox' }}
+          />
+          <Stack.Screen
             name="SharedCodeCheck"
             component={SharedCodeCheck}
-            options={{ title: 'nox — shared code' }}
+            options={{ title: 'shared code' }}
           />
         </Stack.Navigator>
       </NavigationContainer>
