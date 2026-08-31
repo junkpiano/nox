@@ -1,34 +1,50 @@
 /**
- * Navigation is `@react-navigation/native-stack` rather than expo-router.
+ * Navigation: a bottom tab bar under a native stack.
  *
- * expo-router was the first choice, for its deep links - a Nostr client wants
- * `nostr:` and npub URLs to open a screen. It had to go: it pulls in
- * react-native-reanimated 4.6, which pulls react-native-worklets 0.12.1, which
- * is outside the `^0.7 || ^0.8 || ^0.9 || ^0.10` range expo-modules-core 57
- * declares. npm only warns about that; the mismatch actually surfaces as a C++
- * compile error deep in expo-modules-core, `no member named 'executeSync'`.
+ * Tabs rather than a drawer, because the web build already moved to a tab bar
+ * on narrow screens and because a tab bar is what the platform expects. The
+ * stack sits above them, so opening a profile or a thread covers the tabs and
+ * comes back with the system's own gesture.
  *
- * native-stack needs neither, and `expo-linking` still gives us the deep links.
+ * `@react-navigation/native-stack`, not expo-router. expo-router was the first
+ * choice for its deep links - a Nostr client wants `nostr:` and npub URLs to
+ * open a screen - and it had to go: it pulls react-native-reanimated 4.6,
+ * which pulls react-native-worklets 0.12.1, outside the
+ * `^0.7 || ^0.8 || ^0.9 || ^0.10` range expo-modules-core 57 declares. npm
+ * only warns; the mismatch actually surfaces as a C++ error inside
+ * expo-modules-core, `no member named 'executeSync'`, after two and a half
+ * minutes of compiling. `expo-linking` still gives us the deep links.
  */
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { PubkeyHex } from '../types/nostr';
+import Global from './screens/Global';
 import Home from './screens/Home';
 import Profile from './screens/Profile';
-import Thread from './screens/Thread';
+import Relays from './screens/Relays';
 import SharedCodeCheck from './screens/SharedCodeCheck';
+import Thread from './screens/Thread';
 
 export type RootStackParamList = {
-  Home: undefined;
+  Tabs: undefined;
   Profile: { pubkey: PubkeyHex };
   Thread: { eventId: string };
-  SharedCodeCheck: undefined;
+};
+
+export type TabParamList = {
+  Home: undefined;
+  Global: undefined;
+  Relays: undefined;
+  Checks: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tabs = createBottomTabNavigator<TabParamList>();
 
 const theme = {
   dark: true,
@@ -48,6 +64,51 @@ const theme = {
   },
 };
 
+/** An emoji stands in for an icon set until the app has one of its own. */
+function icon(glyph: string) {
+  return ({ color }: { color: string }) => (
+    <Text style={{ fontSize: 18, color }}>{glyph}</Text>
+  );
+}
+
+function TabBar() {
+  return (
+    <Tabs.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#0b1220' },
+        headerTintColor: '#f5f8ff',
+        tabBarStyle: {
+          backgroundColor: '#0b1220',
+          borderTopColor: '#25406e',
+        },
+        tabBarActiveTintColor: '#89a8ff',
+        tabBarInactiveTintColor: '#5b6b88',
+      }}
+    >
+      <Tabs.Screen
+        name="Home"
+        component={Home}
+        options={{ title: 'Home', tabBarIcon: icon('🏠') }}
+      />
+      <Tabs.Screen
+        name="Global"
+        component={Global}
+        options={{ title: 'Global', tabBarIcon: icon('🌍') }}
+      />
+      <Tabs.Screen
+        name="Relays"
+        component={Relays}
+        options={{ title: 'Relays', tabBarIcon: icon('📡') }}
+      />
+      <Tabs.Screen
+        name="Checks"
+        component={SharedCodeCheck}
+        options={{ title: 'Shared code', tabBarIcon: icon('🧪') }}
+      />
+    </Tabs.Navigator>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
@@ -55,9 +116,9 @@ export default function App() {
       <NavigationContainer theme={theme}>
         <Stack.Navigator>
           <Stack.Screen
-            name="Home"
-            component={Home}
-            options={{ title: 'nox' }}
+            name="Tabs"
+            component={TabBar}
+            options={{ headerShown: false }}
           />
           <Stack.Screen
             name="Profile"
@@ -68,11 +129,6 @@ export default function App() {
             name="Thread"
             component={Thread}
             options={{ title: 'Thread' }}
-          />
-          <Stack.Screen
-            name="SharedCodeCheck"
-            component={SharedCodeCheck}
-            options={{ title: 'shared code' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

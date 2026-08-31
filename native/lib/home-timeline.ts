@@ -148,6 +148,36 @@ export async function loadHomeTimeline(
   });
 
   onStage('profiles...');
+  const decorated: Decorated = await decorate(relays, events);
+
+  return {
+    posts: decorated.posts,
+    stats: {
+      follows: follows.length,
+      events: events.length,
+      profiles: decorated.profileCount,
+      relays: relays.length,
+      ms: Date.now() - started,
+    },
+  };
+}
+
+/**
+ * Attaches an author to each event, newest profile revision winning.
+ *
+ * Relays disagree about which kind 0 is current, so the copy with the latest
+ * `created_at` is the one shown - the same rule the web app applies.
+ */
+interface Decorated {
+  posts: TimelinePost[];
+  /** How many distinct authors a kind 0 was actually found for. */
+  profileCount: number;
+}
+
+async function decorate(
+  relays: string[],
+  events: NostrEvent[],
+): Promise<Decorated> {
   const seenAuthors: string[] = Array.from(
     new Set(events.map((e: NostrEvent): string => e.pubkey)),
   ).slice(0, MAX_AUTHORS);
@@ -156,7 +186,6 @@ export async function loadHomeTimeline(
     authors: seenAuthors,
   });
 
-  // A person has one profile; keep the most recently published copy.
   const profiles: Map<string, ProfileMeta> = new Map();
   const profileAt: Map<string, number> = new Map();
   for (const event of profileEvents) {
@@ -185,12 +214,41 @@ export async function loadHomeTimeline(
       };
     });
 
+  return { posts, profileCount: profiles.size };
+}
+
+
+/**
+ * The global timeline: the same shape, without an author filter.
+ *
+ * No follow list is fetched, because there is nobody in particular to follow -
+ * this is whatever the configured relays happen to be carrying. A `since`
+ * bound keeps it to the recent past rather than letting each relay decide for
+ * itself how far back `limit` should reach.
+ */
+export async function loadGlobalTimeline(
+  onStage: (stage: string) => void,
+): Promise<TimelineResult> {
+  const started: number = Date.now();
+  const relays: string[] = getRelays();
+  const sinceHours: number = 6;
+
+  onStage('recent posts...');
+  const events: NostrEvent[] = await queryRelays(relays, {
+    kinds: [1],
+    since: Math.floor(Date.now() / 1000) - sinceHours * 3600,
+    limit: POST_LIMIT,
+  });
+
+  onStage('profiles...');
+  const decorated: Decorated = await decorate(relays, events);
+
   return {
-    posts,
+    posts: decorated.posts,
     stats: {
-      follows: follows.length,
+      follows: 0,
       events: events.length,
-      profiles: profiles.size,
+      profiles: decorated.profileCount,
       relays: relays.length,
       ms: Date.now() - started,
     },
