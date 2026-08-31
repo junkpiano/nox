@@ -27,6 +27,7 @@ import Global from './screens/Global';
 import Home from './screens/Home';
 import Profile from './screens/Profile';
 import Relays from './screens/Relays';
+import Search from './screens/Search';
 import SharedCodeCheck from './screens/SharedCodeCheck';
 import Thread from './screens/Thread';
 
@@ -39,6 +40,7 @@ export type RootStackParamList = {
 export type TabParamList = {
   Home: undefined;
   Global: undefined;
+  Search: undefined;
   Relays: undefined;
   Checks: undefined;
 };
@@ -94,6 +96,11 @@ function TabBar() {
         name="Global"
         component={Global}
         options={{ title: 'Global', tabBarIcon: icon('🌍') }}
+      />
+      <Tabs.Screen
+        name="Search"
+        component={Search}
+        options={{ title: 'Search', tabBarIcon: icon('🔍') }}
       />
       <Tabs.Screen
         name="Relays"

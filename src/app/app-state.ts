@@ -21,6 +21,7 @@ import {
   getRelays,
   setRelays,
 } from '../features/relays/relays.js';
+import { SEARCH_RELAYS } from '../features/search/user-ranking.js';
 
 export const output: HTMLElement | null =
   document.getElementById('nostr-output');
@@ -31,10 +32,8 @@ export const composeButton: HTMLElement | null =
 export const connectingMsg: HTMLElement | null =
   document.getElementById('connecting-msg');
 
-export const searchRelays: string[] = [
-  'wss://search.nos.today/',
-  'wss://relay.nostr.band/',
-];
+/** Re-exported from the search feature, which is where the list now lives. */
+export const searchRelays: string[] = [...SEARCH_RELAYS];
 
 // Fetch a solid chunk up-front; pagination ("Load more") is currently disabled for stability.
 export const limit: number = 200;
