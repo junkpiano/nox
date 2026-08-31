@@ -9,6 +9,7 @@ import 'react-native-get-random-values';
 import { registerRootComponent } from 'expo';
 
 import App from './App';
+import { installNativeDatabase } from './platform/database';
 import { installNativeHttp } from './platform/http';
 import { installNativeStorage } from './platform/storage';
 
@@ -22,5 +23,6 @@ import { installNativeStorage } from './platform/storage';
  */
 installNativeStorage();
 installNativeHttp();
+installNativeDatabase();
 
 registerRootComponent(App);

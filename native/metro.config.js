@@ -38,6 +38,15 @@ config.resolver.nodeModulesPaths = [
  */
 const TAURI_STUB = path.resolve(projectRoot, 'platform/tauri-stub.js');
 
+/**
+ * React Native has no IndexedDB, so the shared cache's lowest layer is
+ * swapped for one over SQLite. The stores above it are untouched and still
+ * import `./indexeddb.js`; only this bundle resolves that name elsewhere,
+ * which is why the web keeps real IndexedDB without a line changing.
+ */
+const IDB_SHIM = path.resolve(repoRoot, 'src/common/db/sqlite-idb.ts');
+const IDB_REAL = path.resolve(repoRoot, 'src/common/db/indexeddb.ts');
+
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // The shared code reaches for Tauri behind an isNativeRuntime() guard, so
@@ -46,6 +55,17 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   // if it is ever actually called, which it should not be.
   if (moduleName.startsWith('@tauri-apps/')) {
     return { type: 'sourceFile', filePath: TAURI_STUB };
+  }
+
+  if (moduleName.endsWith('indexeddb.js') || moduleName.endsWith('indexeddb')) {
+    const from = context.originModulePath
+      ? path.dirname(context.originModulePath)
+      : projectRoot;
+    // Only the shared cache's own module, not anything else so named.
+    const target = path.resolve(from, moduleName.replace(/\.js$/, '') + '.ts');
+    if (target === IDB_REAL) {
+      return { type: 'sourceFile', filePath: IDB_SHIM };
+    }
   }
 
   if (moduleName.startsWith('.') && moduleName.endsWith('.js')) {
