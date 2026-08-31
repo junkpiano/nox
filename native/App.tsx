@@ -25,6 +25,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { PubkeyHex } from '../types/nostr';
 import Global from './screens/Global';
 import Home from './screens/Home';
+import Notifications from './screens/Notifications';
 import Profile from './screens/Profile';
 import Relays from './screens/Relays';
 import Search from './screens/Search';
@@ -41,6 +42,7 @@ export type TabParamList = {
   Home: undefined;
   Global: undefined;
   Search: undefined;
+  Alerts: undefined;
   Relays: undefined;
   Checks: undefined;
 };
@@ -101,6 +103,11 @@ function TabBar() {
         name="Search"
         component={Search}
         options={{ title: 'Search', tabBarIcon: icon('🔍') }}
+      />
+      <Tabs.Screen
+        name="Alerts"
+        component={Notifications}
+        options={{ title: 'Alerts', tabBarIcon: icon('🔔') }}
       />
       <Tabs.Screen
         name="Relays"
