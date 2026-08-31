@@ -1,5 +1,6 @@
 import type { NostrProfile, PubkeyHex } from '../../../types/nostr';
 import { isTimelineCacheEnabled } from '../../common/cache-settings.js';
+import { kvGet, kvRemove, kvSet } from '../../common/kv.js';
 
 interface ProfileCacheStore {
   order: PubkeyHex[];
@@ -11,7 +12,7 @@ export const PROFILE_CACHE_LIMIT: number = 1000;
 
 function readStore(): ProfileCacheStore {
   try {
-    const raw: string | null = localStorage.getItem(PROFILE_CACHE_KEY);
+    const raw: string | null = kvGet(PROFILE_CACHE_KEY);
     if (!raw) {
       return { order: [], items: {} };
     }
@@ -34,7 +35,7 @@ function readStore(): ProfileCacheStore {
 
 function writeStore(store: ProfileCacheStore): void {
   try {
-    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(store));
+    kvSet(PROFILE_CACHE_KEY, JSON.stringify(store));
   } catch (error: unknown) {
     console.warn('Failed to persist profile cache:', error);
   }
@@ -85,7 +86,7 @@ export function setCachedProfile(
 
 export function getProfileCacheStats(): { count: number; bytes: number } {
   try {
-    const raw: string | null = localStorage.getItem(PROFILE_CACHE_KEY);
+    const raw: string | null = kvGet(PROFILE_CACHE_KEY);
     if (!raw) {
       return { count: 0, bytes: 0 };
     }
@@ -101,7 +102,7 @@ export function getProfileCacheStats(): { count: number; bytes: number } {
 
 export function clearProfileCache(): void {
   try {
-    localStorage.removeItem(PROFILE_CACHE_KEY);
+    kvRemove(PROFILE_CACHE_KEY);
   } catch {
     // ignore
   }
