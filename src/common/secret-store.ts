@@ -9,6 +9,33 @@
 
 import { isNativeRuntime } from './native-http.js';
 
+/**
+ * Where secrets live on a platform that is neither a browser nor Tauri.
+ *
+ * Three secrets pass through this module - the Nostr private key, the DM
+ * cache key and the NWC connection secret - so one backend covers all of them.
+ *
+ * A backend, once installed, is used *exclusively*: no Tauri, and no
+ * localStorage fallback. That differs from the Tauri path below, which falls
+ * back to localStorage when the keyring misbehaves on the grounds that a
+ * broken keyring must not lock someone out of their own account. The same
+ * reasoning does not carry over. On React Native the fallback store is plain
+ * SQLite, so falling back would quietly move a private key from the platform
+ * credential store into a readable file - a downgrade in protection disguised
+ * as resilience. Failing is the better answer, because it can be seen.
+ */
+export interface SecretBackend {
+  get(key: string): Promise<Uint8Array | null>;
+  set(key: string, value: Uint8Array): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+let backend: SecretBackend | null = null;
+
+export function setSecretBackend(next: SecretBackend | null): void {
+  backend = next;
+}
+
 function hexToBytes(hex: string): Uint8Array {
   const bytes: number[] = [];
   for (let i = 0; i < hex.length; i += 2) {
@@ -67,6 +94,10 @@ function clearLocalStorage(key: string): void {
  * stop carrying a readable key on disk.
  */
 export async function readSecret(key: string): Promise<Uint8Array | null> {
+  if (backend) {
+    return backend.get(key);
+  }
+
   if (!isNativeRuntime()) {
     return readLocalStorage(key);
   }
@@ -100,6 +131,11 @@ export async function writeSecret(
   key: string,
   value: Uint8Array,
 ): Promise<void> {
+  if (backend) {
+    await backend.set(key, value);
+    return;
+  }
+
   if (!isNativeRuntime()) {
     writeLocalStorage(key, value);
     return;
@@ -120,6 +156,11 @@ export async function writeSecret(
 
 /** Clears both stores, so logout cannot leave a copy behind either side. */
 export async function deleteSecret(key: string): Promise<void> {
+  if (backend) {
+    await backend.delete(key);
+    return;
+  }
+
   clearLocalStorage(key);
 
   if (!isNativeRuntime()) {

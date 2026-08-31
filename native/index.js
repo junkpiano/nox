@@ -11,6 +11,7 @@ import { registerRootComponent } from 'expo';
 import App from './App';
 import { installNativeDatabase } from './platform/database';
 import { installNativeHttp } from './platform/http';
+import { installNativeSecrets } from './platform/secrets';
 import { installNativeStorage } from './platform/storage';
 
 /**
@@ -24,5 +25,6 @@ import { installNativeStorage } from './platform/storage';
 installNativeStorage();
 installNativeHttp();
 installNativeDatabase();
+installNativeSecrets();
 
 registerRootComponent(App);
