@@ -80,7 +80,15 @@ function decodeIdentity(input: string): PubkeyHex | null {
   return null;
 }
 
-function Row({ post, onOpen }: { post: TimelinePost; onOpen: () => void }) {
+function Row({
+  post,
+  onOpenThread,
+  onOpenProfile,
+}: {
+  post: TimelinePost;
+  onOpenThread: () => void;
+  onOpenProfile: () => void;
+}) {
   useEffect(() => {
     bumpMounted(1);
     return () => bumpMounted(-1);
@@ -88,17 +96,22 @@ function Row({ post, onOpen }: { post: TimelinePost; onOpen: () => void }) {
 
   return (
     <Pressable
-      onPress={onOpen}
+      onPress={onOpenThread}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      {post.picture ? (
-        <Image source={{ uri: post.picture }} style={styles.avatar} />
-      ) : (
-        <View style={[styles.avatar, styles.avatarBlank]} />
-      )}
+      {/* The avatar and name go to the person; the rest of the row goes to
+          the post. Tapping a face and landing on a thread is the kind of
+          small wrongness that reads as an app not knowing what it is. */}
+      <Pressable onPress={onOpenProfile} hitSlop={6}>
+        {post.picture ? (
+          <Image source={{ uri: post.picture }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatar, styles.avatarBlank]} />
+        )}
+      </Pressable>
       <View style={styles.rowBody}>
         <View style={styles.rowHead}>
-          <Text style={styles.name} numberOfLines={1}>
+          <Text style={styles.name} numberOfLines={1} onPress={onOpenProfile}>
             {post.name}
           </Text>
           {post.kind === 6 ? <Text style={styles.badge}>repost</Text> : null}
@@ -226,7 +239,10 @@ export default function Home() {
           renderItem={({ item }) => (
             <Row
               post={item}
-              onOpen={() =>
+              onOpenThread={() =>
+                navigation.navigate('Thread', { eventId: item.id })
+              }
+              onOpenProfile={() =>
                 navigation.navigate('Profile', { pubkey: item.pubkey })
               }
             />

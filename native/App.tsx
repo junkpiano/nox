@@ -18,11 +18,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { PubkeyHex } from '../types/nostr';
 import Home from './screens/Home';
 import Profile from './screens/Profile';
+import Thread from './screens/Thread';
 import SharedCodeCheck from './screens/SharedCodeCheck';
 
 export type RootStackParamList = {
   Home: undefined;
   Profile: { pubkey: PubkeyHex };
+  Thread: { eventId: string };
   SharedCodeCheck: undefined;
 };
 
@@ -61,6 +63,11 @@ export default function App() {
             name="Profile"
             component={Profile}
             options={{ title: 'Profile' }}
+          />
+          <Stack.Screen
+            name="Thread"
+            component={Thread}
+            options={{ title: 'Thread' }}
           />
           <Stack.Screen
             name="SharedCodeCheck"
