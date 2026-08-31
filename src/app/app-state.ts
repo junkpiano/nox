@@ -45,6 +45,23 @@ export type AppHistoryState = {
   __nostrSpa?: true;
   scrollX?: number;
   scrollY?: number;
+  /**
+   * Where the reader was, expressed as content rather than pixels.
+   *
+   * A pixel offset describes a document that no longer exists by the time it
+   * is used: the cards come back from cache immediately, but their images and
+   * link cards do not, so the restored timeline is short and grows for several
+   * seconds. Restoring 78,268px into a document that is 73,809px tall clamps
+   * silently to the bottom, which is how a deep scroll came back six screens
+   * out of place.
+   *
+   * An event id and the offset of that card from the top of the viewport
+   * survive the growth, because they describe the thing being looked at.
+   */
+  anchor?: {
+    eventId: string;
+    offset: number;
+  };
   timeline?: {
     type: 'home' | 'global';
     count: number;
@@ -196,6 +213,29 @@ function getCurrentTimelineHistoryHint():
   };
 }
 
+/**
+ * The topmost card that is still on screen, and how far down it sits.
+ *
+ * `bottom > 0` rather than `top >= 0`: the card the reader is in the middle of
+ * is the one they are reading, and it usually starts above the fold.
+ */
+function getCurrentScrollAnchor(): AppHistoryState['anchor'] | undefined {
+  const cards: NodeListOf<HTMLElement> = document.querySelectorAll<HTMLElement>(
+    '.event-container[data-event-id]',
+  );
+  for (const card of Array.from(cards)) {
+    const rect: DOMRect = card.getBoundingClientRect();
+    if (rect.bottom > 0) {
+      const eventId: string | undefined = card.dataset.eventId;
+      if (!eventId) {
+        return undefined;
+      }
+      return { eventId, offset: rect.top };
+    }
+  }
+  return undefined;
+}
+
 export function saveScrollToHistoryState(): void {
   const base: Record<string, unknown> = getCurrentHistoryStateObject();
   const nextState: AppHistoryState & Record<string, unknown> = {
@@ -204,6 +244,13 @@ export function saveScrollToHistoryState(): void {
     scrollX: window.scrollX,
     scrollY: window.scrollY,
   };
+  const anchor: AppHistoryState['anchor'] | undefined =
+    getCurrentScrollAnchor();
+  if (anchor) {
+    nextState.anchor = anchor;
+  } else {
+    delete nextState.anchor;
+  }
   const timelineHint: AppHistoryState['timeline'] | undefined =
     getCurrentTimelineHistoryHint();
   if (timelineHint) {
@@ -242,18 +289,129 @@ export function replaceAppHistoryPath(path: string): void {
   window.dispatchEvent(new CustomEvent('app-route-changed'));
 }
 
+/** Two frames, so a layout pass has happened before anything is measured. */
+async function nextFrames(): Promise<void> {
+  await new Promise<void>((resolve: () => void): void => {
+    window.requestAnimationFrame((): void => {
+      window.requestAnimationFrame((): void => resolve());
+    });
+  });
+}
+
+/**
+ * Holds a card in place while the images above it load.
+ *
+ * Scrolling *by* the card's own error, rather than *to* a remembered pixel,
+ * is what makes this survive a growing document: whatever appears above the
+ * card pushes it down, the next round measures the push and takes it back out.
+ * Nothing here can ask for a position the document does not have yet.
+ *
+ * It keeps correcting for a while because link cards and images land over
+ * several seconds - but it stops the moment the reader touches the screen,
+ * since fighting someone for control of the scroll is worse than being wrong.
+ */
+async function restoreToAnchor(
+  eventId: string,
+  offset: number,
+): Promise<boolean> {
+  let interrupted: boolean = false;
+  const interrupt = (): void => {
+    interrupted = true;
+  };
+  window.addEventListener('touchstart', interrupt, { passive: true });
+  window.addEventListener('wheel', interrupt, { passive: true });
+  window.addEventListener('keydown', interrupt);
+
+  try {
+    let settled: number = 0;
+    let stuck: number = 0;
+    // ~2.5s of correcting, which covers the image and link-card loads that
+    // were still arriving a second after the cards themselves.
+    for (let i: number = 0; i < 40; i += 1) {
+      await nextFrames();
+      if (interrupted) {
+        return true;
+      }
+      const card: HTMLElement | null = document.querySelector<HTMLElement>(
+        `.event-container[data-event-id="${eventId}"]`,
+      );
+      if (!card) {
+        // The cache may still be rendering, or may not hold this card at all.
+        if (i > 12) {
+          return false;
+        }
+        await new Promise<void>((resolve: () => void): void => {
+          window.setTimeout(resolve, 40);
+        });
+        continue;
+      }
+      const delta: number = card.getBoundingClientRect().top - offset;
+      // Two pixels, not one: `top` is fractional on a device with a
+      // non-integer pixel ratio, so an exact landing still reports a
+      // remainder and a tighter test never passes.
+      if (Math.abs(delta) <= 2) {
+        settled += 1;
+        // Twice in a row: one quiet frame only means nothing loaded in it.
+        if (settled >= 2) {
+          return true;
+        }
+      } else {
+        settled = 0;
+        const before: number = window.scrollY;
+        window.scrollBy(0, delta);
+        if (Math.abs(window.scrollY - before) < 1) {
+          // The scroll did not move, so this is the top or the bottom of the
+          // document and the card cannot be brought any closer. Growth may
+          // still free up room, but if it does not, stop rather than spend the
+          // rest of the budget asking for a position that does not exist.
+          stuck += 1;
+          if (stuck >= 3) {
+            return true;
+          }
+        } else {
+          stuck = 0;
+        }
+      }
+      await new Promise<void>((resolve: () => void): void => {
+        window.setTimeout(resolve, 50);
+      });
+    }
+    return true;
+  } finally {
+    window.removeEventListener('touchstart', interrupt);
+    window.removeEventListener('wheel', interrupt);
+    window.removeEventListener('keydown', interrupt);
+  }
+}
+
 export async function restoreScrollFromState(state: unknown): Promise<void> {
   const s: any = state;
   const x: number = typeof s?.scrollX === 'number' ? s.scrollX : 0;
   const y: number = typeof s?.scrollY === 'number' ? s.scrollY : 0;
 
-  // Timeline rendering is async; give layout a couple of frames, then try a few times.
+  const anchor: unknown = s?.anchor;
+  if (
+    anchor &&
+    typeof anchor === 'object' &&
+    typeof (anchor as { eventId?: unknown }).eventId === 'string' &&
+    typeof (anchor as { offset?: unknown }).offset === 'number'
+  ) {
+    const restored: boolean = await restoreToAnchor(
+      (anchor as { eventId: string }).eventId,
+      (anchor as { offset: number }).offset,
+    );
+    if (restored) {
+      return;
+    }
+    // The card is not in the restored timeline - the cache holds fewer events
+    // than were on screen. A pixel offset is wrong, but it is closer than the
+    // top of the page.
+  }
+
+  // No anchor: pages that are not timelines, and history entries written
+  // before anchors existed.
   for (let i: number = 0; i < 10; i += 1) {
-    await new Promise<void>((resolve: () => void): void => {
-      window.requestAnimationFrame((): void => {
-        window.requestAnimationFrame((): void => resolve());
-      });
-    });
+    await nextFrames();
     window.scrollTo(x, y);
     if (Math.abs(window.scrollY - y) <= 2) {
       return;
