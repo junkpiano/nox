@@ -92,6 +92,40 @@ its own, and everything above the seam stops caring.
 requests from native, so the OGP proxy worker is unnecessary here — the same
 reason the Tauri build already bypasses it.
 
+## Seams, as actually found
+
+Three were predicted by reading imports. The fourth was found only when the
+bundler ran, which is why the table above is a floor rather than a total.
+
+| seam | what it hides | how it was found |
+|---|---|---|
+| `kv.ts` | synchronous settings storage | dependency analysis |
+| `app-events.ts` | the `window` event bus | dependency analysis |
+| `ask.ts` | NIP-42's synchronous `window.confirm` | reading relay-socket.ts |
+| `native-http.ts` | whether CORS applies to this runtime | **a build failure** |
+
+The fourth is the instructive one. `isNativeRuntime()` answers "am I Tauri",
+but the question the code is really asking is "does CORS apply to me". Those
+were the same question while there was one native front end. React Native
+issues requests outside the browser's origin model, so it can reach an origin
+directly - like Tauri, unlike a tab - and yet `isNativeRuntime()` says false,
+because it genuinely is not Tauri.
+
+Left alone that is not a crash. It silently routes every OGP, oEmbed and LNURL
+lookup through the proxy worker from a runtime that needs no proxy, sending
+every link the viewer opens through a third party for nothing. A flag that has
+quietly come to mean two things is worse than one that fails loudly.
+
+## Status
+
+- [x] Crypto proven on device: keygen, sign/verify, NIP-44, NIP-59 gift wrap
+- [x] Shared code imports from `../src` and runs - 11 checks pass on device
+- [x] Seams: kv, app-events, ask, cross-origin fetch
+- [x] Home timeline on the shared relay layer: 201 follows, 747 events, 4.2s
+- [ ] Storage: expo-sqlite behind `db/index.ts`
+- [ ] Keys: expo-secure-store, and signing
+- [ ] Profile, thread, notifications, messages, wallet, search, relays, settings
+
 ## Order of work
 
 1. **Adapters first.** Nothing above them can be trusted until they exist.
