@@ -8,6 +8,8 @@
  */
 
 import type { RouteProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { nip19 } from 'nostr-tools';
 import { useEffect, useState } from 'react';
 import {
@@ -31,6 +33,7 @@ import {
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import ReportSheet from '../components/ReportSheet';
 import {
   NotSignedInError,
   readFollowing,
@@ -190,6 +193,35 @@ function MuteButton({ target }: { target: PubkeyHex }) {
   );
 }
 
+/**
+ * Report, sitting next to Mute.
+ *
+ * Quieter than both Follow and Mute. Muting is the action that helps the
+ * person looking at this screen; reporting asks somebody else to do something,
+ * which is worth offering and not worth advertising.
+ */
+function ReportLink({ target }: { target: PubkeyHex }) {
+  const viewer = viewerPubkey();
+  const [open, setOpen] = useState(false);
+
+  if (!viewer || viewer === target) {
+    return null;
+  }
+
+  return (
+    <>
+      <Pressable onPress={(): void => setOpen(true)} hitSlop={8}>
+        <Text style={styles.muteLink}>Report</Text>
+      </Pressable>
+      <ReportSheet
+        visible={open}
+        target={target}
+        onClose={(): void => setOpen(false)}
+      />
+    </>
+  );
+}
+
 function Header({ profile }: { profile: ProfileData }) {
   const npub: string = nip19.npubEncode(profile.pubkey);
 
@@ -220,7 +252,10 @@ function Header({ profile }: { profile: ProfileData }) {
         ) : null}
 
         <FollowButton target={profile.pubkey} />
-        <MuteButton target={profile.pubkey} />
+        <View style={styles.quietActions}>
+          <MuteButton target={profile.pubkey} />
+          <ReportLink target={profile.pubkey} />
+        </View>
 
         {profile.website ? (
           <Pressable
@@ -249,6 +284,8 @@ export default function Profile({ route }: { route: ProfileRoute }) {
     posts: NostrEvent[];
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   useEffect(() => {
     loadProfile(pubkey)
@@ -283,11 +320,17 @@ export default function Profile({ route }: { route: ProfileRoute }) {
       }
       ItemSeparatorComponent={() => <View style={styles.sep} />}
       renderItem={({ item }: { item: NostrEvent }) => (
-        <View style={styles.post}>
+        // A post opens its thread here as it does in a timeline. A card that
+        // is tappable in one list and inert in another reads as a bug even
+        // when nobody can say which of the two is wrong.
+        <Pressable
+          onPress={() => navigation.push('Thread', { eventId: item.id })}
+          style={({ pressed }) => [styles.post, pressed && styles.postPressed]}
+        >
           <Text style={styles.postContent} numberOfLines={12}>
             {item.content}
           </Text>
-        </View>
+        </Pressable>
       )}
     />
   );
@@ -322,15 +365,12 @@ const styles = StyleSheet.create({
   },
   followOff: { opacity: 0.5 },
   followText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
-  muteLink: {
-    color: '#5b6b88',
-    fontSize: 12,
-    marginTop: 12,
-    alignSelf: 'flex-start',
-  },
+  muteLink: { color: '#5b6b88', fontSize: 12 },
+  quietActions: { flexDirection: 'row', gap: 18, marginTop: 12 },
   divider: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   post: { paddingHorizontal: 16, paddingVertical: 14 },
   postContent: { color: '#b9c6de', fontSize: 14, lineHeight: 20 },
+  postPressed: { backgroundColor: 'rgba(137,168,255,0.08)' },
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   centre: {
     flex: 1,

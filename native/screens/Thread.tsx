@@ -33,6 +33,7 @@ import { getSessionPrivateKey } from '../../src/common/session';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import ReportSheet from '../components/ReportSheet';
 import {
   likeEvent,
   NotSignedInError,
@@ -66,10 +67,12 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const [reposted, setReposted] = useState(false);
   const [reposting, setReposting] = useState(false);
   const [draft, setDraft] = useState('');
+  const [reporting, setReporting] = useState(false);
   const [replying, setReplying] = useState(false);
   const [sent, setSent] = useState(0);
   const navigation = useNavigation<Nav>();
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `sent` is the trigger, not a read
   useEffect(() => {
     let cancelled = false;
     const relays = getRelays();
@@ -248,6 +251,15 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                     {reposted ? 'Reposted' : reposting ? '...' : 'Repost'}
                   </Text>
                 </Pressable>
+                {/* A post can be reported by anyone who can sign, including
+                    somebody who does not want to mute the author - so it sits
+                    with the other post actions rather than on the profile. */}
+                <Pressable
+                  onPress={(): void => setReporting(true)}
+                  style={styles.action}
+                >
+                  <Text style={styles.reportText}>Report</Text>
+                </Pressable>
               </View>
 
               <TextInput
@@ -279,6 +291,14 @@ export default function Thread({ route }: { route: ThreadRoute }) {
               : `${data.replies.length} ${data.replies.length === 1 ? 'reply' : 'replies'}`}
           </Text>
         </View>
+      }
+      ListFooterComponent={
+        <ReportSheet
+          visible={reporting}
+          target={root.pubkey as PubkeyHex}
+          eventId={root.id}
+          onClose={(): void => setReporting(false)}
+        />
       }
       ItemSeparatorComponent={() => <View style={styles.sep} />}
       renderItem={({ item }: { item: NostrEvent }) => (
@@ -330,6 +350,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionOff: { opacity: 0.5 },
+  reportText: { color: '#8ea0c0', fontSize: 13, fontWeight: '600' },
   actionText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
   actionDone: { color: '#73f0c1', fontWeight: '700', fontSize: 14 },
   replyInput: {
