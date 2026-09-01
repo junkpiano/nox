@@ -20,10 +20,12 @@ import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import { Pressable, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { hidesWallet } from '../src/common/platform';
+import { hasAcceptedTerms } from '../src/common/terms';
 import type { PubkeyHex } from '../types/nostr';
 import Chat from './screens/Chat';
 import Compose from './screens/Compose';
@@ -35,6 +37,7 @@ import Relays from './screens/Relays';
 import Search from './screens/Search';
 import Settings from './screens/Settings';
 import SharedCodeCheck from './screens/SharedCodeCheck';
+import Terms from './screens/Terms';
 import Thread from './screens/Thread';
 import Wallet from './screens/Wallet';
 import You from './screens/You';
@@ -166,6 +169,24 @@ function TabBar() {
 }
 
 export default function App() {
+  /**
+   * Read once, synchronously, before the first frame. An asynchronous answer
+   * would mean either a flash of the timeline behind the gate or a blank
+   * screen while it resolves, and the first of those defeats the gate.
+   */
+  const [accepted, setAccepted] = useState<boolean>(hasAcceptedTerms);
+
+  if (!accepted) {
+    // No navigator underneath: there is nothing to reach past this, by a deep
+    // link or otherwise.
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <Terms onAccept={(): void => setAccepted(true)} />
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />

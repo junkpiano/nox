@@ -19,7 +19,9 @@ import {
   registerServiceWorker,
   startPeriodicSync,
 } from '../common/sync/service-worker-manager.js';
+import { hasAcceptedTerms } from '../common/terms.js';
 import { setupZapOverlay } from '../common/zap.js';
+import { showTermsGate } from '../features/legal/terms-gate.js';
 import { clearMessages } from '../features/messages/messages-store.js';
 import { stopMessageSync } from '../features/messages/messages-sync.js';
 import { migrateLegacyMessageCache } from '../features/messages/plaintext-cache-migration.js';
@@ -423,6 +425,13 @@ document.addEventListener('DOMContentLoaded', (): void => {
   // Before anything renders, so the safe-area rules apply to the first paint.
   applyPlatformClass();
 
+  // Nothing else starts until this resolves. The global timeline has no
+  // filter, so an app that boots first and asks afterwards has already shown a
+  // stranger's post to somebody who was never told what this is.
+  void showTermsGate().then(boot);
+});
+
+function boot(): void {
   if ('scrollRestoration' in window.history) {
     window.history.scrollRestoration = 'manual';
   }
@@ -625,7 +634,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
       // render, and a relay round-trip should not delay it.
       void refreshMuteListFromRelays(appState.relays);
     });
-});
+}
 
 // Cleanup background fetch on page unload
 window.addEventListener('beforeunload', (): void => {
@@ -636,5 +645,11 @@ window.addEventListener('beforeunload', (): void => {
 
 // Handle browser back/forward buttons
 window.addEventListener('popstate', (event: PopStateEvent): void => {
+  // Not while the gate is up. The overlay covers the page, but a route run
+  // behind it would still open sockets and fetch posts - and "covered" is a
+  // stylesheet away from "shown".
+  if (!hasAcceptedTerms()) {
+    return;
+  }
   handleRoute(event.state);
 });
