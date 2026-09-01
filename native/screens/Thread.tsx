@@ -43,6 +43,7 @@ import {
   replyToEvent,
   repostEvent,
 } from '../lib/interact';
+import { useSessionVersion } from '../lib/use-session-version';
 
 type ThreadRoute = RouteProp<RootStackParamList, 'Thread'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -126,6 +127,8 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const [reposting, setReposting] = useState(false);
   const [draft, setDraft] = useState('');
   const [reporting, setReporting] = useState(false);
+  // The action row below is drawn from the session key, read at render.
+  useSessionVersion();
   /**
    * The composer is behind the reply button rather than always up.
    *

@@ -21,11 +21,16 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NotSignedInError, publishNote } from '../lib/publish';
 
 export default function Compose() {
   const navigation = useNavigation();
+  // The Post button is the last thing on the screen and sits above whatever
+  // the system draws at the bottom. Fixed padding lost it under a
+  // three-button navigation bar.
+  const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
@@ -62,7 +67,7 @@ export default function Compose() {
   }, [text, navigation]);
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingBottom: 20 + insets.bottom }]}>
       <TextInput
         value={text}
         onChangeText={setText}

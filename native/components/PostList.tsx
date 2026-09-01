@@ -30,6 +30,7 @@ import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import type { TimelinePost } from '../lib/home-timeline';
 import { likeEvent, NotSignedInError, repostEvent } from '../lib/interact';
+import { useSessionVersion } from '../lib/use-session-version';
 import PostBody from './PostBody';
 import PostMenu from './PostMenu';
 import QuoteCard from './QuoteCard';
@@ -265,6 +266,9 @@ export default function PostList({
   onRefresh,
 }: PostListProps) {
   const navigation = useNavigation<Nav>();
+  // Rows decide whether to draw their action row from the session key, and
+  // FlatList only re-renders rows when the data or this changes.
+  const sessionVersion = useSessionVersion();
 
   return (
     <View style={styles.screen}>
@@ -281,6 +285,7 @@ export default function PostList({
         <FlatList
           data={posts}
           keyExtractor={(p: TimelinePost) => p.key}
+          extraData={sessionVersion}
           renderItem={({ item }: { item: TimelinePost }) => (
             <PostRow
               post={item}

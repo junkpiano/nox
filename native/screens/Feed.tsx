@@ -20,6 +20,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getSessionPrivateKey } from '../../src/common/session';
 import type { RootStackParamList } from '../App';
+import { useSessionVersion } from '../lib/use-session-version';
 import Global from './Global';
 import Home from './Home';
 
@@ -30,6 +31,9 @@ export default function Feed() {
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [which, setWhich] = useState<Which>('home');
   const [globalMounted, setGlobalMounted] = useState(false);
+  // Read below at render; this is what makes the read happen again after a
+  // sign-in, rather than on the next restart.
+  useSessionVersion();
 
   const choose = (next: Which): void => {
     if (next === 'global') {

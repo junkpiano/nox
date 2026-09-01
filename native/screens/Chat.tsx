@@ -25,6 +25,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { onAppEvent } from '../../src/common/app-events';
 import { kvGet } from '../../src/common/kv';
@@ -52,6 +53,8 @@ function timeLabel(createdAt: number): string {
 export default function Chat({ route }: { route: ChatRoute }) {
   const { peer } = route.params;
   const viewer = viewerPubkey();
+  // The composer is the bottom edge of the screen; see Compose.
+  const insets = useSafeAreaInsets();
 
   const [messages, setMessages] = useState<StoredMessage[]>(() =>
     readConversation(peer),
@@ -144,7 +147,7 @@ export default function Chat({ route }: { route: ChatRoute }) {
 
       {note ? <Text style={styles.note}>{note}</Text> : null}
 
-      <View style={styles.composer}>
+      <View style={[styles.composer, { paddingBottom: 10 + insets.bottom }]}>
         <TextInput
           value={draft}
           onChangeText={setDraft}

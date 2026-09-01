@@ -19,6 +19,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   acceptTerms,
@@ -29,6 +30,10 @@ import {
 } from '../../src/common/terms';
 
 export default function Terms({ onAccept }: { onAccept: () => void }) {
+  // The button sits above whatever the system draws at the bottom. A fixed
+  // padding was right for a gesture bar and lost the bottom of the button to
+  // a three-button one.
+  const insets = useSafeAreaInsets();
   const accept = (): void => {
     acceptTerms();
     onAccept();
@@ -73,7 +78,7 @@ export default function Terms({ onAccept }: { onAccept: () => void }) {
         </Text>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}>
         <Pressable onPress={accept} style={styles.button}>
           <Text style={styles.buttonText}>Agree and continue</Text>
         </Pressable>
@@ -94,7 +99,6 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: 24,
     paddingTop: 12,
-    paddingBottom: 28,
     borderTopWidth: 1,
     borderTopColor: '#25406e',
   },
