@@ -16,44 +16,56 @@
  * minutes of compiling. `expo-linking` still gives us the deep links.
  */
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { hidesWallet } from '../src/common/platform';
 import type { PubkeyHex } from '../types/nostr';
-import Account from './screens/Account';
 import Chat from './screens/Chat';
-import Global from './screens/Global';
-import Home from './screens/Home';
+import Compose from './screens/Compose';
+import Feed from './screens/Feed';
 import Messages from './screens/Messages';
 import Notifications from './screens/Notifications';
 import Profile from './screens/Profile';
 import Relays from './screens/Relays';
 import Search from './screens/Search';
+import Settings from './screens/Settings';
 import SharedCodeCheck from './screens/SharedCodeCheck';
 import Thread from './screens/Thread';
 import Wallet from './screens/Wallet';
+import You from './screens/You';
 
 export type RootStackParamList = {
   Tabs: undefined;
+  You: undefined;
+  Settings: undefined;
+  Compose: undefined;
+  Relays: undefined;
+  Checks: undefined;
   Profile: { pubkey: PubkeyHex };
   Thread: { eventId: string };
   Chat: { peer: PubkeyHex; name: string };
   Wallet: undefined;
 };
 
+/**
+ * Four tabs.
+ *
+ * A tab bar is a promise that these are the places you go often, and eight of
+ * them was not that - it was a menu wearing a tab bar's clothes, with labels
+ * truncated to fit. Global moved in beside Home, which is where it belongs;
+ * the relay list, the account and the shared-code checks moved behind the
+ * header button, because they are visited on purpose rather than by habit.
+ */
 export type TabParamList = {
-  Home: undefined;
-  Global: undefined;
+  Feed: undefined;
   Search: undefined;
   Messages: undefined;
   Alerts: undefined;
-  Relays: undefined;
-  Account: undefined;
-  Checks: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -84,12 +96,43 @@ function icon(glyph: string) {
   );
 }
 
+/** Your profile, which the tab bar no longer has room to name. */
+function AccountButton() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return (
+    <Pressable
+      onPress={(): void => navigation.navigate('You')}
+      hitSlop={12}
+      style={{ paddingHorizontal: 16 }}
+    >
+      <Text style={{ fontSize: 20 }}>👤</Text>
+    </Pressable>
+  );
+}
+
+/** Settings sit behind the profile, one step further in than the profile is. */
+function SettingsButton() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return (
+    <Pressable
+      onPress={(): void => navigation.navigate('Settings')}
+      hitSlop={12}
+      style={{ paddingHorizontal: 16 }}
+    >
+      <Text style={{ fontSize: 20 }}>⚙️</Text>
+    </Pressable>
+  );
+}
+
 function TabBar() {
   return (
     <Tabs.Navigator
       screenOptions={{
         headerStyle: { backgroundColor: '#0b1220' },
         headerTintColor: '#f5f8ff',
+        headerRight: () => <AccountButton />,
         tabBarStyle: {
           backgroundColor: '#0b1220',
           borderTopColor: '#25406e',
@@ -99,14 +142,9 @@ function TabBar() {
       }}
     >
       <Tabs.Screen
-        name="Home"
-        component={Home}
+        name="Feed"
+        component={Feed}
         options={{ title: 'Home', tabBarIcon: icon('🏠') }}
-      />
-      <Tabs.Screen
-        name="Global"
-        component={Global}
-        options={{ title: 'Global', tabBarIcon: icon('🌍') }}
       />
       <Tabs.Screen
         name="Search"
@@ -123,21 +161,6 @@ function TabBar() {
         component={Notifications}
         options={{ title: 'Alerts', tabBarIcon: icon('🔔') }}
       />
-      <Tabs.Screen
-        name="Relays"
-        component={Relays}
-        options={{ title: 'Relays', tabBarIcon: icon('📡') }}
-      />
-      <Tabs.Screen
-        name="Account"
-        component={Account}
-        options={{ title: 'You', tabBarIcon: icon('👤') }}
-      />
-      <Tabs.Screen
-        name="Checks"
-        component={SharedCodeCheck}
-        options={{ title: 'Shared code', tabBarIcon: icon('🧪') }}
-      />
     </Tabs.Navigator>
   );
 }
@@ -152,6 +175,31 @@ export default function App() {
             name="Tabs"
             component={TabBar}
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="You"
+            component={You}
+            options={{ title: 'You', headerRight: () => <SettingsButton /> }}
+          />
+          <Stack.Screen
+            name="Settings"
+            component={Settings}
+            options={{ title: 'Settings' }}
+          />
+          <Stack.Screen
+            name="Compose"
+            component={Compose}
+            options={{ title: 'New note' }}
+          />
+          <Stack.Screen
+            name="Relays"
+            component={Relays}
+            options={{ title: 'Relays' }}
+          />
+          <Stack.Screen
+            name="Checks"
+            component={SharedCodeCheck}
+            options={{ title: 'Shared code' }}
           />
           <Stack.Screen
             name="Profile"

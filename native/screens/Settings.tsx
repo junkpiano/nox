@@ -1,9 +1,10 @@
 /**
- * The account tab: who you are, and writing a note.
+ * Settings: the key, the muted words, and the way to everything else.
  *
- * Composing lives here rather than behind a floating button because there is
- * nothing else to put on this tab yet, and a compose box that only appears
- * when signed in explains the connection better than a disabled button would.
+ * This was the account tab, and it was three unrelated things in one scroll
+ * because there was nowhere else to put them. Your profile is now a profile,
+ * composing is on the timeline where the post is going, and what is left here
+ * is what you come looking for on purpose.
  */
 
 import { useNavigation } from '@react-navigation/native';
@@ -11,7 +12,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -31,7 +31,6 @@ import { setMutedWords } from '../../src/features/moderation/moderation-actions'
 import { getRelays } from '../../src/features/relays/relays';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
-import { NotSignedInError, publishNote } from '../lib/publish';
 import SignIn from './SignIn';
 
 function readStoredPubkey(): PubkeyHex | null {
@@ -41,99 +40,36 @@ function readStoredPubkey(): PubkeyHex | null {
     : null;
 }
 
-function Compose() {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState('');
-
-  const send = useCallback(async (): Promise<void> => {
-    const content = text.trim();
-    if (!content) return;
-
-    setBusy(true);
-    setNote('');
-    try {
-      const result = await publishNote(content);
-      if (result.accepted.length === 0) {
-        // Every relay refused or went quiet, so the note does not exist. The
-        // text stays in the box: clearing it would throw away what was written.
-        setNote(
-          `No relay accepted it: ${result.rejected
-            .map((r) => `${r.relay.replace('wss://', '')} (${r.reason})`)
-            .join(', ')}`,
-        );
-        return;
-      }
-      setText('');
-      setNote(
-        `Posted to ${result.accepted.length} of ${
-          result.accepted.length + result.rejected.length
-        } relays.`,
-      );
-    } catch (e: any) {
-      if (e instanceof NotSignedInError) {
-        Alert.alert('Not signed in', 'There is no key in this session.');
-      } else {
-        setNote(String(e?.message ?? e));
-      }
-    } finally {
-      setBusy(false);
-    }
-  }, [text]);
-
-  return (
-    <View style={styles.compose}>
-      <Text style={styles.section}>Write a note</Text>
-      <TextInput
-        value={text}
-        onChangeText={setText}
-        placeholder="What's happening?"
-        placeholderTextColor="#5b6b88"
-        multiline
-        style={styles.input}
-      />
-      {note ? <Text style={styles.note}>{note}</Text> : null}
-      <Pressable
-        onPress={send}
-        disabled={busy || text.trim().length === 0}
-        style={[
-          styles.button,
-          (busy || text.trim().length === 0) && styles.buttonOff,
-        ]}
-      >
-        {busy ? (
-          <ActivityIndicator color="#0b1220" />
-        ) : (
-          <Text style={styles.buttonText}>Post</Text>
-        )}
-      </Pressable>
-    </View>
-  );
-}
-
 /**
- * The way in to the wallet.
+ * Everything the tab bar no longer carries.
  *
- * Absent on iOS, where the route is not registered either. An entry point that
- * navigates nowhere is worse than no entry point.
+ * The wallet row is absent on iOS, where the route is not registered either.
+ * An entry point that navigates nowhere is worse than no entry point.
  */
-function WalletLink() {
+function Elsewhere() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  if (hidesWallet()) {
-    return null;
-  }
+  const rows: Array<{ label: string; to: 'Wallet' | 'Relays' | 'Checks' }> = [
+    ...(hidesWallet()
+      ? []
+      : ([{ label: '⚡ Lightning wallet', to: 'Wallet' }] as const)),
+    { label: '📡 Relays', to: 'Relays' },
+    { label: '🧪 Shared code', to: 'Checks' },
+  ];
 
   return (
     <View style={styles.compose}>
-      <Pressable
-        onPress={(): void => navigation.navigate('Wallet')}
-        style={styles.walletRow}
-      >
-        <Text style={styles.walletText}>⚡ Lightning wallet</Text>
-        <Text style={styles.walletChevron}>›</Text>
-      </Pressable>
+      {rows.map((row) => (
+        <Pressable
+          key={row.to}
+          onPress={(): void => navigation.navigate(row.to)}
+          style={styles.walletRow}
+        >
+          <Text style={styles.walletText}>{row.label}</Text>
+          <Text style={styles.walletChevron}>›</Text>
+        </Pressable>
+      ))}
     </View>
   );
 }
@@ -239,7 +175,7 @@ function MutedWords() {
   );
 }
 
-export default function Account() {
+export default function Settings() {
   /**
    * Two different things, kept apart deliberately.
    *
@@ -282,8 +218,7 @@ export default function Account() {
           setCanSign(next !== null && getSessionPrivateKey() !== null);
         }}
       />
-      {canSign ? <Compose /> : null}
-      <WalletLink />
+      <Elsewhere />
       {canSign ? <MutedWords /> : null}
     </ScrollView>
   );

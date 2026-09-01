@@ -278,7 +278,17 @@ function Header({ profile }: { profile: ProfileData }) {
 }
 
 export default function Profile({ route }: { route: ProfileRoute }) {
-  const pubkey: PubkeyHex = route.params.pubkey;
+  return <ProfileView pubkey={route.params.pubkey} />;
+}
+
+/**
+ * The profile itself, taking a pubkey rather than a route.
+ *
+ * Separated because your own profile is the same page as anybody else's - the
+ * only screen that ever needed a different one was the account tab, and that
+ * was a settings page with a name that promised a profile.
+ */
+export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   const [data, setData] = useState<{
     profile: ProfileData;
     posts: NostrEvent[];
