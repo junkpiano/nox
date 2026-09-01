@@ -76,6 +76,22 @@ export default function Messages() {
     [refresh],
   );
 
+  /**
+   * A different account is a different mailbox.
+   *
+   * Not a refresh of this one: the viewer, the key and the conversations all
+   * change together, and this screen reads all three. Re-reading only when a
+   * message happens to arrive would leave the previous account's list up.
+   */
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('session-changed', (): void => {
+        setRows(null);
+        refresh();
+      }),
+    [refresh],
+  );
+
   const open = (peer: PubkeyHex, name: string): void => {
     navigation.navigate('Chat', { peer, name });
   };

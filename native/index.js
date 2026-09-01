@@ -8,17 +8,19 @@ import 'react-native-get-random-values';
 
 import { registerRootComponent } from 'expo';
 import { Platform } from 'react-native';
+import { onAppEvent } from '../src/common/app-events';
 import { kvGet } from '../src/common/kv';
-import { loadCachedMuteList } from '../src/common/mute-state';
+import { clearMuteList, loadCachedMuteList } from '../src/common/mute-state';
 import { setPlatform } from '../src/common/platform';
 import {
   getSessionPrivateKey,
   restoreSessionPrivateKey,
 } from '../src/common/session';
+import { clearMessages } from '../src/features/messages/messages-store';
 import { refreshMuteListFromRelays } from '../src/features/moderation/moderation-actions';
 import { getRelays } from '../src/features/relays/relays';
 import App from './App';
-import { beginMessages } from './lib/messages';
+import { beginMessages, endMessages } from './lib/messages';
 import { installNativeDatabase } from './platform/database';
 import { installNativeHttp } from './platform/http';
 import { installNativeSecrets } from './platform/secrets';
@@ -60,7 +62,7 @@ setPlatform(
  * asks for one, rather than only after that screen happens to await it - and
  * NIP-42 AUTH can fire during the very first timeline load.
  */
-void restoreSessionPrivateKey().then(() => {
+function startForCurrentSession() {
   // Private messages need the key, not just the pubkey: a gift wrap addressed
   // to someone can only be opened by them. Someone reading a pasted npub has
   // nothing to unwrap, so nothing is started for them.
@@ -72,6 +74,26 @@ void restoreSessionPrivateKey().then(() => {
   ) {
     void beginMessages(stored.toLowerCase());
   }
+}
+
+void restoreSessionPrivateKey().then(startForCurrentSession);
+
+/**
+ * Signing in as somebody else is not a refresh.
+ *
+ * The decrypted messages and the mute list belong to the account that was
+ * signed in, and both are held in memory and on disk. Leaving them in place
+ * would show one person's private conversations to the next, which is the one
+ * failure here that cannot be walked back.
+ */
+onAppEvent('session-changed', () => {
+  endMessages();
+  clearMessages();
+  clearMuteList();
+  startForCurrentSession();
+  void loadCachedMuteList().then(() => {
+    void refreshMuteListFromRelays(getRelays());
+  });
 });
 
 /**

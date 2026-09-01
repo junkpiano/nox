@@ -21,6 +21,7 @@
  */
 export type AppEventName =
   | 'app-route-changed'
+  | 'session-changed'
   | 'mute-list-updated'
   | 'dm-messages-updated'
   | 'wallet-connection-changed'

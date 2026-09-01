@@ -10,6 +10,7 @@
 import { nip19 } from 'nostr-tools';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { onAppEvent } from '../../src/common/app-events';
 import { kvGet, kvSet } from '../../src/common/kv';
 import type { PubkeyHex } from '../../types/nostr';
 import PostList from '../components/PostList';
@@ -111,6 +112,26 @@ export default function Home() {
   useEffect(() => {
     if (pubkey) void load(pubkey);
   }, [pubkey, load]);
+
+  /**
+   * Follow the account, not the first value that was in storage.
+   *
+   * Signing in as somebody else used to leave the previous account's timeline
+   * on screen: this screen read the pubkey once at mount and nothing ever told
+   * it otherwise. The posts are cleared as well as reloaded, so the gap shows
+   * a spinner rather than the last person's following list.
+   */
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('session-changed', (): void => {
+        const next: PubkeyHex | null = readStoredPubkey();
+        setPosts([]);
+        setStats('');
+        setError(null);
+        setPubkey(next);
+      }),
+    [],
+  );
 
   const onRefresh = useCallback(async (): Promise<void> => {
     if (!pubkey) return;

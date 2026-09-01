@@ -33,6 +33,7 @@ import { getSessionPrivateKey } from '../../src/common/session';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import PostBody from '../components/PostBody';
 import ReportSheet from '../components/ReportSheet';
 import {
   likeEvent,
@@ -68,7 +69,18 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const [reposting, setReposting] = useState(false);
   const [draft, setDraft] = useState('');
   const [reporting, setReporting] = useState(false);
-  const [replying, setReplying] = useState(false);
+  /**
+   * The composer is behind the reply button rather than always up.
+   *
+   * A box asking you to write something, on every thread you open, is a
+   * question nobody asked - and it pushed the replies themselves below the
+   * fold on a phone. It opens straight away when the thread was reached by
+   * tapping reply on a card, because there the question was asked.
+   */
+  const [replying, setReplying] = useState<boolean>(
+    route.params.reply ?? false,
+  );
+  const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(0);
   const navigation = useNavigation<Nav>();
 
@@ -187,7 +199,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const reply = async (): Promise<void> => {
     const content = draft.trim();
     if (!content) return;
-    setReplying(true);
+    setSending(true);
     await attempt(
       'reply',
       () => replyToEvent(root, content),
@@ -198,7 +210,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         setSent((n: number): number => n + 1);
       },
     );
-    setReplying(false);
+    setSending(false);
   };
 
   return (
@@ -222,7 +234,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                 The author asked for this to be deleted.
               </Text>
             ) : (
-              <Text style={styles.rootContent}>{root.content}</Text>
+              <PostBody
+                content={root.content}
+                textStyle={styles.rootContent}
+                linkStyle={styles.link}
+              />
             )}
           </Pressable>
           {getSessionPrivateKey() && !data.deleted ? (
@@ -255,6 +271,14 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                     somebody who does not want to mute the author - so it sits
                     with the other post actions rather than on the profile. */}
                 <Pressable
+                  onPress={(): void => setReplying((open) => !open)}
+                  style={styles.action}
+                >
+                  <Text style={styles.actionText}>
+                    {replying ? 'Cancel' : 'Reply'}
+                  </Text>
+                </Pressable>
+                <Pressable
                   onPress={(): void => setReporting(true)}
                   style={styles.action}
                 >
@@ -262,26 +286,32 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                 </Pressable>
               </View>
 
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Write a reply"
-                placeholderTextColor="#5b6b88"
-                multiline
-                style={styles.replyInput}
-              />
-              <Pressable
-                onPress={reply}
-                disabled={replying || draft.trim().length === 0}
-                style={[
-                  styles.replyButton,
-                  (replying || draft.trim().length === 0) && styles.actionOff,
-                ]}
-              >
-                <Text style={styles.replyButtonText}>
-                  {replying ? 'Sending...' : 'Reply'}
-                </Text>
-              </Pressable>
+              {replying ? (
+                <>
+                  <TextInput
+                    value={draft}
+                    onChangeText={setDraft}
+                    placeholder="Write a reply"
+                    placeholderTextColor="#5b6b88"
+                    multiline
+                    autoFocus
+                    style={styles.replyInput}
+                  />
+                  <Pressable
+                    onPress={reply}
+                    disabled={sending || draft.trim().length === 0}
+                    style={[
+                      styles.replyButton,
+                      (sending || draft.trim().length === 0) &&
+                        styles.actionOff,
+                    ]}
+                  >
+                    <Text style={styles.replyButtonText}>
+                      {sending ? 'Sending...' : 'Send reply'}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : null}
             </View>
           ) : null}
 
@@ -310,9 +340,12 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           ]}
         >
           <Text style={styles.meta}>{timeAgo(item.created_at)}</Text>
-          <Text style={styles.replyContent} numberOfLines={12}>
-            {item.content}
-          </Text>
+          <PostBody
+            content={item.content}
+            textStyle={styles.replyContent}
+            linkStyle={styles.link}
+            numberOfLines={12}
+          />
         </Pressable>
       )}
     />
@@ -350,6 +383,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionOff: { opacity: 0.5 },
+  link: { color: '#89a8ff' },
   reportText: { color: '#8ea0c0', fontSize: 13, fontWeight: '600' },
   actionText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
   actionDone: { color: '#73f0c1', fontWeight: '700', fontSize: 14 },

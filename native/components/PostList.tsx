@@ -15,6 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Pressable,
@@ -24,9 +25,12 @@ import {
   View,
 } from 'react-native';
 import { contentWarningSummary } from '../../src/common/content-warning';
+import { getSessionPrivateKey } from '../../src/common/session';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import type { TimelinePost } from '../lib/home-timeline';
+import { likeEvent, NotSignedInError, repostEvent } from '../lib/interact';
+import PostBody from './PostBody';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -110,12 +114,107 @@ function Row({
             <Text style={styles.warningHint}>Tap to show</Text>
           </Pressable>
         ) : (
-          <Text style={styles.content} numberOfLines={12}>
-            {post.content}
-          </Text>
+          <PostBody
+            content={post.content}
+            textStyle={styles.content}
+            linkStyle={styles.link}
+            numberOfLines={12}
+          />
         )}
+        <Actions post={post} />
       </View>
     </Pressable>
+  );
+}
+
+/**
+ * Like, repost and reply, on the card.
+ *
+ * They were only on the thread screen, which meant the two things people do
+ * most needed a screen change first. Reply still opens the thread, because a
+ * reply wants to be written where the conversation is - it just opens with the
+ * box already up rather than making you find it.
+ *
+ * Marked done only once a relay has it. A like nobody stored is not a like.
+ */
+function Actions({ post }: { post: TimelinePost }) {
+  const navigation = useNavigation<Nav>();
+  const [liked, setLiked] = useState(false);
+  const [reposted, setReposted] = useState(false);
+  const [busy, setBusy] = useState<'like' | 'repost' | null>(null);
+
+  if (!getSessionPrivateKey()) {
+    return null;
+  }
+
+  const run = (
+    what: 'like' | 'repost',
+    action: () => Promise<{ accepted: string[] }>,
+    done: () => void,
+  ): void => {
+    setBusy(what);
+    void action()
+      .then((result): void => {
+        if (result.accepted.length > 0) {
+          done();
+        } else {
+          Alert.alert(`Could not ${what}`, 'No relay accepted it.');
+        }
+      })
+      .catch((error: unknown): void => {
+        if (error instanceof NotSignedInError) {
+          Alert.alert('Not signed in', 'There is no key in this session.');
+        } else {
+          Alert.alert(
+            `Could not ${what}`,
+            String((error as Error)?.message ?? error),
+          );
+        }
+      })
+      .finally((): void => setBusy(null));
+  };
+
+  return (
+    <View style={styles.actions}>
+      <Pressable
+        hitSlop={8}
+        disabled={liked || busy !== null}
+        onPress={(): void =>
+          run(
+            'like',
+            () => likeEvent(post.event),
+            () => setLiked(true),
+          )
+        }
+      >
+        <Text style={liked ? styles.actionOn : styles.action}>
+          {busy === 'like' ? '···' : liked ? '♥ Liked' : '♡ Like'}
+        </Text>
+      </Pressable>
+      <Pressable
+        hitSlop={8}
+        disabled={reposted || busy !== null}
+        onPress={(): void =>
+          run(
+            'repost',
+            () => repostEvent(post.event),
+            () => setReposted(true),
+          )
+        }
+      >
+        <Text style={reposted ? styles.actionOn : styles.action}>
+          {busy === 'repost' ? '···' : reposted ? '⇄ Reposted' : '⇄ Repost'}
+        </Text>
+      </Pressable>
+      <Pressable
+        hitSlop={8}
+        onPress={(): void =>
+          navigation.navigate('Thread', { eventId: post.id, reply: true })
+        }
+      >
+        <Text style={styles.action}>↩ Reply</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -241,6 +340,10 @@ const styles = StyleSheet.create({
   },
   nip05: { color: '#5b6b88', fontSize: 11, marginTop: 1 },
   content: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 5 },
+  link: { color: '#89a8ff' },
+  actions: { flexDirection: 'row', gap: 20, marginTop: 10 },
+  action: { color: '#5b6b88', fontSize: 12, fontWeight: '600' },
+  actionOn: { color: '#73f0c1', fontSize: 12, fontWeight: '700' },
   warning: {
     marginTop: 6,
     borderWidth: 1,

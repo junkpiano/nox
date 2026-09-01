@@ -41,6 +41,14 @@ export interface TimelinePost {
   nip05: string | null;
   /** NIP-36, as the author set it. Never inferred from the text. */
   warning: ContentWarning;
+  /**
+   * The event as it arrived.
+   *
+   * Carried because a repost has to embed the whole thing (NIP-18 puts it in
+   * `content`), and rebuilding it from the flattened row would mean inventing
+   * the tags and the signature.
+   */
+  event: NostrEvent;
 }
 
 export interface TimelineResult {
@@ -244,6 +252,7 @@ async function decorate(
         picture: meta?.picture ?? null,
         nip05: meta?.nip05 ?? null,
         warning: getContentWarning(event),
+        event,
       };
     });
 

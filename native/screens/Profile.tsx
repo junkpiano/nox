@@ -33,7 +33,9 @@ import {
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import PostBody from '../components/PostBody';
 import ReportSheet from '../components/ReportSheet';
+import RichText from '../components/RichText';
 import {
   NotSignedInError,
   readFollowing,
@@ -248,7 +250,11 @@ function Header({ profile }: { profile: ProfileData }) {
         )}
 
         {profile.about ? (
-          <Text style={styles.about}>{profile.about}</Text>
+          <RichText
+            content={profile.about}
+            style={styles.about}
+            linkStyle={styles.link}
+          />
         ) : null}
 
         <FollowButton target={profile.pubkey} />
@@ -337,9 +343,12 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
           onPress={() => navigation.push('Thread', { eventId: item.id })}
           style={({ pressed }) => [styles.post, pressed && styles.postPressed]}
         >
-          <Text style={styles.postContent} numberOfLines={12}>
-            {item.content}
-          </Text>
+          <PostBody
+            content={item.content}
+            textStyle={styles.postContent}
+            linkStyle={styles.link}
+            numberOfLines={12}
+          />
         </Pressable>
       )}
     />
@@ -380,6 +389,7 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   post: { paddingHorizontal: 16, paddingVertical: 14 },
   postContent: { color: '#b9c6de', fontSize: 14, lineHeight: 20 },
+  link: { color: '#89a8ff' },
   postPressed: { backgroundColor: 'rgba(137,168,255,0.08)' },
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   centre: {

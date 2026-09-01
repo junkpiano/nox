@@ -20,13 +20,16 @@ import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { Pressable, Text } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, Pressable, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { onAppEvent } from '../src/common/app-events';
+import { kvGet } from '../src/common/kv';
 import { hidesWallet } from '../src/common/platform';
 import { hasAcceptedTerms } from '../src/common/terms';
 import type { PubkeyHex } from '../types/nostr';
+import { fetchProfilesForPubkeys } from './lib/home-timeline';
 import Chat from './screens/Chat';
 import Compose from './screens/Compose';
 import Feed from './screens/Feed';
@@ -50,7 +53,8 @@ export type RootStackParamList = {
   Relays: undefined;
   Checks: undefined;
   Profile: { pubkey: PubkeyHex };
-  Thread: { eventId: string };
+  /** `reply` opens the thread with the composer already up. */
+  Thread: { eventId: string; reply?: boolean };
   Chat: { peer: PubkeyHex; name: string };
   Wallet: undefined;
 };
@@ -99,17 +103,54 @@ function icon(glyph: string) {
   );
 }
 
-/** Your profile, which the tab bar no longer has room to name. */
+/**
+ * Your profile, which the tab bar no longer has room to name.
+ *
+ * Shows your own face once there is one. A generic glyph in the corner is the
+ * same button whoever is signed in, which is exactly the thing this button is
+ * for telling you.
+ */
 function AccountButton() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [picture, setPicture] = useState<string | null>(null);
+
+  useEffect((): (() => void) => {
+    const load = (): void => {
+      const stored = kvGet('nostr_pubkey');
+      if (!stored || !/^[0-9a-f]{64}$/i.test(stored)) {
+        setPicture(null);
+        return;
+      }
+      void fetchProfilesForPubkeys([stored.toLowerCase() as PubkeyHex])
+        .then((profiles): void => {
+          setPicture(profiles.get(stored.toLowerCase())?.picture ?? null);
+        })
+        .catch((): void => setPicture(null));
+    };
+    load();
+    return onAppEvent('session-changed', load);
+  }, []);
+
   return (
     <Pressable
       onPress={(): void => navigation.navigate('You')}
       hitSlop={12}
       style={{ paddingHorizontal: 16 }}
     >
-      <Text style={{ fontSize: 20 }}>👤</Text>
+      {picture ? (
+        <Image
+          source={{ uri: picture }}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            backgroundColor: '#25406e',
+          }}
+        />
+      ) : (
+        <Text style={{ fontSize: 20 }}>👤</Text>
+      )}
     </Pressable>
   );
 }

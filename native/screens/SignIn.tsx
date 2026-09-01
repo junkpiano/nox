@@ -24,6 +24,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { emitAppEvent } from '../../src/common/app-events';
 import { kvRemove, kvSet } from '../../src/common/kv';
 import {
   clearSessionPrivateKey,
@@ -56,6 +57,10 @@ export default function SignIn({
       setDraft('');
       setError(null);
       onChange(next);
+      // Every screen holding a viewer - the timeline above all - has to be
+      // told. Without this, signing in as somebody else left the previous
+      // account's following timeline on screen.
+      emitAppEvent('session-changed');
     } catch (e: any) {
       // The message is the library's, not the input: echoing what was typed
       // would put a private key on screen inside an error.
@@ -84,6 +89,7 @@ export default function SignIn({
           kvRemove(PUBKEY_KEY);
           setRevealed(null);
           onChange(null);
+          emitAppEvent('session-changed');
         },
       },
     ]);
@@ -142,6 +148,11 @@ export default function SignIn({
         phone is unlocked, and not carried to another device by a backup.
       </Text>
 
+      {/* Announced to the platform as a password field so a password manager
+          offers to fill it and, having taken one, to save it. An nsec is the
+          only copy of an identity, and the people most likely to keep it
+          somewhere sensible are exactly the ones using a manager - leaving the
+          field anonymous means they have to go and find it by hand. */}
       <TextInput
         value={draft}
         onChangeText={setDraft}
@@ -150,6 +161,9 @@ export default function SignIn({
         autoCapitalize="none"
         autoCorrect={false}
         secureTextEntry
+        autoComplete="password"
+        textContentType="password"
+        importantForAutofill="yes"
         style={styles.input}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
