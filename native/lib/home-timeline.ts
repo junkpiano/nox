@@ -91,7 +91,7 @@ export interface TimelineResult {
  * never answers costs the timeout and nothing else - the others are not held
  * up waiting for it.
  */
-function queryRelays(
+export function queryRelays(
   relays: string[],
   filter: Record<string, unknown>,
 ): Promise<NostrEvent[]> {

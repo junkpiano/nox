@@ -24,9 +24,11 @@ import {
 
 import { kvGet } from '../../src/common/kv';
 import { getRelays } from '../../src/features/relays/relays';
+import type { PubkeyHex } from '../../types/nostr';
 import type { TimelinePost } from '../lib/home-timeline';
 import { requestDeletion } from '../lib/interact';
 import ReportSheet from './ReportSheet';
+import ZapSheet from './ZapSheet';
 
 export interface PostMenuProps {
   post: TimelinePost;
@@ -36,6 +38,7 @@ export interface PostMenuProps {
 
 export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
   const [reporting, setReporting] = useState(false);
+  const [zapping, setZapping] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [gone, setGone] = useState(false);
 
@@ -75,7 +78,7 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
   return (
     <>
       <Modal
-        visible={visible && !reporting}
+        visible={visible && !reporting && !zapping}
         transparent
         animationType="fade"
         onRequestClose={onClose}
@@ -98,6 +101,15 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
             </Pressable>
           ) : null}
 
+          {viewer && !mine ? (
+            <Pressable
+              onPress={(): void => setZapping(true)}
+              style={styles.row}
+            >
+              <Text style={styles.item}>⚡ Zap this post</Text>
+            </Pressable>
+          ) : null}
+
           <Pressable
             onPress={(): void => setReporting(true)}
             style={styles.row}
@@ -110,6 +122,19 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
           </Pressable>
         </View>
       </Modal>
+
+      {viewer ? (
+        <ZapSheet
+          visible={zapping}
+          recipientPubkey={post.pubkey}
+          event={post.event}
+          senderPubkey={viewer.toLowerCase() as PubkeyHex}
+          onClose={(): void => {
+            setZapping(false);
+            onClose();
+          }}
+        />
+      ) : null}
 
       <ReportSheet
         visible={reporting}

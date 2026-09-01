@@ -124,6 +124,30 @@ export async function publishNote(content: string): Promise<PublishResult> {
 }
 
 /**
+ * Signs with the key in this session.
+ *
+ * The shared code takes a signer rather than reaching for one, because the web
+ * may have a NIP-07 extension and this never does. This is that signer.
+ */
+export async function signEventWithSession(
+  draft: Omit<NostrEvent, 'id' | 'sig'>,
+): Promise<NostrEvent> {
+  const key: Uint8Array | null = getSessionPrivateKey();
+  if (!key) {
+    throw new NotSignedInError();
+  }
+  return finalizeEvent(
+    {
+      kind: draft.kind,
+      created_at: draft.created_at,
+      tags: draft.tags,
+      content: draft.content,
+    },
+    key,
+  ) as unknown as NostrEvent;
+}
+
+/**
  * Sends an already-signed event to every configured relay.
  *
  * Split out so reactions and follow lists deliver by the same route a note
