@@ -97,7 +97,8 @@ export default function Home() {
       setStats(
         `${result.stats.follows} follows / ${result.stats.events} events / ` +
           `${result.stats.profiles} profiles / ${result.stats.relays} relays / ` +
-          `${(result.stats.ms / 1000).toFixed(1)}s`,
+          `${(result.stats.ms / 1000).toFixed(1)}s` +
+          (result.stats.muted > 0 ? ` / ${result.stats.muted} muted hidden` : ''),
       );
       setError(null);
     } catch (e: any) {

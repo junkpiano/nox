@@ -12,10 +12,11 @@
  * back.
  */
 
-import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { fetchFollowList } from '../../src/common/events-queries';
+import { filterMutedEvents } from '../../src/common/mute-state';
 import { openRelaySubscription } from '../../src/common/relay-socket';
 import { getRelays } from '../../src/features/relays/relays';
+import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 
 /** Kinds the home timeline shows. Mirrors `homeKinds` in the web app. */
 const HOME_KINDS: number[] = [1, 6];
@@ -44,6 +45,8 @@ export interface TimelineResult {
     profiles: number;
     relays: number;
     ms: number;
+    /** How many events the mute list removed, so the filter is visible. */
+    muted: number;
   };
 }
 
@@ -158,6 +161,7 @@ export async function loadHomeTimeline(
       profiles: decorated.profileCount,
       relays: relays.length,
       ms: Date.now() - started,
+      muted: events.length - filterMutedEvents(events).length,
     },
   };
 }
@@ -217,7 +221,6 @@ async function decorate(
   return { posts, profileCount: profiles.size };
 }
 
-
 /**
  * The global timeline: the same shape, without an author filter.
  *
@@ -251,6 +254,7 @@ export async function loadGlobalTimeline(
       profiles: decorated.profileCount,
       relays: relays.length,
       ms: Date.now() - started,
+      muted: events.length - filterMutedEvents(events).length,
     },
   };
 }

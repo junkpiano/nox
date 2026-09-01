@@ -7,6 +7,7 @@
  */
 
 import type { PubkeyHex } from '../../types/nostr';
+import { emitAppEvent } from './app-events.js';
 import { getMetadata, setMetadata } from './db/index.js';
 
 /** Cached copy of the decrypted list, so a cold start filters correctly. */
@@ -22,7 +23,7 @@ let listCreatedAt: number = 0;
 
 /** Notifies views so an open timeline can drop the muted author immediately. */
 function announceChange(): void {
-  window.dispatchEvent(new CustomEvent('mute-list-updated'));
+  emitAppEvent('mute-list-updated');
 }
 
 /**

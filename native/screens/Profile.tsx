@@ -7,8 +7,9 @@
  * and virtualisation is most of why this app is being written in React Native.
  */
 
-import { useEffect, useState } from 'react';
 import type { RouteProp } from '@react-navigation/native';
+import { nip19 } from 'nostr-tools';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,12 +21,16 @@ import {
   Text,
   View,
 } from 'react-native';
-import { nip19 } from 'nostr-tools';
-
+import { kvGet } from '../../src/common/kv';
+import { isMuted } from '../../src/common/mute-state';
+import { getSessionPrivateKey } from '../../src/common/session';
+import {
+  muteUser,
+  unmuteUser,
+} from '../../src/features/moderation/moderation-actions';
+import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
-import { kvGet } from '../../src/common/kv';
-import { getSessionPrivateKey } from '../../src/common/session';
 import {
   NotSignedInError,
   readFollowing,
@@ -110,6 +115,81 @@ function FollowButton({ target }: { target: PubkeyHex }) {
   );
 }
 
+/**
+ * Mute, and unmute.
+ *
+ * Muting is kept private: NIP-51 puts the entries in NIP-44 encrypted content
+ * rather than public `p` tags, so relays and other people cannot read who has
+ * been blocked. That is handled by the shared moderation code; what is decided
+ * here is only that muting takes effect locally even when the publish fails,
+ * because the person's intent outlives a relay's bad day.
+ */
+function MuteButton({ target }: { target: PubkeyHex }) {
+  const viewer = viewerPubkey();
+  const [muted, setMuted] = useState<boolean>(() => isMuted(target));
+  const [busy, setBusy] = useState(false);
+
+  if (!viewer || viewer === target) {
+    return null;
+  }
+
+  const toggle = (): void => {
+    const next = !muted;
+    const run = async (): Promise<void> => {
+      setBusy(true);
+      try {
+        if (next) {
+          await muteUser(target, getRelays());
+        } else {
+          await unmuteUser(target, getRelays());
+        }
+        setMuted(next);
+      } catch (e: any) {
+        // The local list has already changed - the shared action does that
+        // first on purpose - so the state is updated and the failure is only
+        // about the list not reaching other clients.
+        setMuted(isMuted(target));
+        Alert.alert(
+          'Saved on this phone only',
+          `The change did not reach your relays, so your other clients will ` +
+            `not know about it yet.\n\n${String(e?.message ?? e)}`,
+        );
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    if (next) {
+      Alert.alert(
+        'Mute this person?',
+        'Their posts stop appearing in your timelines and notifications. The ' +
+          'list is encrypted to you, so nobody else can read who is on it.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Mute',
+            style: 'destructive',
+            onPress: (): void => void run(),
+          },
+        ],
+      );
+      return;
+    }
+    void run();
+  };
+
+  // Deliberately quieter than Follow. Following is the everyday action and
+  // muting is a rare defensive one; giving them the same weight makes the
+  // page look like it is offering two equal choices, which it is not.
+  return (
+    <Pressable onPress={toggle} disabled={busy} hitSlop={8}>
+      <Text style={[styles.muteLink, busy && styles.followOff]}>
+        {busy ? 'Saving...' : muted ? 'Unmute this person' : 'Mute'}
+      </Text>
+    </Pressable>
+  );
+}
+
 function Header({ profile }: { profile: ProfileData }) {
   const npub: string = nip19.npubEncode(profile.pubkey);
 
@@ -135,9 +215,12 @@ function Header({ profile }: { profile: ProfileData }) {
           <Text style={styles.npub}>{`${npub.slice(0, 20)}...`}</Text>
         )}
 
-        {profile.about ? <Text style={styles.about}>{profile.about}</Text> : null}
+        {profile.about ? (
+          <Text style={styles.about}>{profile.about}</Text>
+        ) : null}
 
         <FollowButton target={profile.pubkey} />
+        <MuteButton target={profile.pubkey} />
 
         {profile.website ? (
           <Pressable
@@ -239,6 +322,12 @@ const styles = StyleSheet.create({
   },
   followOff: { opacity: 0.5 },
   followText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
+  muteLink: {
+    color: '#5b6b88',
+    fontSize: 12,
+    marginTop: 12,
+    alignSelf: 'flex-start',
+  },
   divider: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   post: { paddingHorizontal: 16, paddingVertical: 14 },
   postContent: { color: '#b9c6de', fontSize: 14, lineHeight: 20 },

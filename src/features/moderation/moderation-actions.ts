@@ -8,14 +8,15 @@
  */
 
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
+import { kvGet } from '../../common/kv.js';
 import {
   addMutedLocally,
   getMuteListCreatedAt,
   removeMutedLocally,
   setMuteList,
 } from '../../common/mute-state.js';
+import { publishEventToRelays } from '../../common/publish-event.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
-import { publishEventToRelays } from '../profile/follow.js';
 import { recordRelayFailure } from '../relays/relays.js';
 import {
   MUTE_LIST_KIND,
@@ -26,12 +27,11 @@ import type { ReportType } from './report.js';
 import { signReportEvent } from './report.js';
 
 function getViewerPubkey(): PubkeyHex | null {
-  try {
-    const stored: string | null = localStorage.getItem('nostr_pubkey');
-    return stored ? (stored as PubkeyHex) : null;
-  } catch {
-    return null;
-  }
+  // Through the kv seam: on the web this is still localStorage, and on the
+  // phone it is the same key in SQLite. Reading the global directly here was
+  // the last thing keeping the mute list from working natively.
+  const stored: string | null = kvGet('nostr_pubkey');
+  return stored ? (stored as PubkeyHex) : null;
 }
 
 /**

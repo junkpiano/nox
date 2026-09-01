@@ -8,6 +8,7 @@
 
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { openRelaySubscription } from '../../src/common/relay-socket';
+import { filterMutedEvents } from '../../src/common/mute-state';
 import { getRelays } from '../../src/features/relays/relays';
 
 const NOTIFICATION_KINDS: number[] = [1, 6, 7];
@@ -120,10 +121,12 @@ export async function loadNotifications(
     limit: LIMIT,
   });
 
-  // Your own events name you too - a reply in your own thread carries your `p`
-  // tag. That is a conversation you are in, not something to be told about.
-  const fromOthers: NostrEvent[] = events.filter(
-    (event: NostrEvent): boolean => event.pubkey !== viewer,
+  // Two things are dropped here. Your own events name you too - a reply in
+  // your own thread carries your `p` tag - and that is a conversation you are
+  // already in rather than news. And anyone muted: being told that somebody
+  // you muted reacted to you is the notification working against the mute.
+  const fromOthers: NostrEvent[] = filterMutedEvents(
+    events.filter((event: NostrEvent): boolean => event.pubkey !== viewer),
   );
 
   onStage('who they are...');

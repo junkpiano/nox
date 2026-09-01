@@ -205,43 +205,6 @@ export async function setupFollowToggle(
   });
 }
 
-export async function publishEventToRelays(
-  event: NostrEvent,
-  relayList: string[],
-): Promise<void> {
-  const promises = relayList.map(async (relayUrl: string): Promise<void> => {
-    try {
-      const socket: WebSocket = createRelayWebSocket(relayUrl);
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          recordRelayFailure(relayUrl);
-          socket.close();
-          resolve();
-        }, 5000);
-
-        socket.onopen = (): void => {
-          socket.send(JSON.stringify(['EVENT', event]));
-        };
-
-        socket.onmessage = (msg: MessageEvent): void => {
-          const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'OK') {
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          }
-        };
-
-        socket.onerror = (): void => {
-          clearTimeout(timeout);
-          socket.close();
-          resolve();
-        };
-      });
-    } catch (e) {
-      console.warn(`Failed to publish event to ${relayUrl}:`, e);
-    }
-  });
-
-  await Promise.allSettled(promises);
-}
+// Moved to common/publish-event.ts, which does not import the DOM, and
+// re-exported so the eight modules importing it from here still work.
+export { publishEventToRelays } from '../../common/publish-event.js';
