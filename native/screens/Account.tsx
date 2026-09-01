@@ -6,6 +6,8 @@
  * when signed in explains the connection better than a disabled button would.
  */
 
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,6 +22,7 @@ import {
 import { onAppEvent } from '../../src/common/app-events';
 import { kvGet } from '../../src/common/kv';
 import { getMutedWords } from '../../src/common/mute-state';
+import { hidesWallet } from '../../src/common/platform';
 import {
   getSessionPrivateKey,
   restoreSessionPrivateKey,
@@ -27,6 +30,7 @@ import {
 import { setMutedWords } from '../../src/features/moderation/moderation-actions';
 import { getRelays } from '../../src/features/relays/relays';
 import type { PubkeyHex } from '../../types/nostr';
+import type { RootStackParamList } from '../App';
 import { NotSignedInError, publishNote } from '../lib/publish';
 import SignIn from './SignIn';
 
@@ -102,6 +106,33 @@ function Compose() {
         ) : (
           <Text style={styles.buttonText}>Post</Text>
         )}
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * The way in to the wallet.
+ *
+ * Absent on iOS, where the route is not registered either. An entry point that
+ * navigates nowhere is worse than no entry point.
+ */
+function WalletLink() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
+  if (hidesWallet()) {
+    return null;
+  }
+
+  return (
+    <View style={styles.compose}>
+      <Pressable
+        onPress={(): void => navigation.navigate('Wallet')}
+        style={styles.walletRow}
+      >
+        <Text style={styles.walletText}>⚡ Lightning wallet</Text>
+        <Text style={styles.walletChevron}>›</Text>
       </Pressable>
     </View>
   );
@@ -252,6 +283,7 @@ export default function Account() {
         }}
       />
       {canSign ? <Compose /> : null}
+      <WalletLink />
       {canSign ? <MutedWords /> : null}
     </ScrollView>
   );
@@ -281,6 +313,18 @@ const styles = StyleSheet.create({
   },
   note: { color: '#8ea0c0', fontSize: 12 },
   hint: { color: '#5b6b88', fontSize: 12, lineHeight: 17 },
+  walletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  walletText: { color: '#e8eeff', fontSize: 15, fontWeight: '600' },
+  walletChevron: { color: '#5b6b88', fontSize: 20 },
   wordRow: { flexDirection: 'row', gap: 8, alignItems: 'stretch' },
   wordInput: { flex: 1, minHeight: 0, paddingVertical: 10 },
   wordAdd: { paddingHorizontal: 18, justifyContent: 'center' },

@@ -22,27 +22,34 @@ import { StatusBar } from 'expo-status-bar';
 import { Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { hidesWallet } from '../src/common/platform';
 import type { PubkeyHex } from '../types/nostr';
 import Account from './screens/Account';
+import Chat from './screens/Chat';
 import Global from './screens/Global';
 import Home from './screens/Home';
+import Messages from './screens/Messages';
 import Notifications from './screens/Notifications';
 import Profile from './screens/Profile';
 import Relays from './screens/Relays';
 import Search from './screens/Search';
 import SharedCodeCheck from './screens/SharedCodeCheck';
 import Thread from './screens/Thread';
+import Wallet from './screens/Wallet';
 
 export type RootStackParamList = {
   Tabs: undefined;
   Profile: { pubkey: PubkeyHex };
   Thread: { eventId: string };
+  Chat: { peer: PubkeyHex; name: string };
+  Wallet: undefined;
 };
 
 export type TabParamList = {
   Home: undefined;
   Global: undefined;
   Search: undefined;
+  Messages: undefined;
   Alerts: undefined;
   Relays: undefined;
   Account: undefined;
@@ -107,6 +114,11 @@ function TabBar() {
         options={{ title: 'Search', tabBarIcon: icon('🔍') }}
       />
       <Tabs.Screen
+        name="Messages"
+        component={Messages}
+        options={{ title: 'DMs', tabBarIcon: icon('✉️') }}
+      />
+      <Tabs.Screen
         name="Alerts"
         component={Notifications}
         options={{ title: 'Alerts', tabBarIcon: icon('🔔') }}
@@ -151,6 +163,21 @@ export default function App() {
             component={Thread}
             options={{ title: 'Thread' }}
           />
+          <Stack.Screen
+            name="Chat"
+            component={Chat}
+            options={({ route }) => ({ title: route.params.name })}
+          />
+          {/* Not registered at all on iOS. A route that exists but is not
+              linked to is still a route, and this one must not be reachable
+              there by any means. */}
+          {hidesWallet() ? null : (
+            <Stack.Screen
+              name="Wallet"
+              component={Wallet}
+              options={{ title: 'Wallet' }}
+            />
+          )}
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

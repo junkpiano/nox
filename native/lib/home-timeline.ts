@@ -114,7 +114,7 @@ function queryRelays(
   });
 }
 
-interface ProfileMeta {
+export interface ProfileMeta {
   name: string;
   picture: string | null;
   nip05: string | null;
@@ -184,19 +184,29 @@ interface Decorated {
   profileCount: number;
 }
 
-async function decorate(
-  relays: string[],
-  events: NostrEvent[],
-): Promise<Decorated> {
-  const seenAuthors: string[] = Array.from(
-    new Set(events.map((e: NostrEvent): string => e.pubkey)),
-  ).slice(0, MAX_AUTHORS);
+/**
+ * Names and faces for a set of pubkeys, newest kind 0 winning.
+ *
+ * Exported because a conversation list needs exactly this and nothing else
+ * from the timeline. Relays disagree about which kind 0 is current, so the
+ * copy with the latest `created_at` is the one kept - the rule the web app
+ * applies, applied once here rather than per caller.
+ */
+export async function fetchProfilesForPubkeys(
+  pubkeys: PubkeyHex[],
+  relays: string[] = getRelays(),
+): Promise<Map<string, ProfileMeta>> {
+  const wanted: string[] = Array.from(new Set(pubkeys)).slice(0, MAX_AUTHORS);
+  const profiles: Map<string, ProfileMeta> = new Map();
+  if (wanted.length === 0) {
+    return profiles;
+  }
+
   const profileEvents: NostrEvent[] = await queryRelays(relays, {
     kinds: [0],
-    authors: seenAuthors,
+    authors: wanted,
   });
 
-  const profiles: Map<string, ProfileMeta> = new Map();
   const profileAt: Map<string, number> = new Map();
   for (const event of profileEvents) {
     const previous: number | undefined = profileAt.get(event.pubkey);
@@ -206,6 +216,18 @@ async function decorate(
     profiles.set(event.pubkey, meta);
     profileAt.set(event.pubkey, event.created_at);
   }
+
+  return profiles;
+}
+
+async function decorate(
+  relays: string[],
+  events: NostrEvent[],
+): Promise<Decorated> {
+  const profiles: Map<string, ProfileMeta> = await fetchProfilesForPubkeys(
+    events.map((e: NostrEvent): PubkeyHex => e.pubkey as PubkeyHex),
+    relays,
+  );
 
   const posts: TimelinePost[] = events
     .slice()

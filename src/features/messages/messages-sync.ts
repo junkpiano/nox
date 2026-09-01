@@ -7,8 +7,8 @@
  */
 
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
+import { publishEventToRelays } from '../../common/publish-event.js';
 import { openRelaySubscription } from '../../common/relay-socket.js';
-import { publishEventToRelays } from '../profile/follow.js';
 import {
   fetchDmRelayList,
   fetchNip65ReadRelays,
