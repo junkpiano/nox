@@ -194,20 +194,30 @@ export function parseBolt11Invoice(invoice: string): ParsedBolt11Invoice {
 }
 
 /**
- * Whether this invoice is the one that was asked for.
+ * Judging an already-parsed invoice.
  *
- * Throws when it is provably not - a wrong amount, or a hash committing to
- * something else. Returns `canAutoPay: false` when it merely cannot be proved,
- * which is a different thing and is the person's call rather than the app's.
+ * Split from the parsing so the decision table can be tested without a real
+ * bolt11, which cannot be written by hand.
+ *
+ * The amount is the part that protects the money, and a mismatch is refused
+ * outright. The description hash is weaker than it looks: NIP-57 asks the
+ * server to commit to the zap request as it received it, and servers in the
+ * wild commit to a re-serialised copy instead - primal does, which is provable
+ * from outside this app. Refusing those would mean refusing to zap a large
+ * part of the network.
+ *
+ * So a hash that cannot be reproduced is reported as "not verified" rather
+ * than "wrong": the invoice is shown, nothing is paid automatically, and the
+ * person decides. Treating unverifiable as invalid breaks zapping; treating it
+ * as fine would auto-pay an invoice nobody checked.
  */
-export function validateInvoiceForZap(
-  invoice: string,
+export function judgeInvoice(
+  parsed: ParsedBolt11Invoice,
   requestedAmountSats: number,
   payInfo: ZapPayInfo,
   zapRequestJson: string,
 ): InvoiceValidation {
-  const decoded: ParsedBolt11Invoice = parseBolt11Invoice(invoice);
-  if (decoded.amountSats !== requestedAmountSats) {
+  if (parsed.amountSats !== requestedAmountSats) {
     throw new Error('Invoice amount does not match the requested zap amount.');
   }
 
@@ -216,33 +226,52 @@ export function validateInvoiceForZap(
     ? sha256Hex(payInfo.metadata)
     : null;
 
-  if (decoded.purposeCommitHash) {
+  if (parsed.purposeCommitHash) {
     if (
-      decoded.purposeCommitHash !== expectedZapRequestHash &&
-      decoded.purposeCommitHash !== expectedMetadataHash
+      parsed.purposeCommitHash === expectedZapRequestHash ||
+      parsed.purposeCommitHash === expectedMetadataHash
     ) {
-      throw new Error(
-        'Invoice description hash does not match the zap request or LNURL response.',
-      );
+      return { canAutoPay: true };
     }
-    return { canAutoPay: true };
+    return {
+      canAutoPay: false,
+      warning:
+        'The invoice is for the right amount, but its description hash could ' +
+        'not be matched to the zap request. Pay it by hand if you trust this ' +
+        'recipient.',
+    };
   }
 
-  if (decoded.description) {
+  if (parsed.description) {
     if (
-      decoded.description !== zapRequestJson &&
-      decoded.description !== payInfo.metadata
+      parsed.description !== zapRequestJson &&
+      parsed.description !== payInfo.metadata
     ) {
       return {
         canAutoPay: false,
         warning:
-          'Invoice created, but its plain-text description differs from the ' +
-          'zap request. Pay it by hand if you trust this recipient.',
+          'The invoice is for the right amount, but its description differs ' +
+          'from the zap request. Pay it by hand if you trust this recipient.',
       };
     }
   }
 
   return { canAutoPay: true };
+}
+
+/** Parses the invoice and judges it. */
+export function validateInvoiceForZap(
+  invoice: string,
+  requestedAmountSats: number,
+  payInfo: ZapPayInfo,
+  zapRequestJson: string,
+): InvoiceValidation {
+  return judgeInvoice(
+    parseBolt11Invoice(invoice),
+    requestedAmountSats,
+    payInfo,
+    zapRequestJson,
+  );
 }
 
 export interface ZapInvoiceRequest {

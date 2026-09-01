@@ -36,6 +36,7 @@ import type { RootStackParamList } from '../App';
 import { PostRow } from '../components/PostList';
 import ReportSheet from '../components/ReportSheet';
 import RichText from '../components/RichText';
+import ZapSheet from '../components/ZapSheet';
 import { decorateEvents, type TimelinePost } from '../lib/home-timeline';
 import {
   NotSignedInError,
@@ -203,6 +204,36 @@ function MuteButton({ target }: { target: PubkeyHex }) {
  * person looking at this screen; reporting asks somebody else to do something,
  * which is worth offering and not worth advertising.
  */
+/**
+ * Zapping the person rather than one of their posts.
+ *
+ * The same sheet, without an event: NIP-57 sends it to the pubkey instead,
+ * and the recipient's Lightning address is on the profile that is already
+ * open.
+ */
+function ZapLink({ target }: { target: PubkeyHex }) {
+  const viewer = viewerPubkey();
+  const [open, setOpen] = useState(false);
+
+  if (!viewer || viewer === target) {
+    return null;
+  }
+
+  return (
+    <>
+      <Pressable onPress={(): void => setOpen(true)} hitSlop={8}>
+        <Text style={styles.zapLink}>⚡ Zap</Text>
+      </Pressable>
+      <ZapSheet
+        visible={open}
+        recipientPubkey={target}
+        senderPubkey={viewer}
+        onClose={(): void => setOpen(false)}
+      />
+    </>
+  );
+}
+
 function ReportLink({ target }: { target: PubkeyHex }) {
   const viewer = viewerPubkey();
   const [open, setOpen] = useState(false);
@@ -260,6 +291,7 @@ function Header({ profile }: { profile: ProfileData }) {
 
         <FollowButton target={profile.pubkey} />
         <View style={styles.quietActions}>
+          <ZapLink target={profile.pubkey} />
           <MuteButton target={profile.pubkey} />
           <ReportLink target={profile.pubkey} />
         </View>
@@ -395,6 +427,7 @@ const styles = StyleSheet.create({
   followOff: { opacity: 0.5 },
   followText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
   muteLink: { color: '#5b6b88', fontSize: 12 },
+  zapLink: { color: '#ffd79a', fontSize: 12, fontWeight: '700' },
   quietActions: { flexDirection: 'row', gap: 18, marginTop: 12 },
   divider: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   post: { paddingHorizontal: 16, paddingVertical: 14 },

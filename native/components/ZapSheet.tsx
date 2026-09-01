@@ -126,21 +126,28 @@ export default function ZapSheet({
         });
         setResult(zap);
 
+        // Collected rather than overwritten: the check on the invoice matters
+        // more than the state of the wallet, and setting the note twice used
+        // to hide the first one behind the second.
+        const notes: string[] = [];
         if (zap.validation.warning) {
-          setNote(zap.validation.warning);
+          notes.push(zap.validation.warning);
         }
 
         await loadWalletConnection();
         const wallet = getWalletConnection();
         if (wallet && zap.validation.canAutoPay) {
           await payInvoice(wallet, zap.invoice);
-          setNote('Paid.');
+          notes.push('Paid.');
         } else if (!wallet) {
-          setNote(
+          notes.push(
             'No wallet is connected, so the invoice is here to pay however ' +
               'you like.',
           );
+        } else {
+          notes.push('Nothing was paid automatically.');
         }
+        setNote(notes.join('\n\n'));
       } catch (error: unknown) {
         setNote(String((error as Error)?.message ?? error));
       } finally {
