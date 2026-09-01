@@ -44,17 +44,17 @@ import {
 import { createRelayWebSocket } from './relay-socket.js';
 import { getSessionPrivateKey } from './session.js';
 import { openZapComposer } from './zap.js';
+import {
+  type ContentWarning,
+  contentWarningSummary,
+  getContentWarning,
+} from './content-warning.js';
 
 const REFERENCED_EVENT_CACHE_LIMIT: number = 1000;
 const REFERENCED_EVENT_NULL_CACHE_LIMIT: number = 2000;
 const REFERENCED_EVENT_NULL_CACHE_TTL_MS: number = 60 * 1000;
 const referencedEventCache: Map<string, Promise<NostrEvent | null>> = new Map();
 const referencedEventNullCache: Map<string, number> = new Map();
-interface ContentWarningInfo {
-  hasWarning: boolean;
-  reason: string;
-}
-
 interface ParentReference {
   eventId: string;
   relayHints: string[];
@@ -252,61 +252,6 @@ function hasTextSelectionWithin(container: HTMLElement): boolean {
     container.contains(range.startContainer) ||
     container.contains(range.endContainer)
   );
-}
-
-function isContentWarningNamespace(value: string | undefined): boolean {
-  return (value || '').trim().toLowerCase() === 'content-warning';
-}
-
-function getContentWarningInfo(event: NostrEvent): ContentWarningInfo {
-  let hasContentWarningTag: boolean = false;
-  let hasContentWarningNamespace: boolean = false;
-  let hasScopedWarningLabel: boolean = false;
-  let reason: string = '';
-
-  for (const tag of event.tags) {
-    const tagName: string = (tag[0] || '').trim();
-    if (!tagName) {
-      continue;
-    }
-
-    if (tagName.toLowerCase() === 'content-warning' || tagName === 'cw') {
-      hasContentWarningTag = true;
-      const tagReason: string = (tag[1] || '').trim();
-      if (!reason && tagReason) {
-        reason = tagReason;
-      }
-      continue;
-    }
-
-    if (tagName === 'L' && isContentWarningNamespace(tag[1])) {
-      hasContentWarningNamespace = true;
-      continue;
-    }
-
-    if (tagName === 'l' && isContentWarningNamespace(tag[2])) {
-      hasScopedWarningLabel = true;
-      const labelReason: string = (tag[1] || '').trim();
-      if (!reason && labelReason) {
-        reason = labelReason;
-      }
-    }
-  }
-
-  return {
-    hasWarning:
-      hasContentWarningTag ||
-      hasContentWarningNamespace ||
-      hasScopedWarningLabel,
-    reason,
-  };
-}
-
-function getContentWarningSummary(reason: string): string {
-  if (!reason) {
-    return '⚠️ Content warning';
-  }
-  return `⚠️ Content warning: ${escapeHtmlAttribute(reason)}`;
 }
 
 function getEmojiTagMap(tags: string[][]): Map<string, string> {
@@ -1319,7 +1264,7 @@ export function renderEvent(
         `;
 
   const contentSource: string = isRepost ? '' : event.content;
-  const contentWarning: ContentWarningInfo = getContentWarningInfo(event);
+  const contentWarning: ContentWarning = getContentWarning(event);
   const escapedContentSource: string = escapeHtmlAttribute(contentSource);
   const urls: string[] = [];
   const imageUrls: string[] = [];
@@ -1465,7 +1410,7 @@ export function renderEvent(
     ? `
       <details class="event-cw-details mb-2 rounded-lg border border-amber-300 bg-amber-50">
         <summary class="cursor-pointer select-none text-xs font-semibold text-amber-900 px-3 py-2">
-          ${getContentWarningSummary(contentWarning.reason)}. Click to reveal.
+          ⚠️ ${escapeHtmlAttribute(contentWarningSummary(contentWarning))}. Click to reveal.
         </summary>
         <div class="px-3 pb-3 pt-2">
           ${
@@ -2185,8 +2130,8 @@ async function renderReferencedEventCards(
         referencedContentWithUnicodeEmoji,
         referencedEvent.tags,
       );
-      const referencedContentWarning: ContentWarningInfo =
-        getContentWarningInfo(referencedEvent);
+      const referencedContentWarning: ContentWarning =
+        getContentWarning(referencedEvent);
       const referencedText: string =
         referencedContent.length > 180
           ? `${referencedContent.slice(0, 180)}...`
@@ -2209,7 +2154,7 @@ async function renderReferencedEventCards(
           />`;
 
       const referencedPreviewHtml: string = referencedContentWarning.hasWarning
-        ? `<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">${getContentWarningSummary(referencedContentWarning.reason)}. Open post to view.</div>`
+        ? `<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">⚠️ ${escapeHtmlAttribute(contentWarningSummary(referencedContentWarning))}. Open post to view.</div>`
         : `<div class="nox-post-text text-sm text-gray-800 whitespace-pre-wrap break-words">${referencedText || '(no content)'}</div>`;
 
       card.innerHTML = `

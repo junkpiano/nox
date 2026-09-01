@@ -10,9 +10,9 @@
  * holds every card in the DOM, and this does not.
  */
 
-import { useEffect, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -23,7 +23,7 @@ import {
   Text,
   View,
 } from 'react-native';
-
+import { contentWarningSummary } from '../../src/common/content-warning';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import type { TimelinePost } from '../lib/home-timeline';
@@ -58,6 +58,15 @@ function Row({
   onOpenThread: () => void;
   onOpenProfile: () => void;
 }) {
+  /**
+   * NIP-36: the author asked for this not to be shown unasked.
+   *
+   * Revealing is per row and not remembered. A warning is about one post, and
+   * carrying the decision to the next one would answer a question nobody was
+   * asked.
+   */
+  const [revealed, setRevealed] = useState(false);
+
   useEffect(() => {
     bumpMounted(1);
     return () => bumpMounted(-1);
@@ -90,9 +99,21 @@ function Row({
             {post.nip05}
           </Text>
         ) : null}
-        <Text style={styles.content} numberOfLines={12}>
-          {post.content}
-        </Text>
+        {post.warning.hasWarning && !revealed ? (
+          <Pressable
+            onPress={(): void => setRevealed(true)}
+            style={styles.warning}
+          >
+            <Text style={styles.warningText}>
+              ⚠️ {contentWarningSummary(post.warning)}
+            </Text>
+            <Text style={styles.warningHint}>Tap to show</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.content} numberOfLines={12}>
+            {post.content}
+          </Text>
+        )}
       </View>
     </Pressable>
   );
@@ -199,7 +220,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   rowPressed: { backgroundColor: 'rgba(137,168,255,0.08)' },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#25406e' },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#25406e',
+  },
   avatarBlank: { opacity: 0.5 },
   rowBody: { flex: 1 },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -215,6 +241,17 @@ const styles = StyleSheet.create({
   },
   nip05: { color: '#5b6b88', fontSize: 11, marginTop: 1 },
   content: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 5 },
+  warning: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#4a3a1a',
+    backgroundColor: '#221a0d',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  warningText: { color: '#ffd79a', fontSize: 13, lineHeight: 18 },
+  warningHint: { color: '#8a7550', fontSize: 11, marginTop: 4 },
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
   stage: { color: '#8ea0c0', fontSize: 13 },

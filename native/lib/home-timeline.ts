@@ -12,6 +12,10 @@
  * back.
  */
 
+import {
+  type ContentWarning,
+  getContentWarning,
+} from '../../src/common/content-warning';
 import { fetchFollowList } from '../../src/common/events-queries';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { openRelaySubscription } from '../../src/common/relay-socket';
@@ -35,6 +39,8 @@ export interface TimelinePost {
   name: string;
   picture: string | null;
   nip05: string | null;
+  /** NIP-36, as the author set it. Never inferred from the text. */
+  warning: ContentWarning;
 }
 
 export interface TimelineResult {
@@ -215,6 +221,7 @@ async function decorate(
         name: meta?.name || `${event.pubkey.slice(0, 8)}...`,
         picture: meta?.picture ?? null,
         nip05: meta?.nip05 ?? null,
+        warning: getContentWarning(event),
       };
     });
 
