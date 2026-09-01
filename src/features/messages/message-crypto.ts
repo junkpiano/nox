@@ -20,8 +20,21 @@
  *   - web: a non-extractable CryptoKey in IndexedDB. Script can use it but
  *     cannot read it back out, so a dump of the database yields ciphertext and
  *     an unusable handle rather than a key.
+ *
+ * The cipher differs too, for a duller reason. AES-GCM is used wherever
+ * `crypto.subtle` exists, which covers browsers and the Tauri WebView. React
+ * Native has no SubtleCrypto at all, and there the choice was between shipping
+ * a crypto library for one call and reusing NIP-44's, which is already here,
+ * already audited as part of the protocol, and already doing exactly this job
+ * one layer up. So the phone stores a v2 payload: NIP-44 with a random local
+ * key, which is a symmetric key as far as that function is concerned.
+ *
+ * Without this the phone would simply not cache - the callers read a missing
+ * cipher as "do not persist" - so every launch would re-fetch and re-decrypt
+ * every conversation.
  */
 
+import { nip44 } from 'nostr-tools';
 import { getMetadata, setMetadata } from '../../common/db/index.js';
 import { isNativeRuntime } from '../../common/native-http.js';
 import {
@@ -39,11 +52,20 @@ const KEY_BYTES: number = 32;
 /** 96 bits, the size AES-GCM is specified around. */
 const IV_BYTES: number = 12;
 
-export interface EncryptedPayload {
+/** AES-GCM, where `crypto.subtle` exists. */
+export interface AesPayload {
   v: 1;
   iv: Uint8Array<ArrayBuffer>;
   ct: ArrayBuffer;
 }
+
+/** NIP-44 with a random local key, where it does not. */
+export interface Nip44Payload {
+  v: 2;
+  ct: string;
+}
+
+export type EncryptedPayload = AesPayload | Nip44Payload;
 
 let keyPromise: Promise<CryptoKey | null> | null = null;
 
@@ -110,12 +132,44 @@ export function isEncryptedPayload(value: unknown): value is EncryptedPayload {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
-  const candidate = value as Partial<EncryptedPayload>;
-  return (
-    candidate.v === 1 &&
-    candidate.iv instanceof Uint8Array &&
-    candidate.ct instanceof ArrayBuffer
-  );
+  const candidate = value as { v?: unknown; iv?: unknown; ct?: unknown };
+  if (candidate.v === 1) {
+    return (
+      candidate.iv instanceof Uint8Array && candidate.ct instanceof ArrayBuffer
+    );
+  }
+  // A v2 blob written on the phone can be read back only on the phone, which
+  // is true of a v1 blob too: neither key ever leaves the device it was made
+  // on, so a cache is never carried between platforms in the first place.
+  return candidate.v === 2 && typeof candidate.ct === 'string';
+}
+
+/**
+ * The local key for the NIP-44 path.
+ *
+ * Kept beside the AES key rather than derived from it: they are alternatives,
+ * never both live on one device, and a shared derivation would only tie two
+ * unrelated lifetimes together.
+ */
+let localKeyPromise: Promise<Uint8Array | null> | null = null;
+
+function getLocalKey(): Promise<Uint8Array | null> {
+  if (!localKeyPromise) {
+    localKeyPromise = (async (): Promise<Uint8Array | null> => {
+      try {
+        let raw: Uint8Array | null = await readSecret(KEY_SECRET_NAME);
+        if (!raw || raw.length !== KEY_BYTES) {
+          raw = globalThis.crypto.getRandomValues(new Uint8Array(KEY_BYTES));
+          await writeSecret(KEY_SECRET_NAME, raw);
+        }
+        return raw;
+      } catch (error: unknown) {
+        console.warn('[dm] Local cache key unavailable:', error);
+        return null;
+      }
+    })();
+  }
+  return localKeyPromise;
 }
 
 /** Returns null when no key is available, which means "do not write". */
@@ -123,8 +177,21 @@ export async function encryptJson(
   value: unknown,
 ): Promise<EncryptedPayload | null> {
   const api: SubtleCrypto | null = subtle();
+  if (!api) {
+    const localKey: Uint8Array | null = await getLocalKey();
+    if (!localKey) {
+      return null;
+    }
+    try {
+      return { v: 2, ct: nip44.encrypt(JSON.stringify(value), localKey) };
+    } catch (error: unknown) {
+      console.warn('[dm] Failed to encrypt cache:', error);
+      return null;
+    }
+  }
+
   const key: CryptoKey | null = await getKey();
-  if (!api || !key) {
+  if (!key) {
     return null;
   }
 
@@ -160,6 +227,20 @@ export async function decryptJson<T>(payload: unknown): Promise<T | null> {
   if (!isEncryptedPayload(payload)) {
     return null;
   }
+
+  if (payload.v === 2) {
+    const localKey: Uint8Array | null = await getLocalKey();
+    if (!localKey) {
+      return null;
+    }
+    try {
+      return JSON.parse(nip44.decrypt(payload.ct, localKey)) as T;
+    } catch (error: unknown) {
+      console.warn('[dm] Failed to decrypt cache:', error);
+      return null;
+    }
+  }
+
   const api: SubtleCrypto | null = subtle();
   const key: CryptoKey | null = await getKey();
   if (!api || !key) {
@@ -189,6 +270,7 @@ export async function decryptJson<T>(payload: unknown): Promise<T | null> {
  */
 export async function destroyCacheKey(): Promise<void> {
   keyPromise = null;
+  localKeyPromise = null;
   try {
     await deleteSecret(KEY_SECRET_NAME);
   } catch {

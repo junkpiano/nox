@@ -65,7 +65,10 @@ export async function startMessageSync(
 
   const since: number = Math.floor(Date.now() / 1000) - LOOKBACK_SECONDS;
   const pending: NostrEvent[] = [];
-  let flushTimer: number | null = null;
+  // `ReturnType<typeof setTimeout>` rather than `number`: the browser hands
+  // back a number and React Native hands back an object, and neither cares
+  // what the other returns.
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Decryption is expensive per event, so wraps are batched rather than
   // handled one at a time during the initial backfill.
@@ -73,7 +76,7 @@ export async function startMessageSync(
     if (flushTimer !== null) {
       return;
     }
-    flushTimer = window.setTimeout((): void => {
+    flushTimer = setTimeout((): void => {
       flushTimer = null;
       const batch: NostrEvent[] = pending.splice(0, pending.length);
       void ingest(batch, viewerPubkey);

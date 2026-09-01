@@ -10,6 +10,7 @@
  * recognised before the secret is read.
  */
 
+import { emitAppEvent } from '../../common/app-events.js';
 import { getMetadata, setMetadata } from '../../common/db/index.js';
 import {
   deleteSecret,
@@ -40,7 +41,7 @@ function utf8ToBytes(value: string): Uint8Array {
 }
 
 function announceChange(): void {
-  window.dispatchEvent(new CustomEvent('wallet-connection-changed'));
+  emitAppEvent('wallet-connection-changed');
 }
 
 /**

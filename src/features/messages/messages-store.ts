@@ -13,6 +13,7 @@
  */
 
 import type { PubkeyHex } from '../../../types/nostr';
+import { emitAppEvent } from '../../common/app-events.js';
 import { getMetadata, setMetadata } from '../../common/db/index.js';
 import { decryptJson, destroyCacheKey, encryptJson } from './message-crypto.js';
 import type { ChatRumor } from './nip17.js';
@@ -41,7 +42,7 @@ let messages: Map<string, StoredMessage> = new Map();
 let loaded: boolean = false;
 
 function announceChange(): void {
-  window.dispatchEvent(new CustomEvent('dm-messages-updated'));
+  emitAppEvent('dm-messages-updated');
 }
 
 /**
