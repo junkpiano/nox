@@ -17,13 +17,16 @@ import {
   TextInput,
   View,
 } from 'react-native';
-
-import type { PubkeyHex } from '../../types/nostr';
+import { onAppEvent } from '../../src/common/app-events';
 import { kvGet } from '../../src/common/kv';
+import { getMutedWords } from '../../src/common/mute-state';
 import {
   getSessionPrivateKey,
   restoreSessionPrivateKey,
 } from '../../src/common/session';
+import { setMutedWords } from '../../src/features/moderation/moderation-actions';
+import { getRelays } from '../../src/features/relays/relays';
+import type { PubkeyHex } from '../../types/nostr';
 import { NotSignedInError, publishNote } from '../lib/publish';
 import SignIn from './SignIn';
 
@@ -104,6 +107,107 @@ function Compose() {
   );
 }
 
+/**
+ * The muted-word list.
+ *
+ * Every change publishes the whole kind:10000, words and people together,
+ * because it is replaceable: sending the words alone would delete the muted
+ * accounts, and sending the accounts alone would delete the words.
+ */
+function MutedWords() {
+  const [words, setWords] = useState<string[]>(getMutedWords);
+  const [draft, setDraft] = useState('');
+  const [note, setNote] = useState('');
+
+  /**
+   * The published list arrives from the relays a moment after launch, and can
+   * also change from a mute made on another screen. Without this the editor
+   * shows whatever the cache held when it mounted, which is right until it
+   * quietly is not.
+   */
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('mute-list-updated', (): void => {
+        setWords(getMutedWords());
+      }),
+    [],
+  );
+
+  const commit = useCallback(async (next: string[]): Promise<void> => {
+    setNote('');
+    try {
+      await setMutedWords(next, getRelays());
+    } catch {
+      // The word is muted on this device either way. Saying nothing would
+      // suggest the change did not take, which is the opposite of the truth.
+      setNote('Muted here, but the list could not be published.');
+    }
+    setWords(getMutedWords());
+  }, []);
+
+  const add = useCallback((): void => {
+    const word = draft.trim();
+    if (!word) return;
+    setDraft('');
+    void commit([...getMutedWords(), word]);
+  }, [draft, commit]);
+
+  return (
+    <View style={styles.compose}>
+      <Text style={styles.section}>Muted words</Text>
+      <Text style={styles.hint}>
+        Posts whose text contains one of these are hidden. Whole words only, so
+        muting "ass" will not hide "class". The list is private.
+      </Text>
+      <View style={styles.wordRow}>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          onSubmitEditing={add}
+          placeholder="Add a word"
+          placeholderTextColor="#5b6b88"
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={64}
+          style={[styles.input, styles.wordInput]}
+        />
+        <Pressable
+          onPress={add}
+          disabled={draft.trim().length === 0}
+          style={[
+            styles.button,
+            styles.wordAdd,
+            draft.trim().length === 0 && styles.buttonOff,
+          ]}
+        >
+          <Text style={styles.buttonText}>Add</Text>
+        </Pressable>
+      </View>
+      {note ? <Text style={styles.note}>{note}</Text> : null}
+      {words.length === 0 ? (
+        <Text style={styles.note}>No muted words.</Text>
+      ) : (
+        <View style={styles.chips}>
+          {words.map((word: string) => (
+            <Pressable
+              key={word}
+              onPress={(): void => {
+                void commit(
+                  getMutedWords().filter((w: string): boolean => w !== word),
+                );
+              }}
+              style={styles.chip}
+            >
+              <Text style={styles.chipText}>{word}</Text>
+              <Text style={styles.chipX}>×</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function Account() {
   /**
    * Two different things, kept apart deliberately.
@@ -148,6 +252,7 @@ export default function Account() {
         }}
       />
       {canSign ? <Compose /> : null}
+      {canSign ? <MutedWords /> : null}
     </ScrollView>
   );
 }
@@ -175,6 +280,24 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   note: { color: '#8ea0c0', fontSize: 12 },
+  hint: { color: '#5b6b88', fontSize: 12, lineHeight: 17 },
+  wordRow: { flexDirection: 'row', gap: 8, alignItems: 'stretch' },
+  wordInput: { flex: 1, minHeight: 0, paddingVertical: 10 },
+  wordAdd: { paddingHorizontal: 18, justifyContent: 'center' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#25406e',
+    backgroundColor: '#101a2e',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  chipText: { color: '#e8eeff', fontSize: 13 },
+  chipX: { color: '#8ea0c0', fontSize: 15, lineHeight: 15 },
   button: {
     backgroundColor: '#89a8ff',
     borderRadius: 10,

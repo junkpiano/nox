@@ -7,13 +7,14 @@
 import 'react-native-get-random-values';
 
 import { registerRootComponent } from 'expo';
-
+import { loadCachedMuteList } from '../src/common/mute-state';
+import { restoreSessionPrivateKey } from '../src/common/session';
+import { refreshMuteListFromRelays } from '../src/features/moderation/moderation-actions';
+import { getRelays } from '../src/features/relays/relays';
 import App from './App';
 import { installNativeDatabase } from './platform/database';
 import { installNativeHttp } from './platform/http';
 import { installNativeSecrets } from './platform/secrets';
-import { loadCachedMuteList } from '../src/common/mute-state';
-import { restoreSessionPrivateKey } from '../src/common/session';
 import { installNativeStorage } from './platform/storage';
 
 /**
@@ -41,7 +42,14 @@ void restoreSessionPrivateKey();
  * The cached mute list, before the first timeline is drawn. Loading it late
  * would show a muted author for the moment it takes to arrive, which is the
  * moment that matters.
+ *
+ * The refresh follows it: the cache is what this device last saw, so a mute
+ * set on the web will not be in it. Fetching is deliberately not awaited - a
+ * slow relay must not hold up the first frame, and the cached list is already
+ * filtering by then.
  */
-void loadCachedMuteList();
+void loadCachedMuteList().then(() => {
+  void refreshMuteListFromRelays(getRelays());
+});
 
 registerRootComponent(App);

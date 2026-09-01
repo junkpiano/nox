@@ -10,6 +10,12 @@
 import { finalizeEvent, nip44 } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { getSessionPrivateKey } from '../../common/session.js';
+import {
+  type MuteEntries,
+  mergeMuteEntries,
+  readMuteTags,
+  writeMuteTags,
+} from './mute-entries.js';
 
 export const MUTE_LIST_KIND: number = 10000;
 
@@ -73,19 +79,6 @@ async function decryptFromSelf(
   throw new Error('No key available to decrypt the mute list.');
 }
 
-function collectPubkeysFromTags(tags: unknown): PubkeyHex[] {
-  if (!Array.isArray(tags)) {
-    return [];
-  }
-  const pubkeys: PubkeyHex[] = [];
-  for (const tag of tags) {
-    if (Array.isArray(tag) && tag[0] === 'p' && typeof tag[1] === 'string') {
-      pubkeys.push(tag[1] as PubkeyHex);
-    }
-  }
-  return pubkeys;
-}
-
 /**
  * Reads muted pubkeys out of a kind:10000 event.
  *
@@ -96,8 +89,8 @@ function collectPubkeysFromTags(tags: unknown): PubkeyHex[] {
 export async function parseMuteListEvent(
   event: NostrEvent,
   viewerPubkey: PubkeyHex,
-): Promise<PubkeyHex[]> {
-  const pubkeys: Set<PubkeyHex> = new Set(collectPubkeysFromTags(event.tags));
+): Promise<MuteEntries> {
+  let entries: MuteEntries = readMuteTags(event.tags);
 
   if (event.content) {
     try {
@@ -105,9 +98,7 @@ export async function parseMuteListEvent(
         event.content,
         viewerPubkey,
       );
-      for (const pubkey of collectPubkeysFromTags(JSON.parse(plaintext))) {
-        pubkeys.add(pubkey);
-      }
+      entries = mergeMuteEntries(entries, readMuteTags(JSON.parse(plaintext)));
     } catch (error: unknown) {
       // A list encrypted for a different key, or NIP-04 content from an older
       // client. Better to keep the public entries than to fail the whole list.
@@ -115,19 +106,22 @@ export async function parseMuteListEvent(
     }
   }
 
-  return Array.from(pubkeys);
+  return entries;
 }
 
 /**
  * Builds a signed kind:10000 event carrying every entry in encrypted content.
+ *
+ * It takes the whole list rather than just the people. kind:10000 is
+ * replaceable, so anything left out of this call is deleted from every relay
+ * that accepts the result - which is how muting one more person would
+ * otherwise wipe every muted word, and every hashtag mute set elsewhere.
  */
 export async function signMuteListEvent(params: {
   pubkeyHex: PubkeyHex;
-  mutedPubkeys: PubkeyHex[];
+  entries: MuteEntries;
 }): Promise<NostrEvent> {
-  const privateTags: string[][] = params.mutedPubkeys.map(
-    (pubkey: PubkeyHex): string[] => ['p', pubkey],
-  );
+  const privateTags: string[][] = writeMuteTags(params.entries);
 
   const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
     kind: MUTE_LIST_KIND,
