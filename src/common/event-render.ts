@@ -42,6 +42,7 @@ import {
   normalizeReaction,
 } from './reaction-interactions.js';
 import { createRelayWebSocket } from './relay-socket.js';
+import { repostTags } from './reply-tags.js';
 import { getSessionPrivateKey } from './session.js';
 import { openZapComposer } from './zap.js';
 
@@ -1076,10 +1077,7 @@ async function publishRepost(targetEvent: NostrEvent): Promise<void> {
     kind: 6,
     pubkey: storedPubkey as PubkeyHex,
     created_at: Math.floor(Date.now() / 1000),
-    tags: [
-      ['e', targetEvent.id],
-      ['p', targetEvent.pubkey],
-    ],
+    tags: repostTags(targetEvent),
     content: JSON.stringify(targetEvent),
   });
 
@@ -1574,8 +1572,9 @@ export function renderEvent(
       // Trigger reply overlay via custom event
       const replyEvent = new CustomEvent('open-reply', {
         detail: {
-          eventId: event.id,
-          eventPubkey: event.pubkey,
+          // The whole event: the overlay needs its tags to place the reply in
+          // the thread, which an id and a pubkey cannot tell it.
+          event,
           eventAuthor: name,
           eventContent: contentSource,
         },
