@@ -37,7 +37,9 @@ test('mute entries: people and words are read apart', () => {
 });
 
 test('mute entries: words are lowercased so matching is predictable', () => {
-  assert.deepEqual(readMuteTags([['word', '  SPOILERS  ']]).words, ['spoilers']);
+  assert.deepEqual(readMuteTags([['word', '  SPOILERS  ']]).words, [
+    'spoilers',
+  ]);
 });
 
 test('mute entries: hashtag and event mutes are kept, not understood', () => {
@@ -70,7 +72,9 @@ test('mute entries: a round trip loses nothing', () => {
   assert.equal(back.length, original.length);
   for (const tag of original) {
     assert.ok(
-      back.some((candidate) => JSON.stringify(candidate) === JSON.stringify(tag)),
+      back.some(
+        (candidate) => JSON.stringify(candidate) === JSON.stringify(tag),
+      ),
       `lost ${JSON.stringify(tag)}`,
     );
   }
@@ -84,7 +88,10 @@ test('mute entries: adding a person keeps the words', () => {
     ['word', 'spoilers'],
   ]);
 
-  const withBob = writeMuteTags({ ...entries, pubkeys: [...entries.pubkeys, BOB] });
+  const withBob = writeMuteTags({
+    ...entries,
+    pubkeys: [...entries.pubkeys, BOB],
+  });
 
   assert.ok(withBob.some((t) => t[0] === 'word' && t[1] === 'spoilers'));
   assert.equal(withBob.filter((t) => t[0] === 'p').length, 2);

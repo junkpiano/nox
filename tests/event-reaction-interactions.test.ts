@@ -1,6 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { NostrEvent, PubkeyHex } from '../types/nostr';
+import test from 'node:test';
 import {
   applyOptimisticReactionState,
   filterDeletedReactionEvents,
@@ -9,6 +8,7 @@ import {
   isReactionClickOnly,
   mergeReactionEvents,
 } from '../src/common/reaction-interactions.js';
+import type { NostrEvent, PubkeyHex } from '../types/nostr';
 
 function createReactionEvent(options: {
   id: string;

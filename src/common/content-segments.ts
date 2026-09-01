@@ -44,7 +44,7 @@ export type ContentSegment =
  * ran first would have to know to leave it alone.
  */
 const PATTERN =
-  /nostr:(npub1[0-9a-z]+|nprofile1[0-9a-z]+|note1[0-9a-z]+|nevent1[0-9a-z]+)|(https?:\/\/[^\s<]+)|(?:^|[^\p{L}\p{N}_\/])#([\p{L}\p{N}_]+)/giu;
+  /nostr:(npub1[0-9a-z]+|nprofile1[0-9a-z]+|note1[0-9a-z]+|nevent1[0-9a-z]+)|(https?:\/\/[^\s<]+)|(?:^|[^\p{L}\p{N}_/])#([\p{L}\p{N}_]+)/giu;
 
 /** Trailing punctuation is sentence, not URL. */
 function trimUrlTail(url: string): string {
@@ -159,16 +159,25 @@ export function parseContentSegments(content: string): ContentSegment[] {
       // The pattern consumes the character before the `#` so a URL fragment
       // or a word ending in one is not a tag. That character is text.
       const hashStart: number = start + whole.indexOf('#');
-      if (hashStart > cursor) {
-        segments.push({ kind: 'text', text: content.slice(cursor, hashStart) });
+      // A tag needs a letter in it. "#695" in a Wordle score is a number
+      // somebody wrote, and linking it sends the reader to an empty search.
+      // A rejected one leaves the cursor alone, so its characters are picked
+      // up as text by whatever comes next.
+      if (/\p{L}/u.test(hashtag)) {
+        if (hashStart > cursor) {
+          segments.push({
+            kind: 'text',
+            text: content.slice(cursor, hashStart),
+          });
+        }
+        segments.push({
+          kind: 'hashtag',
+          text: `#${hashtag}`,
+          tag: hashtag.toLowerCase(),
+        });
+        cursor = hashStart + hashtag.length + 1;
       }
-      segments.push({
-        kind: 'hashtag',
-        text: `#${hashtag}`,
-        tag: hashtag.toLowerCase(),
-      });
-      cursor = hashStart + hashtag.length + 1;
-      PATTERN.lastIndex = cursor;
+      PATTERN.lastIndex = hashStart + hashtag.length + 1;
     }
 
     match = PATTERN.exec(content);

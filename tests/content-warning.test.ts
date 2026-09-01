@@ -113,7 +113,7 @@ test('content warning summary: no reason gives a plain line', () => {
   );
 });
 
-test('content warning summary: the reason is the author\'s own words', () => {
+test("content warning summary: the reason is the author's own words", () => {
   assert.equal(
     contentWarningSummary({ hasWarning: true, reason: 'nsfw' }),
     'Content warning: nsfw',

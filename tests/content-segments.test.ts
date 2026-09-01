@@ -20,7 +20,9 @@ const NPUB: string =
   'npub1paptfd5xjegzpnkzexxpw3npsaaw30pah8fyyuhyfz4mhv2ywcmsn5tp2u';
 
 function rebuild(segments: ContentSegment[]): string {
-  return segments.map((segment: ContentSegment): string => segment.text).join('');
+  return segments
+    .map((segment: ContentSegment): string => segment.text)
+    .join('');
 }
 
 test('segments: plain text is one segment', () => {
@@ -129,20 +131,14 @@ test('segments: nothing is lost, whatever is in the post', () => {
 test('segments: a picture link is marked as one', () => {
   const segments = parseContentSegments('https://host.example/cat.jpg');
   assert.equal(segments[0]?.kind, 'url');
-  assert.equal(
-    segments[0]?.kind === 'url' ? segments[0].media : null,
-    'image',
-  );
+  assert.equal(segments[0]?.kind === 'url' ? segments[0].media : null, 'image');
 });
 
 test('segments: a video link is not marked as a picture', () => {
   // These were one branch once, which put a video in an <img>: the browser
   // downloads the whole file before finding out it cannot decode it.
   const segments = parseContentSegments('https://host.example/clip.mp4');
-  assert.equal(
-    segments[0]?.kind === 'url' ? segments[0].media : null,
-    'video',
-  );
+  assert.equal(segments[0]?.kind === 'url' ? segments[0].media : null, 'video');
 });
 
 test('partition: media comes out of the prose', () => {
@@ -178,4 +174,19 @@ test('partition: several pictures keep their order', () => {
     media.map((m) => m.url),
     ['https://h.example/1.png', 'https://h.example/2.gif'],
   );
+});
+
+test('segments: a number is not a hashtag', () => {
+  // "WORD5 #695 5/6" is a Wordle score. Linking it sends the reader to an
+  // empty search for a number nobody tagged anything with.
+  const segments = parseContentSegments('WORD5 #695 5/6');
+  assert.ok(!segments.some((s) => s.kind === 'hashtag'));
+  assert.equal(rebuild(segments), 'WORD5 #695 5/6');
+});
+
+test('segments: a tag with digits in it is still a tag', () => {
+  const segments = parseContentSegments('about #web3 today');
+  const tag = segments.find((s) => s.kind === 'hashtag');
+  assert.ok(tag && tag.kind === 'hashtag');
+  assert.equal(tag.tag, 'web3');
 });

@@ -16,6 +16,11 @@ import {
   type ContentWarning,
   getContentWarning,
 } from '../../src/common/content-warning';
+import {
+  collectDeletedIds,
+  DELETION_KIND,
+  withoutDeleted,
+} from '../../src/common/deleted-events';
 import { fetchFollowList } from '../../src/common/events-queries';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { openRelaySubscription } from '../../src/common/relay-socket';
@@ -250,13 +255,51 @@ export async function fetchProfilesForPubkeys(
  * renderer - no avatar, no time, no actions, no pictures - for no reason
  * beyond having been written second.
  */
+/**
+ * Which of these the author has asked to withdraw.
+ *
+ * One query for the whole batch rather than one per card. Relays index `e`
+ * tags, so this is the filter they are built to answer; the ids are chunked
+ * because a filter naming a thousand of them is a filter some relays refuse.
+ */
+async function fetchDeletedIds(
+  relays: string[],
+  events: NostrEvent[],
+): Promise<Set<string>> {
+  const ids: string[] = events.map((event: NostrEvent): string => event.id);
+  if (ids.length === 0) {
+    return new Set();
+  }
+
+  const chunks: string[][] = [];
+  for (let index = 0; index < ids.length; index += 200) {
+    chunks.push(ids.slice(index, index + 200));
+  }
+
+  const results = await Promise.allSettled(
+    chunks.map((chunk: string[]) =>
+      queryRelays(relays, { kinds: [DELETION_KIND], '#e': chunk }),
+    ),
+  );
+
+  const deletions: NostrEvent[] = results.flatMap((result) =>
+    result.status === 'fulfilled' ? result.value : [],
+  );
+  return collectDeletedIds(events, deletions);
+}
+
 export async function decorateEvents(
   relays: string[],
   events: NostrEvent[],
 ): Promise<Decorated> {
+  // Withdrawn posts leave before anything else is done with them, so a
+  // deleted post is not fetched a profile for or counted in the stats.
+  const deleted: Set<string> = await fetchDeletedIds(relays, events);
+  const live: NostrEvent[] = withoutDeleted(events, deleted);
+
   // Both the author and, for a repost, whoever passed it on: the card names
   // them both and a missing name is a hex string on screen.
-  const authors: PubkeyHex[] = events.flatMap(
+  const authors: PubkeyHex[] = live.flatMap(
     (event: NostrEvent): PubkeyHex[] => {
       const reposted: NostrEvent | null = isRepost(event)
         ? readRepost(event).event
@@ -271,7 +314,7 @@ export async function decorateEvents(
     relays,
   );
 
-  const posts: TimelinePost[] = events
+  const posts: TimelinePost[] = live
     .slice()
     .sort((a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at)
     .map((event: NostrEvent): TimelinePost => {
