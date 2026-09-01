@@ -31,8 +31,13 @@ export type ContentSegment =
     }
   /** A person. `pubkey` is null when the identifier will not decode. */
   | { kind: 'mention'; text: string; pubkey: PubkeyHex | null }
-  /** A quoted note. `eventId` is null when the identifier will not decode. */
-  | { kind: 'event'; text: string; eventId: string | null }
+  /**
+   * A quoted note. `eventId` is null when the identifier will not decode.
+   * `relays` are the hints an `nevent` carries - where the author says the
+   * note lives, which for a note that lives nowhere else is the only way
+   * to find it. A bare `note` has none.
+   */
+  | { kind: 'event'; text: string; eventId: string | null; relays: string[] }
   /** A hashtag. `tag` is the word without the `#`, lowercased, as NIP-12 `t`. */
   | { kind: 'hashtag'; text: string; tag: string };
 
@@ -82,14 +87,22 @@ function decodeMention(identifier: string): PubkeyHex | null {
   return null;
 }
 
-function decodeEvent(identifier: string): string | null {
+function decodeEvent(
+  identifier: string,
+): { id: string; relays: string[] } | null {
   try {
     const decoded = nip19.decode(identifier.toLowerCase());
     if (decoded.type === 'note') {
-      return decoded.data as string;
+      return { id: decoded.data as string, relays: [] };
     }
     if (decoded.type === 'nevent') {
-      return (decoded.data as { id: string }).id;
+      const data = decoded.data as { id: string; relays?: string[] };
+      // Only relay URLs. A hint is a string the author chose, and it is
+      // about to be connected to.
+      const relays: string[] = (data.relays ?? []).filter(
+        (relay: string): boolean => /^wss?:\/\//i.test(relay),
+      );
+      return { id: data.id, relays };
     }
   } catch {
     // As above.
@@ -130,10 +143,12 @@ export function parseContentSegments(content: string): ContentSegment[] {
           pubkey: decodeMention(reference),
         });
       } else {
+        const quoted = decodeEvent(reference);
         segments.push({
           kind: 'event',
           text: whole,
-          eventId: decodeEvent(reference),
+          eventId: quoted?.id ?? null,
+          relays: quoted?.relays ?? [],
         });
       }
       cursor = start + whole.length;
@@ -195,6 +210,15 @@ export interface PartitionedContent {
   segments: ContentSegment[];
   /** The pictures and videos, in the order they appeared. */
   media: Array<{ url: string; kind: MediaKind }>;
+  /**
+   * Quoted notes, deduplicated by id, each with the relay hints it came
+   * with.
+   *
+   * Pulled out of the prose the way media is: a quote is a card under the
+   * post, not thirty characters of bech32 in the middle of a sentence. An
+   * undecodable reference stays in the text, where it renders as itself.
+   */
+  quotes: Array<{ id: string; relays: string[] }>;
 }
 
 /**
@@ -209,11 +233,26 @@ export interface PartitionedContent {
 export function partitionContent(content: string): PartitionedContent {
   const all: ContentSegment[] = parseContentSegments(content);
   const media: Array<{ url: string; kind: MediaKind }> = [];
+  const quotes: Array<{ id: string; relays: string[] }> = [];
   const segments: ContentSegment[] = [];
 
   for (const segment of all) {
     if (segment.kind === 'url' && segment.media) {
       media.push({ url: segment.url, kind: segment.media });
+      continue;
+    }
+    if (segment.kind === 'event' && segment.eventId) {
+      const id: string = segment.eventId;
+      const known = quotes.find((quote) => quote.id === id);
+      if (known) {
+        // The same note twice, perhaps once as `note` and once as `nevent`:
+        // one card, with every hint either mention gave.
+        for (const relay of segment.relays) {
+          if (!known.relays.includes(relay)) known.relays.push(relay);
+        }
+      } else {
+        quotes.push({ id, relays: [...segment.relays] });
+      }
       continue;
     }
     segments.push(segment);
@@ -224,10 +263,10 @@ export function partitionContent(content: string): PartitionedContent {
     .map((segment: ContentSegment): string => segment.text)
     .join('');
   if (text.trim().length === 0) {
-    return { segments: [], media };
+    return { segments: [], media, quotes };
   }
 
-  return { segments, media };
+  return { segments, media, quotes };
 }
 
 /** A short, safe label for a mention or a quote. */

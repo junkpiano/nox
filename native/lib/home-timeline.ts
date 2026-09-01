@@ -69,6 +69,12 @@ export interface TimelinePost {
    * carries the reposted event and says who passed it on.
    */
   repostedBy: { pubkey: PubkeyHex; name: string } | null;
+  /**
+   * Set when a repost carried no readable copy of its target - only the `e`
+   * tag. The card fetches it, the way it fetches a quote, instead of showing
+   * the nothing that used to be here.
+   */
+  repostTargetId: string | null;
 }
 
 export interface TimelineResult {
@@ -320,9 +326,8 @@ export async function decorateEvents(
     .map((event: NostrEvent): TimelinePost => {
       // A repost is a wrapper. What the card shows, and what a like or a
       // reply is addressed to, is the event inside it.
-      const reposted: NostrEvent | null = isRepost(event)
-        ? readRepost(event).event
-        : null;
+      const repostTarget = isRepost(event) ? readRepost(event) : null;
+      const reposted: NostrEvent | null = repostTarget?.event ?? null;
       const shown: NostrEvent = reposted ?? event;
       const meta: ProfileMeta | undefined = profiles.get(shown.pubkey);
       const sharer: ProfileMeta | undefined = profiles.get(event.pubkey);
@@ -347,6 +352,8 @@ export async function decorateEvents(
               name: sharer?.name || `${event.pubkey.slice(0, 8)}...`,
             }
           : null,
+        repostTargetId:
+          repostTarget && !repostTarget.event ? repostTarget.eventId : null,
       };
     });
 

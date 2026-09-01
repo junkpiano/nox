@@ -24,6 +24,7 @@ import type { PartitionedContent } from '../../src/common/content-segments';
 import { partitionContent } from '../../src/common/content-segments';
 
 import ImageViewer from './ImageViewer';
+import QuoteCard from './QuoteCard';
 import RichText from './RichText';
 
 export interface PostBodyProps {
@@ -45,7 +46,8 @@ export default function PostBody({
   numberOfLines,
   onPressText,
 }: PostBodyProps) {
-  const { segments, media }: PartitionedContent = partitionContent(content);
+  const { segments, media, quotes }: PartitionedContent =
+    partitionContent(content);
   const [opened, setOpened] = useState<number | null>(null);
   const pictures: string[] = media
     .filter((item) => item.kind === 'image')
@@ -95,6 +97,12 @@ export default function PostBody({
           </Pressable>
         ),
       )}
+
+      {/* Two at most. A post quoting five notes is a list, and a list of
+          full cards buries whatever the author actually wrote. */}
+      {quotes.slice(0, 2).map((quote) => (
+        <QuoteCard key={quote.id} eventId={quote.id} relays={quote.relays} />
+      ))}
 
       <ImageViewer
         urls={pictures}

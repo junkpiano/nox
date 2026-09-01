@@ -27,7 +27,6 @@ import {
 import { deleteEvents, removeEventFromTimeline } from './db/index.js';
 import { requestDeletion } from './delete-event.js';
 import { computeTimelineRemovalTargets } from './deletion-targets.js';
-import { getCachedEvent, setCachedEvent } from './event-cache.js';
 import {
   cacheDeletionStatus,
   fetchEventById,
@@ -47,16 +46,15 @@ import {
   mergeReactionEvents,
   normalizeReaction,
 } from './reaction-interactions.js';
+import {
+  fetchReferencedEvent,
+  rememberReferencedMiss,
+} from './referenced-event.js';
 import { createRelayWebSocket } from './relay-socket.js';
 import { repostTags } from './reply-tags.js';
 import { getSessionPrivateKey } from './session.js';
 import { openZapComposer } from './zap.js';
 
-const REFERENCED_EVENT_CACHE_LIMIT: number = 1000;
-const REFERENCED_EVENT_NULL_CACHE_LIMIT: number = 2000;
-const REFERENCED_EVENT_NULL_CACHE_TTL_MS: number = 60 * 1000;
-const referencedEventCache: Map<string, Promise<NostrEvent | null>> = new Map();
-const referencedEventNullCache: Map<string, number> = new Map();
 interface ParentReference {
   eventId: string;
   relayHints: string[];
@@ -300,96 +298,6 @@ function replaceCustomEmojiShortcodes(
       return `<img src="${safeUrl}" alt=":${safeCode}:" title=":${safeCode}:" class="inline-block align-text-bottom h-5 w-5 mx-0.5" loading="lazy" decoding="async" />`;
     },
   );
-}
-
-function setReferencedEventCache(
-  eventId: string,
-  request: Promise<NostrEvent | null>,
-): void {
-  referencedEventCache.delete(eventId);
-  referencedEventCache.set(eventId, request);
-  if (referencedEventCache.size > REFERENCED_EVENT_CACHE_LIMIT) {
-    const oldestKey: string | undefined = referencedEventCache
-      .keys()
-      .next().value;
-    if (oldestKey) {
-      referencedEventCache.delete(oldestKey);
-    }
-  }
-}
-
-function setReferencedEventNullCache(eventId: string): void {
-  referencedEventNullCache.delete(eventId);
-  referencedEventNullCache.set(
-    eventId,
-    Date.now() + REFERENCED_EVENT_NULL_CACHE_TTL_MS,
-  );
-  if (referencedEventNullCache.size > REFERENCED_EVENT_NULL_CACHE_LIMIT) {
-    const oldestKey: string | undefined = referencedEventNullCache
-      .keys()
-      .next().value;
-    if (oldestKey) {
-      referencedEventNullCache.delete(oldestKey);
-    }
-  }
-}
-
-function isReferencedEventNullCached(eventId: string): boolean {
-  const expiresAt: number | undefined = referencedEventNullCache.get(eventId);
-  if (!expiresAt) {
-    return false;
-  }
-  if (expiresAt <= Date.now()) {
-    referencedEventNullCache.delete(eventId);
-    return false;
-  }
-  return true;
-}
-
-async function fetchEventByIdCached(
-  eventId: string,
-  relays: string[],
-  options: { bypassNullCache?: boolean; forceRefresh?: boolean } = {},
-): Promise<NostrEvent | null> {
-  const bypassNullCache: boolean = options.bypassNullCache === true;
-  const forceRefresh: boolean = options.forceRefresh === true;
-
-  if (!bypassNullCache && isReferencedEventNullCached(eventId)) {
-    return null;
-  }
-
-  if (forceRefresh) {
-    referencedEventCache.delete(eventId);
-  } else {
-    const cached: Promise<NostrEvent | null> | undefined =
-      referencedEventCache.get(eventId);
-    if (cached) {
-      setReferencedEventCache(eventId, cached);
-      return cached;
-    }
-  }
-
-  const request: Promise<NostrEvent | null> =
-    (async (): Promise<NostrEvent | null> => {
-      const cachedEvent: NostrEvent | null = await getCachedEvent(eventId);
-      if (cachedEvent) {
-        referencedEventNullCache.delete(eventId);
-        return cachedEvent;
-      }
-      const event: NostrEvent | null = await fetchEventById(eventId, relays);
-      if (event) {
-        referencedEventNullCache.delete(eventId);
-        await setCachedEvent(event);
-        return event;
-      }
-      referencedEventCache.delete(eventId);
-      if (!bypassNullCache) {
-        setReferencedEventNullCache(eventId);
-      }
-      return null;
-    })();
-  setReferencedEventCache(eventId, request);
-  return request;
 }
 
 async function fetchReactions(
@@ -689,7 +597,7 @@ async function fetchEventWithRetry(
   attempts: number = 5,
 ): Promise<NostrEvent | null> {
   for (let i = 0; i < attempts; i += 1) {
-    const event: NostrEvent | null = await fetchEventByIdCached(
+    const event: NostrEvent | null = await fetchReferencedEvent(
       eventId,
       relays,
       {
@@ -704,7 +612,7 @@ async function fetchEventWithRetry(
       await delay(700 + i * 900);
     }
   }
-  setReferencedEventNullCache(eventId);
+  rememberReferencedMiss(eventId);
   return null;
 }
 

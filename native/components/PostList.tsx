@@ -32,6 +32,7 @@ import type { TimelinePost } from '../lib/home-timeline';
 import { likeEvent, NotSignedInError, repostEvent } from '../lib/interact';
 import PostBody from './PostBody';
 import PostMenu from './PostMenu';
+import QuoteCard from './QuoteCard';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -107,6 +108,9 @@ export function PostRow({
             onPressText={onOpenThread}
           />
         )}
+        {post.repostTargetId ? (
+          <QuoteCard eventId={post.repostTargetId} />
+        ) : null}
         <Actions post={post} />
       </View>
     </View>

@@ -190,3 +190,69 @@ test('segments: a tag with digits in it is still a tag', () => {
   assert.ok(tag && tag.kind === 'hashtag');
   assert.equal(tag.tag, 'web3');
 });
+
+// --- quotes ------------------------------------------------------------------
+
+// A real encoding of 'ab' * 32, so it decodes. A made-up bech32 fails its
+// checksum and lands in the "stays in the text" case instead.
+const NOTE_REF =
+  'note14w46h2at4w46h2at4w46h2at4w46h2at4w46h2at4w46h2at4w4sfreljc';
+// The same id as an nevent with one relay hint, and one with a hint that
+// is not a relay. Generated with nip19.neventEncode; see the comment above
+// about why a made-up bech32 does not work here.
+const NEVENT_REF =
+  'nevent1qy28wumn8ghj76rfde6x2epwv4uxzmtsd3jsqg9t4w46h2at4w46h2at4w46h2at4w46h2at4w46h2at4w46h2at4vvnu2an';
+const NEVENT_BAD_HINT =
+  'nevent1qyfk5ctkv9ekxunfwp6r5ctvv4e8g2p39yqzp2at4w46h2at4w46h2at4w46h2at4w46h2at4w46h2at4w46h2atmqtqlt';
+
+test('partition: a quoted note comes out of the prose', () => {
+  const { segments, media, quotes } = partitionContent(
+    `look at this nostr:${NOTE_REF} amazing`,
+  );
+  assert.equal(quotes.length, 1);
+  assert.match(quotes[0]?.id ?? '', /^[0-9a-f]{64}$/);
+  assert.deepEqual(quotes[0]?.relays, [], 'a bare note carries no hints');
+  const text = segments.map((s) => s.text).join('');
+  assert.ok(!text.includes('note1'), 'the reference is gone from the text');
+  assert.ok(text.includes('look at this'));
+  assert.deepEqual(media, []);
+});
+
+test('partition: the same note quoted twice is one card', () => {
+  const { quotes } = partitionContent(
+    `nostr:${NOTE_REF} and again nostr:${NOTE_REF}`,
+  );
+  assert.equal(quotes.length, 1);
+});
+
+test('partition: an undecodable reference stays in the text', () => {
+  // It renders as itself rather than becoming a card that can never load.
+  const { segments, quotes } = partitionContent('see nostr:note1broken ok');
+  assert.equal(quotes.length, 0);
+  assert.ok(
+    segments.some((s) => s.kind === 'event' && s.eventId === null),
+    'still a segment, so nothing silently vanishes',
+  );
+});
+
+test('partition: a post that is only a quote has no text left', () => {
+  const { segments, quotes } = partitionContent(`nostr:${NOTE_REF}`);
+  assert.deepEqual(segments, []);
+  assert.equal(quotes.length, 1);
+});
+
+test('partition: an nevent keeps the relays it names', () => {
+  // An event that lives only on the hinted relay cannot be fetched from the
+  // configured list. Dropping the hint was a P1 in review, and rightly.
+  const { quotes } = partitionContent(`see nostr:${NEVENT_REF}`);
+  assert.equal(quotes.length, 1);
+  assert.deepEqual(quotes[0]?.relays, ['wss://hinted.example']);
+});
+
+test('partition: a hint that is not a relay URL is dropped', () => {
+  // The hint is a string the author chose, and it is about to be connected to.
+  const segments = parseContentSegments(`nostr:${NEVENT_BAD_HINT}`);
+  const quoted = segments.find((s) => s.kind === 'event');
+  assert.ok(quoted && quoted.kind === 'event');
+  assert.deepEqual(quoted.relays, []);
+});
