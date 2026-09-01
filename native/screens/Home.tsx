@@ -7,12 +7,11 @@
  * two differ only in which events they ask for.
  */
 
+import { nip19 } from 'nostr-tools';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { nip19 } from 'nostr-tools';
-
-import type { PubkeyHex } from '../../types/nostr';
 import { kvGet, kvSet } from '../../src/common/kv';
+import type { PubkeyHex } from '../../types/nostr';
 import PostList from '../components/PostList';
 import { loadHomeTimeline, type TimelinePost } from '../lib/home-timeline';
 
@@ -29,7 +28,8 @@ function readStoredPubkey(): PubkeyHex | null {
 /** Accepts an npub, an nprofile or a bare hex key, as the web search does. */
 function decodeIdentity(input: string): PubkeyHex | null {
   const trimmed = input.trim();
-  if (/^[0-9a-f]{64}$/i.test(trimmed)) return trimmed.toLowerCase() as PubkeyHex;
+  if (/^[0-9a-f]{64}$/i.test(trimmed))
+    return trimmed.toLowerCase() as PubkeyHex;
   try {
     const decoded = nip19.decode(trimmed.toLowerCase());
     if (decoded.type === 'npub') return decoded.data as PubkeyHex;
@@ -62,8 +62,8 @@ function IdentityPrompt({ onChosen }: { onChosen: (key: PubkeyHex) => void }) {
       <Text style={styles.promptTitle}>Whose timeline?</Text>
       <Text style={styles.promptSub}>
         Read-only for now: paste an npub and the follow list is fetched from
-        your relays. Signing comes with the key store. Until then the global
-        tab works without this.
+        your relays. Signing comes with the key store. Until then the global tab
+        works without this.
       </Text>
       <TextInput
         value={text}
@@ -98,7 +98,9 @@ export default function Home() {
         `${result.stats.follows} follows / ${result.stats.events} events / ` +
           `${result.stats.profiles} profiles / ${result.stats.relays} relays / ` +
           `${(result.stats.ms / 1000).toFixed(1)}s` +
-          (result.stats.muted > 0 ? ` / ${result.stats.muted} muted hidden` : ''),
+          (result.stats.muted > 0
+            ? ` / ${result.stats.muted} muted hidden`
+            : ''),
       );
       setError(null);
     } catch (e: any) {
@@ -142,7 +144,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#0b1220',
   },
   promptTitle: { color: '#f5f8ff', fontSize: 22, fontWeight: '700' },
-  promptSub: { color: '#8ea0c0', fontSize: 13, lineHeight: 19, marginBottom: 8 },
+  promptSub: {
+    color: '#8ea0c0',
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 8,
+  },
   input: {
     borderWidth: 1,
     borderColor: '#25406e',

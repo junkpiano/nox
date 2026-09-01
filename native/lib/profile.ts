@@ -6,9 +6,9 @@
  * it is not the thing to reuse - but everything underneath it is.
  */
 
-import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { openRelaySubscription } from '../../src/common/relay-socket';
 import { getRelays } from '../../src/features/relays/relays';
+import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 
 const QUERY_TIMEOUT_MS: number = 8000;
 const POST_LIMIT: number = 100;

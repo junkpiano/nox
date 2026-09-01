@@ -128,7 +128,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addButtonText: { color: '#0b1220', fontWeight: '700', fontSize: 14 },
-  error: { color: '#ff9a9a', fontSize: 12, paddingHorizontal: 16, paddingBottom: 8 },
+  error: {
+    color: '#ff9a9a',
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -8,9 +8,10 @@
  * `user-search.ts`, and this screen is the proof it paid off.
  */
 
-import { useCallback, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { nip19 } from 'nostr-tools';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -21,9 +22,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { nip19 } from 'nostr-tools';
-
-import type { PubkeyHex } from '../../types/nostr';
 import { kvGet } from '../../src/common/kv';
 import {
   decodePubkeyQuery,
@@ -33,6 +31,7 @@ import {
   oneLine,
   type UserSearchResult,
 } from '../../src/features/search/user-ranking';
+import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import { searchUsers } from '../lib/user-search';
 
@@ -132,7 +131,10 @@ export default function Search() {
                 onPress={() =>
                   navigation.navigate('Profile', { pubkey: item.pubkey })
                 }
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                style={({ pressed }) => [
+                  styles.row,
+                  pressed && styles.rowPressed,
+                ]}
               >
                 {picture ? (
                   <Image source={{ uri: picture }} style={styles.avatar} />
@@ -144,7 +146,8 @@ export default function Search() {
                     {name}
                   </Text>
                   <Text style={styles.nip05} numberOfLines={1}>
-                    {nip05 || `${nip19.npubEncode(item.pubkey).slice(0, 20)}...`}
+                    {nip05 ||
+                      `${nip19.npubEncode(item.pubkey).slice(0, 20)}...`}
                   </Text>
                   {about ? (
                     <Text style={styles.about} numberOfLines={2}>
@@ -182,7 +185,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonText: { color: '#0b1220', fontWeight: '700', fontSize: 14 },
-  note: { color: '#5b6b88', fontSize: 11, paddingHorizontal: 16, paddingBottom: 8 },
+  note: {
+    color: '#5b6b88',
+    fontSize: 11,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   row: {
     flexDirection: 'row',
@@ -191,7 +199,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   rowPressed: { backgroundColor: 'rgba(137,168,255,0.08)' },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#25406e' },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#25406e',
+  },
   avatarBlank: { opacity: 0.5 },
   rowBody: { flex: 1 },
   name: { color: '#e8eeff', fontWeight: '700', fontSize: 14 },

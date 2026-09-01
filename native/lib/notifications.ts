@@ -6,10 +6,10 @@
  * reply to your own post is a conversation you are already having, not news.
  */
 
-import type { NostrEvent, PubkeyHex } from '../../types/nostr';
-import { openRelaySubscription } from '../../src/common/relay-socket';
 import { filterMutedEvents } from '../../src/common/mute-state';
+import { openRelaySubscription } from '../../src/common/relay-socket';
 import { getRelays } from '../../src/features/relays/relays';
+import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 
 const NOTIFICATION_KINDS: number[] = [1, 6, 7];
 const LIMIT: number = 200;
@@ -138,7 +138,8 @@ export async function loadNotifications(
     authors,
   });
 
-  const names: Map<string, { name: string; picture: string | null }> = new Map();
+  const names: Map<string, { name: string; picture: string | null }> =
+    new Map();
   const at: Map<string, number> = new Map();
   for (const event of profileEvents) {
     const previous = at.get(event.pubkey);

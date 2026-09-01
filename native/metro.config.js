@@ -73,7 +73,11 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       ? path.dirname(context.originModulePath)
       : projectRoot;
     const base = path.resolve(from, moduleName.slice(0, -3));
-    for (const candidate of [`${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts')]) {
+    for (const candidate of [
+      `${base}.ts`,
+      `${base}.tsx`,
+      path.join(base, 'index.ts'),
+    ]) {
       if (fs.existsSync(candidate)) {
         return { type: 'sourceFile', filePath: candidate };
       }

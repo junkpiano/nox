@@ -6,9 +6,9 @@
  * shown as one rather than as a plus sign.
  */
 
-import { useCallback, useEffect, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -19,9 +19,8 @@ import {
   Text,
   View,
 } from 'react-native';
-
-import type { PubkeyHex } from '../../types/nostr';
 import { kvGet } from '../../src/common/kv';
+import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import { loadNotifications, type Notification } from '../lib/notifications';
 
@@ -180,7 +179,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   rowPressed: { backgroundColor: 'rgba(137,168,255,0.08)' },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#25406e' },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#25406e',
+  },
   avatarBlank: { opacity: 0.5 },
   rowBody: { flex: 1 },
   line: { fontSize: 14 },

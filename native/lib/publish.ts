@@ -12,12 +12,11 @@
  */
 
 import { finalizeEvent } from 'nostr-tools';
-
-import type { NostrEvent } from '../../types/nostr';
 import { withClientTag } from '../../src/common/client-tag';
 import { createRelayWebSocket } from '../../src/common/relay-socket';
 import { getSessionPrivateKey } from '../../src/common/session';
 import { getRelays } from '../../src/features/relays/relays';
+import type { NostrEvent } from '../../types/nostr';
 
 const PUBLISH_TIMEOUT_MS: number = 8000;
 
@@ -40,7 +39,10 @@ export class NotSignedInError extends Error {
  * answers is counted as a refusal rather than a success - claiming a post
  * landed when it may not have is worse than admitting the doubt.
  */
-function publishTo(relayUrl: string, event: NostrEvent): Promise<string | null> {
+function publishTo(
+  relayUrl: string,
+  event: NostrEvent,
+): Promise<string | null> {
   return new Promise<string | null>((resolve) => {
     let settled = false;
     const finish = (reason: string | null): void => {
@@ -55,7 +57,10 @@ function publishTo(relayUrl: string, event: NostrEvent): Promise<string | null> 
       resolve(reason);
     };
 
-    const timer = setTimeout((): void => finish('no answer'), PUBLISH_TIMEOUT_MS);
+    const timer = setTimeout(
+      (): void => finish('no answer'),
+      PUBLISH_TIMEOUT_MS,
+    );
 
     let socket: WebSocket;
     try {
@@ -128,7 +133,9 @@ export async function publishSigned(event: NostrEvent): Promise<PublishResult> {
   const relays: string[] = getRelays();
   const verdicts = await Promise.all(
     relays.map(
-      async (relay: string): Promise<{ relay: string; reason: string | null }> => ({
+      async (
+        relay: string,
+      ): Promise<{ relay: string; reason: string | null }> => ({
         relay,
         reason: await publishTo(relay, event),
       }),

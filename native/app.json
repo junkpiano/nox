@@ -23,10 +23,6 @@
       "favicon": "./assets/favicon.png"
     },
     "scheme": "nox",
-    "plugins": [
-      "expo-status-bar",
-      "expo-secure-store",
-      "expo-sqlite"
-    ]
+    "plugins": ["expo-status-bar", "expo-secure-store", "expo-sqlite"]
   }
 }

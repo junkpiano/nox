@@ -13,6 +13,7 @@
  * settings store, never logged, and never sent anywhere.
  */
 
+import { generateSecretKey, nip19 } from 'nostr-tools';
 import { useState } from 'react';
 import {
   Alert,
@@ -23,15 +24,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { generateSecretKey, nip19 } from 'nostr-tools';
-
-import type { PubkeyHex } from '../../types/nostr';
 import { kvRemove, kvSet } from '../../src/common/kv';
 import {
   clearSessionPrivateKey,
   getSessionNsec,
   setSessionPrivateKeyFromRaw,
 } from '../../src/common/session';
+import type { PubkeyHex } from '../../types/nostr';
 
 const PUBKEY_KEY = 'nostr_pubkey';
 
@@ -138,8 +137,8 @@ export default function SignIn({
         </View>
       ) : null}
       <Text style={styles.body}>
-        A browser can keep your key in an extension. A phone cannot, so this
-        app holds it - in the device credential store, available only while the
+        A browser can keep your key in an extension. A phone cannot, so this app
+        holds it - in the device credential store, available only while the
         phone is unlocked, and not carried to another device by a backup.
       </Text>
 

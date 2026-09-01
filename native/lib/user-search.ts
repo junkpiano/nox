@@ -10,7 +10,6 @@
  * relay layer rather than opening its own sockets.
  */
 
-import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { fetchFollowList } from '../../src/common/events-queries';
 import { openRelaySubscription } from '../../src/common/relay-socket';
 import { getRelays } from '../../src/features/relays/relays';
@@ -20,6 +19,7 @@ import {
   SEARCH_RELAYS,
   type UserSearchResult,
 } from '../../src/features/search/user-ranking';
+import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 
 /**
  * Deliberately far more than are shown: the relay orders by edit recency, so a

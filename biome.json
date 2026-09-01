@@ -26,6 +26,9 @@
       "!node_modules",
       "!src-tauri/gen",
       "!src-tauri/target",
+      "!native/android",
+      "!native/ios",
+      "!native/.expo",
       "!.tmp"
     ]
   }

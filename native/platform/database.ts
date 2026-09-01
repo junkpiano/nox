@@ -15,8 +15,8 @@ import * as SQLite from 'expo-sqlite';
 
 import {
   IdbKeyRange,
-  setSqliteBackend,
   type SqliteLike,
+  setSqliteBackend,
 } from '../../src/common/db/sqlite-idb';
 
 /** Matches the web cache's name, so the two are recognisably the same thing. */
