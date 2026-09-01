@@ -180,7 +180,7 @@ export async function loadHomeTimeline(
   });
 
   onStage('profiles...');
-  const decorated: Decorated = await decorate(relays, events);
+  const decorated: Decorated = await decorateEvents(relays, events);
 
   return {
     posts: decorated.posts,
@@ -243,7 +243,14 @@ export async function fetchProfilesForPubkeys(
   return profiles;
 }
 
-async function decorate(
+/**
+ * Turns events into rows, with authors attached.
+ *
+ * Exported because a profile is a timeline. It had its own stripped-down
+ * renderer - no avatar, no time, no actions, no pictures - for no reason
+ * beyond having been written second.
+ */
+export async function decorateEvents(
   relays: string[],
   events: NostrEvent[],
 ): Promise<Decorated> {
@@ -333,7 +340,7 @@ export async function loadHashtagTimeline(
   });
 
   onStage('profiles...');
-  const decorated: Decorated = await decorate(relays, events);
+  const decorated: Decorated = await decorateEvents(relays, events);
 
   return {
     posts: decorated.posts,
@@ -363,7 +370,7 @@ export async function loadGlobalTimeline(
   });
 
   onStage('profiles...');
-  const decorated: Decorated = await decorate(relays, events);
+  const decorated: Decorated = await decorateEvents(relays, events);
 
   return {
     posts: decorated.posts,

@@ -24,6 +24,7 @@ import {
   isFollowing as listHasFollow,
   nextFollowListTags,
 } from '../../src/features/profile/follow-list';
+import { kvGet } from '../../src/common/kv';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { NotSignedInError, type PublishResult, publishSigned } from './publish';
@@ -206,4 +207,5 @@ export async function readFollowing(
 }
 
 export { NotSignedInError };
+export { requestDeletion } from '../../src/common/delete-event';
 export { UnknownFollowListError } from '../../src/features/profile/follow-list';

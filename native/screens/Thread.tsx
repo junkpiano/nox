@@ -18,6 +18,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -35,6 +36,7 @@ import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import PostBody from '../components/PostBody';
 import ReportSheet from '../components/ReportSheet';
+import { fetchProfilesForPubkeys } from '../lib/home-timeline';
 import {
   likeEvent,
   NotSignedInError,
@@ -59,6 +61,61 @@ function timeAgo(createdAt: number): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
+/**
+ * The name and face on a post.
+ *
+ * Fetched here rather than passed in, because a thread arrives as events and
+ * the profiles are a separate question - the same one the timeline asks, so
+ * the same cache answers it.
+ */
+function Author({ pubkey, at }: { pubkey: PubkeyHex; at: number }) {
+  const navigation = useNavigation<Nav>();
+  const [meta, setMeta] = useState<{
+    name: string;
+    picture: string | null;
+    nip05: string | null;
+  } | null>(null);
+
+  useEffect((): (() => void) => {
+    let cancelled = false;
+    void fetchProfilesForPubkeys([pubkey])
+      .then((profiles): void => {
+        if (!cancelled) {
+          setMeta(profiles.get(pubkey) ?? null);
+        }
+      })
+      .catch((): void => {});
+    return (): void => {
+      cancelled = true;
+    };
+  }, [pubkey]);
+
+  return (
+    <Pressable
+      onPress={(): void => navigation.push('Profile', { pubkey })}
+      style={styles.author}
+      hitSlop={4}
+    >
+      {meta?.picture ? (
+        <Image source={{ uri: meta.picture }} style={styles.authorAvatar} />
+      ) : (
+        <View style={[styles.authorAvatar, styles.authorAvatarBlank]} />
+      )}
+      <View style={styles.authorText}>
+        <Text style={styles.authorName} numberOfLines={1}>
+          {meta?.name || `${pubkey.slice(0, 8)}...`}
+        </Text>
+        {meta?.nip05 ? (
+          <Text style={styles.authorNip05} numberOfLines={1}>
+            {meta.nip05}
+          </Text>
+        ) : null}
+      </View>
+      <Text style={styles.meta}>{timeAgo(at)}</Text>
+    </Pressable>
+  );
+}
+
 export default function Thread({ route }: { route: ThreadRoute }) {
   const { eventId } = route.params;
   const [data, setData] = useState<ThreadData | null>(null);
@@ -80,6 +137,18 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const [replying, setReplying] = useState<boolean>(
     route.params.reply ?? false,
   );
+
+  /**
+   * The initial state is not enough on its own.
+   *
+   * `navigate` reuses a Thread already on the stack and only swaps its params,
+   * so a screen opened once by the reply button kept its composer open for
+   * every thread opened afterwards - a box appearing on a post nobody had
+   * asked to answer.
+   */
+  useEffect((): void => {
+    setReplying(route.params.reply ?? false);
+  }, [route.params.reply, route.params.eventId]);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(0);
   const navigation = useNavigation<Nav>();
@@ -228,7 +297,9 @@ export default function Thread({ route }: { route: ThreadRoute }) {
             }
             style={styles.rootPost}
           >
-            <Text style={styles.meta}>{timeAgo(root.created_at)}</Text>
+            {/* Who wrote it. The screen showed a time and a body and nothing
+                else, so an event page was a paragraph from nobody. */}
+            <Author pubkey={root.pubkey as PubkeyHex} at={root.created_at} />
             {data.deleted ? (
               <Text style={styles.deleted}>
                 The author asked for this to be deleted.
@@ -245,12 +316,17 @@ export default function Thread({ route }: { route: ThreadRoute }) {
             <View style={styles.actions}>
               <View style={styles.actionRow}>
                 <Pressable
-                  onPress={like}
-                  disabled={liking || liked}
-                  style={[styles.action, (liking || liked) && styles.actionOff]}
+                  onPress={(): void => setReplying((open) => !open)}
+                  style={styles.action}
                 >
-                  <Text style={liked ? styles.actionDone : styles.actionText}>
-                    {liked ? 'Liked' : liking ? '...' : 'Like'}
+                  {/* The same button whether the box is open or shut. It
+                      relabelled itself "Cancel", which reads as cancelling
+                      the post rather than closing a composer. */}
+                  <Text
+                    accessibilityLabel="Reply"
+                    style={replying ? styles.actionDone : styles.actionText}
+                  >
+                    ↩
                   </Text>
                 </Pressable>
                 <Pressable
@@ -262,27 +338,34 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                   ]}
                 >
                   <Text
+                    accessibilityLabel="Repost"
                     style={reposted ? styles.actionDone : styles.actionText}
                   >
-                    {reposted ? 'Reposted' : reposting ? '...' : 'Repost'}
+                    {reposting ? '···' : '⇄'}
                   </Text>
                 </Pressable>
                 {/* A post can be reported by anyone who can sign, including
                     somebody who does not want to mute the author - so it sits
                     with the other post actions rather than on the profile. */}
                 <Pressable
-                  onPress={(): void => setReplying((open) => !open)}
-                  style={styles.action}
+                  onPress={like}
+                  disabled={liking || liked}
+                  style={[styles.action, (liking || liked) && styles.actionOff]}
                 >
-                  <Text style={styles.actionText}>
-                    {replying ? 'Cancel' : 'Reply'}
+                  <Text
+                    accessibilityLabel="Like"
+                    style={liked ? styles.actionDone : styles.actionText}
+                  >
+                    {liking ? '···' : liked ? '♥' : '♡'}
                   </Text>
                 </Pressable>
                 <Pressable
                   onPress={(): void => setReporting(true)}
                   style={styles.action}
                 >
-                  <Text style={styles.reportText}>Report</Text>
+                  <Text accessibilityLabel="Report" style={styles.reportText}>
+                    ⚑
+                  </Text>
                 </Pressable>
               </View>
 
@@ -339,7 +422,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
             pressed && styles.replyPressed,
           ]}
         >
-          <Text style={styles.meta}>{timeAgo(item.created_at)}</Text>
+          <Author pubkey={item.pubkey as PubkeyHex} at={item.created_at} />
           <PostBody
             content={item.content}
             textStyle={styles.replyContent}
@@ -362,6 +445,22 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 6,
   },
+  author: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  authorAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#25406e',
+  },
+  authorAvatarBlank: { opacity: 0.5 },
+  authorText: { flex: 1 },
+  authorName: { color: '#e8eeff', fontWeight: '700', fontSize: 14 },
+  authorNip05: { color: '#5b6b88', fontSize: 11, marginTop: 1 },
   meta: { color: '#5b6b88', fontSize: 11 },
   likeButton: {
     marginHorizontal: 16,
@@ -384,9 +483,9 @@ const styles = StyleSheet.create({
   },
   actionOff: { opacity: 0.5 },
   link: { color: '#89a8ff' },
-  reportText: { color: '#8ea0c0', fontSize: 13, fontWeight: '600' },
-  actionText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
-  actionDone: { color: '#73f0c1', fontWeight: '700', fontSize: 14 },
+  reportText: { color: '#8ea0c0', fontSize: 18 },
+  actionText: { color: '#89a8ff', fontSize: 20 },
+  actionDone: { color: '#73f0c1', fontSize: 20 },
   replyInput: {
     borderWidth: 1,
     borderColor: '#25406e',

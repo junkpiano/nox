@@ -19,7 +19,13 @@ import {
   replaceEmojiShortcodes,
 } from '../utils/utils.js';
 import { readClientName, withClientTag } from './client-tag.js';
+import {
+  type ContentWarning,
+  contentWarningSummary,
+  getContentWarning,
+} from './content-warning.js';
 import { deleteEvents, removeEventFromTimeline } from './db/index.js';
+import { requestDeletion } from './delete-event.js';
 import { computeTimelineRemovalTargets } from './deletion-targets.js';
 import { getCachedEvent, setCachedEvent } from './event-cache.js';
 import {
@@ -45,11 +51,6 @@ import { createRelayWebSocket } from './relay-socket.js';
 import { repostTags } from './reply-tags.js';
 import { getSessionPrivateKey } from './session.js';
 import { openZapComposer } from './zap.js';
-import {
-  type ContentWarning,
-  contentWarningSummary,
-  getContentWarning,
-} from './content-warning.js';
 
 const REFERENCED_EVENT_CACHE_LIMIT: number = 1000;
 const REFERENCED_EVENT_NULL_CACHE_LIMIT: number = 2000;
@@ -1205,7 +1206,6 @@ export function renderEvent(
     : `${actionBtnBase} zap-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
   const deleteButtonTitle: string = 'Delete post';
-  const deleteButtonClasses: string = `${actionBtnBase} delete-event-btn text-red-600 hover:text-red-800 hover:bg-red-50`;
   const moderationBtnClasses: string = `${actionBtnBase} text-gray-400 hover:text-gray-600 hover:bg-gray-100`;
 
   const actionBarHtml: string = `
@@ -1231,19 +1231,6 @@ export function renderEvent(
               canZapTarget
                 ? `<button class="${zapButtonClasses}" aria-label="Zap post" title="${zapButtonTitle}">
                     <span aria-hidden="true" class="text-sm leading-none">⚡</span>
-                  </button>`
-                : ''
-            }
-            ${
-              canDeletePost
-                ? `<button class="${deleteButtonClasses}" aria-label="${deleteButtonTitle}" title="${deleteButtonTitle}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16" />
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6" />
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M14 11v6" />
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 7l1 14h10l1-14" />
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 7V4h6v3" />
-                    </svg>
                   </button>`
                 : ''
             }
@@ -1540,7 +1527,15 @@ export function renderEvent(
       // no longer mute someone outright.
       window.dispatchEvent(
         new CustomEvent('request-post-actions', {
-          detail: { pubkey: event.pubkey, eventId: event.id, name },
+          detail: {
+            pubkey: event.pubkey,
+            eventId: event.id,
+            name,
+            // Passed as a function rather than a flag: the card owns the
+            // cleanup that follows a deletion, and the menu only decides
+            // whether it was asked for.
+            onDelete: canDeletePost ? runDelete : undefined,
+          },
         }),
       );
     });
@@ -1621,7 +1616,7 @@ export function renderEvent(
             await Promise.allSettled(
               existingHeartReactions.map(
                 async (reactionEvent: NostrEvent): Promise<void> => {
-                  await deleteEventOnRelays(reactionEvent);
+                  await requestDeletion(reactionEvent, getRelays());
                 },
               ),
             );
@@ -1683,54 +1678,37 @@ export function renderEvent(
     });
   }
 
-  const deleteButton: HTMLButtonElement | null = div.querySelector(
-    '.delete-event-btn',
-  ) as HTMLButtonElement | null;
-  if (deleteButton) {
-    deleteButton.addEventListener(
-      'click',
-      async (e: MouseEvent): Promise<void> => {
-        e.preventDefault();
-        e.stopPropagation();
-        const confirmed: boolean = window.confirm('Delete this post?');
-        if (!confirmed) {
-          return;
+  /**
+   * Deleting, for the overflow menu to call.
+   *
+   * It used to be a bin icon of its own, sitting beside reply and repost - a
+   * destructive, irreversible action one stray tap away from the two things
+   * people press most. It is behind the same menu as mute and report now,
+   * which is where the rare and consequential things live.
+   */
+  const runDelete = async (): Promise<void> => {
+    await requestDeletion(event, getRelays());
+    cacheDeletionStatus(event.id, true);
+    const viewerPubkey: PubkeyHex | null =
+      (localStorage.getItem('nostr_pubkey') as PubkeyHex | null) || null;
+    const targets = computeTimelineRemovalTargets({
+      viewerPubkey,
+      authorPubkey: event.pubkey as PubkeyHex,
+    });
+    await deleteEvents([event.id]);
+    await Promise.allSettled(
+      targets.map(async (target) => {
+        if (target.type === 'global') {
+          await removeEventFromTimeline('global', undefined, event.id);
+        } else if (target.type === 'home') {
+          await removeEventFromTimeline('home', target.pubkey, event.id);
+        } else {
+          await removeEventFromTimeline('user', target.pubkey, event.id);
         }
-
-        deleteButton.disabled = true;
-        deleteButton.classList.add('opacity-60', 'cursor-not-allowed');
-
-        try {
-          await deleteEventOnRelays(event);
-          cacheDeletionStatus(event.id, true);
-          const viewerPubkey: PubkeyHex | null =
-            (localStorage.getItem('nostr_pubkey') as PubkeyHex | null) || null;
-          const targets = computeTimelineRemovalTargets({
-            viewerPubkey,
-            authorPubkey: event.pubkey as PubkeyHex,
-          });
-          await deleteEvents([event.id]);
-          await Promise.allSettled(
-            targets.map(async (target) => {
-              if (target.type === 'global') {
-                await removeEventFromTimeline('global', undefined, event.id);
-              } else if (target.type === 'home') {
-                await removeEventFromTimeline('home', target.pubkey, event.id);
-              } else {
-                await removeEventFromTimeline('user', target.pubkey, event.id);
-              }
-            }),
-          );
-          div.remove();
-        } catch (error: unknown) {
-          console.error('Failed to delete event:', error);
-          alert('Failed to delete post. Please try again.');
-          deleteButton.disabled = false;
-          deleteButton.classList.remove('opacity-60', 'cursor-not-allowed');
-        }
-      },
+      }),
     );
-  }
+    div.remove();
+  };
 
   // Click anywhere on the card (except interactive elements) to navigate to the event page.
   if (eventPermalink) {
@@ -1956,74 +1934,6 @@ async function enrichMentionDisplayNames(
       console.warn('Failed to resolve mentioned profile:', error);
     }
   }
-}
-
-async function deleteEventOnRelays(targetEvent: NostrEvent): Promise<void> {
-  const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
-  if (!storedPubkey || storedPubkey !== targetEvent.pubkey) {
-    throw new Error('You can only delete your own posts.');
-  }
-
-  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = withClientTag({
-    kind: 5,
-    pubkey: storedPubkey as PubkeyHex,
-    created_at: Math.floor(Date.now() / 1000),
-    tags: [['e', targetEvent.id]],
-    content: '',
-  });
-
-  let signedEvent: NostrEvent;
-  if ((window as any).nostr?.signEvent) {
-    signedEvent = await (window as any).nostr.signEvent(unsignedEvent);
-  } else {
-    const privateKey: Uint8Array | null = getSessionPrivateKey();
-    if (!privateKey) {
-      throw new Error('No signing method available');
-    }
-    signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
-  }
-
-  const relays: string[] = getRelays();
-  const publishPromises = relays.map(
-    async (relayUrl: string): Promise<void> => {
-      try {
-        const socket: WebSocket = createRelayWebSocket(relayUrl);
-        await new Promise<void>((resolve) => {
-          let settled: boolean = false;
-          const finish = (): void => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          };
-
-          const timeout = setTimeout(() => {
-            finish();
-          }, 5000);
-
-          socket.onopen = (): void => {
-            socket.send(JSON.stringify(['EVENT', signedEvent]));
-          };
-
-          socket.onmessage = (msg: MessageEvent): void => {
-            const arr: any[] = JSON.parse(msg.data);
-            if (arr[0] === 'OK') {
-              finish();
-            }
-          };
-
-          socket.onerror = (): void => {
-            finish();
-          };
-        });
-      } catch (e) {
-        console.warn(`Failed to publish delete event to ${relayUrl}:`, e);
-      }
-    },
-  );
-
-  await Promise.allSettled(publishPromises);
 }
 
 async function renderReferencedEventCards(

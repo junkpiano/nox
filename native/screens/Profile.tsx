@@ -33,9 +33,10 @@ import {
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
-import PostBody from '../components/PostBody';
+import { PostRow } from '../components/PostList';
 import ReportSheet from '../components/ReportSheet';
 import RichText from '../components/RichText';
+import { decorateEvents, type TimelinePost } from '../lib/home-timeline';
 import {
   NotSignedInError,
   readFollowing,
@@ -299,14 +300,27 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
     profile: ProfileData;
     posts: NostrEvent[];
   } | null>(null);
+  const [rows, setRows] = useState<TimelinePost[]>([]);
   const [error, setError] = useState<string | null>(null);
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   useEffect(() => {
+    let cancelled = false;
     loadProfile(pubkey)
-      .then(setData)
+      .then((result): void => {
+        if (cancelled) return;
+        setData(result);
+        void decorateEvents(getRelays(), result.posts)
+          .then((decorated): void => {
+            if (!cancelled) setRows(decorated.posts);
+          })
+          .catch((): void => {});
+      })
       .catch((e: any) => setError(String(e?.message ?? e)));
+    return (): void => {
+      cancelled = true;
+    };
   }, [pubkey]);
 
   if (error) {
@@ -328,28 +342,24 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   return (
     <FlatList
       style={styles.screen}
-      data={data.posts}
-      keyExtractor={(event: NostrEvent) => event.id}
+      data={rows}
+      keyExtractor={(post: TimelinePost) => post.key}
       ListHeaderComponent={<Header profile={data.profile} />}
       ListEmptyComponent={
         <Text style={styles.empty}>No posts found on these relays.</Text>
       }
       ItemSeparatorComponent={() => <View style={styles.sep} />}
-      renderItem={({ item }: { item: NostrEvent }) => (
-        // A post opens its thread here as it does in a timeline. A card that
-        // is tappable in one list and inert in another reads as a bug even
-        // when nobody can say which of the two is wrong.
-        <Pressable
-          onPress={() => navigation.push('Thread', { eventId: item.id })}
-          style={({ pressed }) => [styles.post, pressed && styles.postPressed]}
-        >
-          <PostBody
-            content={item.content}
-            textStyle={styles.postContent}
-            linkStyle={styles.link}
-            numberOfLines={12}
-          />
-        </Pressable>
+      // The same card the timelines draw. A profile is a timeline; it had a
+      // stripped-down renderer of its own for no reason but having been
+      // written second, and it showed - no time, no actions, no pictures.
+      renderItem={({ item }: { item: TimelinePost }) => (
+        <PostRow
+          post={item}
+          onOpenThread={() => navigation.push('Thread', { eventId: item.id })}
+          onOpenProfile={() =>
+            navigation.push('Profile', { pubkey: item.pubkey })
+          }
+        />
       )}
     />
   );
