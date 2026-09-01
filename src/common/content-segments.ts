@@ -32,7 +32,9 @@ export type ContentSegment =
   /** A person. `pubkey` is null when the identifier will not decode. */
   | { kind: 'mention'; text: string; pubkey: PubkeyHex | null }
   /** A quoted note. `eventId` is null when the identifier will not decode. */
-  | { kind: 'event'; text: string; eventId: string | null };
+  | { kind: 'event'; text: string; eventId: string | null }
+  /** A hashtag. `tag` is the word without the `#`, lowercased, as NIP-12 `t`. */
+  | { kind: 'hashtag'; text: string; tag: string };
 
 /**
  * One pass, so the parts cannot overlap or be found twice.
@@ -42,7 +44,7 @@ export type ContentSegment =
  * ran first would have to know to leave it alone.
  */
 const PATTERN =
-  /nostr:(npub1[0-9a-z]+|nprofile1[0-9a-z]+|note1[0-9a-z]+|nevent1[0-9a-z]+)|(https?:\/\/[^\s<]+)/gi;
+  /nostr:(npub1[0-9a-z]+|nprofile1[0-9a-z]+|note1[0-9a-z]+|nevent1[0-9a-z]+)|(https?:\/\/[^\s<]+)|(?:^|[^\p{L}\p{N}_\/])#([\p{L}\p{N}_]+)/giu;
 
 /** Trailing punctuation is sentence, not URL. */
 function trimUrlTail(url: string): string {
@@ -113,7 +115,7 @@ export function parseContentSegments(content: string): ContentSegment[] {
   PATTERN.lastIndex = 0;
   let match: RegExpExecArray | null = PATTERN.exec(content);
   while (match !== null) {
-    const [whole, reference, rawUrl] = match;
+    const [whole, reference, rawUrl, hashtag] = match;
     const start: number = match.index;
 
     if (reference !== undefined) {
@@ -151,6 +153,22 @@ export function parseContentSegments(content: string): ContentSegment[] {
         // The trimmed tail is text, and the next search resumes from it.
         PATTERN.lastIndex = cursor;
       }
+    }
+
+    if (hashtag !== undefined) {
+      // The pattern consumes the character before the `#` so a URL fragment
+      // or a word ending in one is not a tag. That character is text.
+      const hashStart: number = start + whole.indexOf('#');
+      if (hashStart > cursor) {
+        segments.push({ kind: 'text', text: content.slice(cursor, hashStart) });
+      }
+      segments.push({
+        kind: 'hashtag',
+        text: `#${hashtag}`,
+        tag: hashtag.toLowerCase(),
+      });
+      cursor = hashStart + hashtag.length + 1;
+      PATTERN.lastIndex = cursor;
     }
 
     match = PATTERN.exec(content);

@@ -33,6 +33,7 @@ import { fetchProfilesForPubkeys } from './lib/home-timeline';
 import Chat from './screens/Chat';
 import Compose from './screens/Compose';
 import Feed from './screens/Feed';
+import Hashtag from './screens/Hashtag';
 import Messages from './screens/Messages';
 import Notifications from './screens/Notifications';
 import Profile from './screens/Profile';
@@ -57,6 +58,7 @@ export type RootStackParamList = {
   Thread: { eventId: string; reply?: boolean };
   Chat: { peer: PubkeyHex; name: string };
   Wallet: undefined;
+  Hashtag: { tag: string };
 };
 
 /**
@@ -272,6 +274,11 @@ export default function App() {
             name="Thread"
             component={Thread}
             options={{ title: 'Thread' }}
+          />
+          <Stack.Screen
+            name="Hashtag"
+            component={Hashtag}
+            options={({ route }) => ({ title: `#${route.params.tag}` })}
           />
           <Stack.Screen
             name="Chat"

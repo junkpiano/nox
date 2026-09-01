@@ -150,6 +150,20 @@ export default function RichText({
           );
         }
 
+        if (segment.kind === 'hashtag') {
+          return (
+            <Text
+              key={key}
+              style={linkStyle}
+              onPress={(): void =>
+                navigation.navigate('Hashtag', { tag: segment.tag })
+              }
+            >
+              {segment.text}
+            </Text>
+          );
+        }
+
         if (segment.kind === 'event') {
           const eventId: string | null = segment.eventId;
           if (!eventId) {

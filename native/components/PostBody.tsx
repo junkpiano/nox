@@ -11,6 +11,7 @@
  * somewhere else pretends to be a player; a labelled link does not.
  */
 
+import { useState } from 'react';
 import {
   Image,
   Linking,
@@ -19,9 +20,10 @@ import {
   Text,
   View,
 } from 'react-native';
-
 import type { PartitionedContent } from '../../src/common/content-segments';
 import { partitionContent } from '../../src/common/content-segments';
+
+import ImageViewer from './ImageViewer';
 import RichText from './RichText';
 
 export interface PostBodyProps {
@@ -29,6 +31,11 @@ export interface PostBodyProps {
   textStyle?: object;
   linkStyle?: object;
   numberOfLines?: number;
+  /**
+   * Opens the post. Only the words carry it: a picture opens itself, and the
+   * links inside the words open themselves, so this is what is left over.
+   */
+  onPressText?: () => void;
 }
 
 export default function PostBody({
@@ -36,8 +43,13 @@ export default function PostBody({
   textStyle,
   linkStyle,
   numberOfLines,
+  onPressText,
 }: PostBodyProps) {
   const { segments, media }: PartitionedContent = partitionContent(content);
+  const [opened, setOpened] = useState<number | null>(null);
+  const pictures: string[] = media
+    .filter((item) => item.kind === 'image')
+    .map((item) => item.url);
   const prose: string = segments
     .map((segment): string => segment.text)
     .join('')
@@ -46,22 +58,28 @@ export default function PostBody({
   return (
     <View>
       {prose.length > 0 ? (
-        <RichText
-          content={prose}
-          style={textStyle}
-          linkStyle={linkStyle}
-          numberOfLines={numberOfLines}
-        />
+        <Pressable onPress={onPressText} disabled={!onPressText}>
+          <RichText
+            content={prose}
+            style={textStyle}
+            linkStyle={linkStyle}
+            numberOfLines={numberOfLines}
+          />
+        </Pressable>
       ) : null}
 
       {media.map((item) =>
         item.kind === 'image' ? (
-          <Image
+          <Pressable
             key={item.url}
-            source={{ uri: item.url }}
-            style={styles.image}
-            resizeMode="cover"
-          />
+            onPress={(): void => setOpened(pictures.indexOf(item.url))}
+          >
+            <Image
+              source={{ uri: item.url }}
+              style={styles.image}
+              resizeMode="cover"
+            />
+          </Pressable>
         ) : (
           <Pressable
             key={item.url}
@@ -77,6 +95,12 @@ export default function PostBody({
           </Pressable>
         ),
       )}
+
+      <ImageViewer
+        urls={pictures}
+        index={opened}
+        onClose={(): void => setOpened(null)}
+      />
     </View>
   );
 }

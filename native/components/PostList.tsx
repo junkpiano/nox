@@ -76,14 +76,17 @@ function Row({
     return () => bumpMounted(-1);
   }, []);
 
+  /*
+   * The row is not one big button.
+   *
+   * It was, and the picture inside it could not be tapped: a Pressable inside
+   * a Pressable does not reliably win the touch, so tapping an image opened
+   * the thread instead of the picture. Each part now owns its own target -
+   * the face and the name go to the person, the words go to the thread, the
+   * picture opens itself, and the actions act.
+   */
   return (
-    <Pressable
-      onPress={onOpenThread}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-    >
-      {/* The avatar and name go to the person; the rest of the row goes to the
-          post. Tapping a face and landing on a thread is the kind of small
-          wrongness that reads as an app not knowing what it is. */}
+    <View style={styles.row}>
       <Pressable onPress={onOpenProfile} hitSlop={6}>
         {post.picture ? (
           <Image source={{ uri: post.picture }} style={styles.avatar} />
@@ -96,7 +99,11 @@ function Row({
           <Text style={styles.name} numberOfLines={1} onPress={onOpenProfile}>
             {post.name}
           </Text>
-          {post.kind === 6 ? <Text style={styles.badge}>repost</Text> : null}
+          {post.repostedBy ? (
+            <Text style={styles.badge} numberOfLines={1}>
+              ⇄ {post.repostedBy.name}
+            </Text>
+          ) : null}
         </View>
         {post.nip05 ? (
           <Text style={styles.nip05} numberOfLines={1}>
@@ -119,11 +126,12 @@ function Row({
             textStyle={styles.content}
             linkStyle={styles.link}
             numberOfLines={12}
+            onPressText={onOpenThread}
           />
         )}
         <Actions post={post} />
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -261,7 +269,7 @@ export default function PostList({
       ) : (
         <FlatList
           data={posts}
-          keyExtractor={(p: TimelinePost) => p.id}
+          keyExtractor={(p: TimelinePost) => p.key}
           renderItem={({ item }: { item: TimelinePost }) => (
             <Row
               post={item}
@@ -275,6 +283,9 @@ export default function PostList({
               }
             />
           )}
+          // Room for the compose button to sit over, so the last card can be
+          // scrolled out from under it rather than staying half-covered.
+          contentContainerStyle={styles.listContent}
           onScroll={(e) => setOffset(e.nativeEvent.contentOffset.y)}
           scrollEventThrottle={16}
           ItemSeparatorComponent={() => <View style={styles.sep} />}
@@ -355,6 +366,7 @@ const styles = StyleSheet.create({
   },
   warningText: { color: '#ffd79a', fontSize: 13, lineHeight: 18 },
   warningHint: { color: '#8a7550', fontSize: 11, marginTop: 4 },
+  listContent: { paddingBottom: 96 },
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
   stage: { color: '#8ea0c0', fontSize: 13 },

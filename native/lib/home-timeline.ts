@@ -19,6 +19,7 @@ import {
 import { fetchFollowList } from '../../src/common/events-queries';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { openRelaySubscription } from '../../src/common/relay-socket';
+import { isRepost, readRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 
@@ -31,6 +32,12 @@ const POST_LIMIT: number = 400;
 const QUERY_TIMEOUT_MS: number = 9000;
 
 export interface TimelinePost {
+  /**
+   * Stable across the list, which the reposted event's id is not: two people
+   * reposting the same note, or a repost of something already on screen,
+   * would collide.
+   */
+  key: string;
   id: string;
   pubkey: PubkeyHex;
   createdAt: number;
@@ -49,6 +56,14 @@ export interface TimelinePost {
    * the tags and the signature.
    */
   event: NostrEvent;
+  /**
+   * Who reposted this, when the row is a repost.
+   *
+   * NIP-18 puts the whole reposted event as JSON in the kind 6's `content`,
+   * so a card that renders `content` shows a wall of `{"id":"..."}`. The row
+   * carries the reposted event and says who passed it on.
+   */
+  repostedBy: { pubkey: PubkeyHex; name: string } | null;
 }
 
 export interface TimelineResult {
@@ -232,8 +247,20 @@ async function decorate(
   relays: string[],
   events: NostrEvent[],
 ): Promise<Decorated> {
+  // Both the author and, for a repost, whoever passed it on: the card names
+  // them both and a missing name is a hex string on screen.
+  const authors: PubkeyHex[] = events.flatMap(
+    (event: NostrEvent): PubkeyHex[] => {
+      const reposted: NostrEvent | null = isRepost(event)
+        ? readRepost(event).event
+        : null;
+      return reposted
+        ? [event.pubkey as PubkeyHex, reposted.pubkey as PubkeyHex]
+        : [event.pubkey as PubkeyHex];
+    },
+  );
   const profiles: Map<string, ProfileMeta> = await fetchProfilesForPubkeys(
-    events.map((e: NostrEvent): PubkeyHex => e.pubkey as PubkeyHex),
+    authors,
     relays,
   );
 
@@ -241,18 +268,35 @@ async function decorate(
     .slice()
     .sort((a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at)
     .map((event: NostrEvent): TimelinePost => {
-      const meta: ProfileMeta | undefined = profiles.get(event.pubkey);
+      // A repost is a wrapper. What the card shows, and what a like or a
+      // reply is addressed to, is the event inside it.
+      const reposted: NostrEvent | null = isRepost(event)
+        ? readRepost(event).event
+        : null;
+      const shown: NostrEvent = reposted ?? event;
+      const meta: ProfileMeta | undefined = profiles.get(shown.pubkey);
+      const sharer: ProfileMeta | undefined = profiles.get(event.pubkey);
+
       return {
-        id: event.id,
-        pubkey: event.pubkey as PubkeyHex,
-        createdAt: event.created_at,
-        content: event.content,
-        kind: event.kind,
-        name: meta?.name || `${event.pubkey.slice(0, 8)}...`,
+        key: event.id,
+        id: shown.id,
+        pubkey: shown.pubkey as PubkeyHex,
+        createdAt: shown.created_at,
+        // An unreadable repost - no embedded copy, or a copy that is not an
+        // event - shows as an empty card rather than as its own JSON.
+        content: reposted || !isRepost(event) ? shown.content : '',
+        kind: shown.kind,
+        name: meta?.name || `${shown.pubkey.slice(0, 8)}...`,
         picture: meta?.picture ?? null,
         nip05: meta?.nip05 ?? null,
-        warning: getContentWarning(event),
-        event,
+        warning: getContentWarning(shown),
+        event: shown,
+        repostedBy: isRepost(event)
+          ? {
+              pubkey: event.pubkey as PubkeyHex,
+              name: sharer?.name || `${event.pubkey.slice(0, 8)}...`,
+            }
+          : null,
       };
     });
 
@@ -267,6 +311,43 @@ async function decorate(
  * bound keeps it to the recent past rather than letting each relay decide for
  * itself how far back `limit` should reach.
  */
+/**
+ * Posts carrying a hashtag.
+ *
+ * NIP-12 indexes these as `t` tags, lowercased, so the filter is exact rather
+ * than a text search - which is why a tag is worth linking at all: it goes
+ * somewhere the relays can actually answer.
+ */
+export async function loadHashtagTimeline(
+  tag: string,
+  onStage: (stage: string) => void,
+): Promise<TimelineResult> {
+  const started: number = Date.now();
+  const relays: string[] = getRelays();
+
+  onStage(`#${tag}...`);
+  const events: NostrEvent[] = await queryRelays(relays, {
+    kinds: [1],
+    '#t': [tag.toLowerCase()],
+    limit: POST_LIMIT,
+  });
+
+  onStage('profiles...');
+  const decorated: Decorated = await decorate(relays, events);
+
+  return {
+    posts: decorated.posts,
+    stats: {
+      follows: 0,
+      events: events.length,
+      profiles: decorated.profileCount,
+      relays: relays.length,
+      ms: Date.now() - started,
+      muted: events.length - filterMutedEvents(events).length,
+    },
+  };
+}
+
 export async function loadGlobalTimeline(
   onStage: (stage: string) => void,
 ): Promise<TimelineResult> {
@@ -276,7 +357,7 @@ export async function loadGlobalTimeline(
 
   onStage('recent posts...');
   const events: NostrEvent[] = await queryRelays(relays, {
-    kinds: [1],
+    kinds: [1, 6],
     since: Math.floor(Date.now() / 1000) - sinceHours * 3600,
     limit: POST_LIMIT,
   });
