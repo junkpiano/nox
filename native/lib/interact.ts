@@ -18,6 +18,7 @@ import {
   fetchLatestFollowListEvent,
   lookupFollowList,
 } from '../../src/common/events-queries';
+import { replyTags, repostTags } from '../../src/common/reply-tags';
 import { getSessionPrivateKey } from '../../src/common/session';
 import {
   isFollowing as listHasFollow,
@@ -62,6 +63,72 @@ export async function likeEvent(event: NostrEvent): Promise<PublishResult> {
       ['p', event.pubkey],
     ] as string[][],
     content: LIKE,
+  });
+
+  const signed = finalizeEvent(
+    {
+      kind: draft.kind,
+      created_at: draft.created_at,
+      tags: draft.tags,
+      content: draft.content,
+    },
+    key,
+  ) as unknown as NostrEvent;
+
+  return publishSigned(signed);
+}
+
+/**
+ * Replies to an event.
+ *
+ * The tags come from the shared `reply-tags.ts`, which carries the thread root
+ * as well as the immediate parent and names everyone upstream. Emitting only
+ * the parent - which is what the web overlay still does - publishes a reply
+ * that no client can place in its thread and that nobody above it is told
+ * about.
+ */
+export async function replyToEvent(
+  parent: NostrEvent,
+  content: string,
+): Promise<PublishResult> {
+  const key: Uint8Array = requireKey();
+
+  const draft = withClientTag({
+    kind: 1,
+    pubkey: '',
+    created_at: Math.floor(Date.now() / 1000),
+    tags: replyTags(parent),
+    content,
+  });
+
+  const signed = finalizeEvent(
+    {
+      kind: draft.kind,
+      created_at: draft.created_at,
+      tags: draft.tags,
+      content: draft.content,
+    },
+    key,
+  ) as unknown as NostrEvent;
+
+  return publishSigned(signed);
+}
+
+/**
+ * Reposts an event.
+ *
+ * NIP-18 puts the whole original in `content` as JSON, so a client that has
+ * never seen the event can still render the repost without another round trip.
+ */
+export async function repostEvent(target: NostrEvent): Promise<PublishResult> {
+  const key: Uint8Array = requireKey();
+
+  const draft = withClientTag({
+    kind: 6,
+    pubkey: '',
+    created_at: Math.floor(Date.now() / 1000),
+    tags: repostTags(target),
+    content: JSON.stringify(target),
   });
 
   const signed = finalizeEvent(

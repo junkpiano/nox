@@ -10,10 +10,10 @@
  * that ignores the request shows people something they asked to withdraw.
  */
 
-import { useEffect, useState } from 'react';
 import type { RouteProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,19 +21,24 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-
-import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import {
   fetchEventById,
   fetchRepliesForEvent,
   isEventDeleted,
 } from '../../src/common/events-queries';
-import { getRelays } from '../../src/features/relays/relays';
 import { getSessionPrivateKey } from '../../src/common/session';
-import { likeEvent, NotSignedInError } from '../lib/interact';
+import { getRelays } from '../../src/features/relays/relays';
+import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import {
+  likeEvent,
+  NotSignedInError,
+  replyToEvent,
+  repostEvent,
+} from '../lib/interact';
 
 type ThreadRoute = RouteProp<RootStackParamList, 'Thread'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -58,6 +63,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const [error, setError] = useState<string | null>(null);
   const [liked, setLiked] = useState(false);
   const [liking, setLiking] = useState(false);
+  const [reposted, setReposted] = useState(false);
+  const [reposting, setReposting] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [replying, setReplying] = useState(false);
+  const [sent, setSent] = useState(0);
   const navigation = useNavigation<Nav>();
 
   useEffect(() => {
@@ -85,7 +95,8 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           root,
           deleted,
           replies: replies.sort(
-            (a: NostrEvent, b: NostrEvent): number => a.created_at - b.created_at,
+            (a: NostrEvent, b: NostrEvent): number =>
+              a.created_at - b.created_at,
           ),
         });
       } catch (e: any) {
@@ -96,7 +107,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, sent]);
 
   if (error) {
     return (
@@ -126,26 +137,65 @@ export default function Thread({ route }: { route: ThreadRoute }) {
 
   const root: NostrEvent = data.root;
 
-  const like = async (): Promise<void> => {
-    setLiking(true);
+  /** One place to report what a write actually did, rather than three. */
+  const attempt = async (
+    what: string,
+    run: () => Promise<{ accepted: string[] }>,
+    onDone: () => void,
+  ): Promise<void> => {
     try {
-      const result = await likeEvent(root);
+      const result = await run();
       if (result.accepted.length === 0) {
-        Alert.alert('Not sent', 'No relay accepted the reaction.');
+        Alert.alert('Not sent', `No relay accepted the ${what}.`);
         return;
       }
-      // Marked here rather than optimistically: a like nobody stored is not a
-      // like, and showing it as one would be a small lie that persists.
-      setLiked(true);
+      onDone();
     } catch (e: any) {
       if (e instanceof NotSignedInError) {
-        Alert.alert('Not signed in', 'Add a key on the You tab to react.');
+        Alert.alert('Not signed in', 'Add a key on the You tab to take part.');
       } else {
-        Alert.alert('Could not react', String(e?.message ?? e));
+        Alert.alert(`Could not ${what}`, String(e?.message ?? e));
       }
-    } finally {
-      setLiking(false);
     }
+  };
+
+  const like = async (): Promise<void> => {
+    setLiking(true);
+    // Marked only once a relay has it: a like nobody stored is not a like, and
+    // showing it as one would be a small lie that persists.
+    await attempt(
+      'reaction',
+      () => likeEvent(root),
+      () => setLiked(true),
+    );
+    setLiking(false);
+  };
+
+  const repost = async (): Promise<void> => {
+    setReposting(true);
+    await attempt(
+      'repost',
+      () => repostEvent(root),
+      () => setReposted(true),
+    );
+    setReposting(false);
+  };
+
+  const reply = async (): Promise<void> => {
+    const content = draft.trim();
+    if (!content) return;
+    setReplying(true);
+    await attempt(
+      'reply',
+      () => replyToEvent(root, content),
+      (): void => {
+        setDraft('');
+        // Bumping this re-runs the thread load, so the reply appears where it
+        // belongs rather than being pasted in optimistically at the end.
+        setSent((n: number): number => n + 1);
+      },
+    );
+    setReplying(false);
   };
 
   return (
@@ -157,7 +207,9 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         <View>
           <Pressable
             onPress={() =>
-              navigation.navigate('Profile', { pubkey: root.pubkey as PubkeyHex })
+              navigation.navigate('Profile', {
+                pubkey: root.pubkey as PubkeyHex,
+              })
             }
             style={styles.rootPost}
           >
@@ -171,18 +223,54 @@ export default function Thread({ route }: { route: ThreadRoute }) {
             )}
           </Pressable>
           {getSessionPrivateKey() && !data.deleted ? (
-            <Pressable
-              onPress={like}
-              disabled={liking || liked}
-              style={({ pressed }) => [
-                styles.likeButton,
-                (pressed || liking) && styles.likeBusy,
-              ]}
-            >
-              <Text style={liked ? styles.likedText : styles.likeText}>
-                {liked ? 'Liked' : liking ? 'Sending...' : 'Like'}
-              </Text>
-            </Pressable>
+            <View style={styles.actions}>
+              <View style={styles.actionRow}>
+                <Pressable
+                  onPress={like}
+                  disabled={liking || liked}
+                  style={[styles.action, (liking || liked) && styles.actionOff]}
+                >
+                  <Text style={liked ? styles.actionDone : styles.actionText}>
+                    {liked ? 'Liked' : liking ? '...' : 'Like'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={repost}
+                  disabled={reposting || reposted}
+                  style={[
+                    styles.action,
+                    (reposting || reposted) && styles.actionOff,
+                  ]}
+                >
+                  <Text
+                    style={reposted ? styles.actionDone : styles.actionText}
+                  >
+                    {reposted ? 'Reposted' : reposting ? '...' : 'Repost'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder="Write a reply"
+                placeholderTextColor="#5b6b88"
+                multiline
+                style={styles.replyInput}
+              />
+              <Pressable
+                onPress={reply}
+                disabled={replying || draft.trim().length === 0}
+                style={[
+                  styles.replyButton,
+                  (replying || draft.trim().length === 0) && styles.actionOff,
+                ]}
+              >
+                <Text style={styles.replyButtonText}>
+                  {replying ? 'Sending...' : 'Reply'}
+                </Text>
+              </Pressable>
+            </View>
           ) : null}
 
           <Text style={styles.replyHeading}>
@@ -196,7 +284,10 @@ export default function Thread({ route }: { route: ThreadRoute }) {
       renderItem={({ item }: { item: NostrEvent }) => (
         <Pressable
           onPress={() => navigation.push('Thread', { eventId: item.id })}
-          style={({ pressed }) => [styles.reply, pressed && styles.replyPressed]}
+          style={({ pressed }) => [
+            styles.reply,
+            pressed && styles.replyPressed,
+          ]}
         >
           <Text style={styles.meta}>{timeAgo(item.created_at)}</Text>
           <Text style={styles.replyContent} numberOfLines={12}>
@@ -228,9 +319,38 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
   },
-  likeBusy: { opacity: 0.5 },
-  likeText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
-  likedText: { color: '#73f0c1', fontWeight: '700', fontSize: 14 },
+  actions: { paddingHorizontal: 16, paddingBottom: 14, gap: 8 },
+  actionRow: { flexDirection: 'row', gap: 8 },
+  action: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  actionOff: { opacity: 0.5 },
+  actionText: { color: '#89a8ff', fontWeight: '700', fontSize: 14 },
+  actionDone: { color: '#73f0c1', fontWeight: '700', fontSize: 14 },
+  replyInput: {
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#e8eeff',
+    fontSize: 14,
+    backgroundColor: '#101a2e',
+    minHeight: 72,
+    textAlignVertical: 'top',
+  },
+  replyButton: {
+    backgroundColor: '#89a8ff',
+    borderRadius: 10,
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  replyButtonText: { color: '#0b1220', fontWeight: '700', fontSize: 14 },
   replyHeading: {
     color: '#8ea0c0',
     fontSize: 12,
@@ -244,7 +364,12 @@ const styles = StyleSheet.create({
   },
   reply: { paddingHorizontal: 16, paddingVertical: 14 },
   replyPressed: { backgroundColor: 'rgba(137,168,255,0.08)' },
-  replyContent: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 4 },
+  replyContent: {
+    color: '#b9c6de',
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 4,
+  },
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   centre: {
     flex: 1,
