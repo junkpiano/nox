@@ -2,6 +2,7 @@ import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
 import { storeEvent } from './db/index.js';
+import { replyTags } from './reply-tags.js';
 
 interface ReplyOverlayOptions {
   getSessionPrivateKey: () => Uint8Array | null;
@@ -11,8 +12,14 @@ interface ReplyOverlayOptions {
 }
 
 interface ReplyContext {
-  eventId: string;
-  eventPubkey: string;
+  /**
+   * The whole parent event, not just its id.
+   *
+   * NIP-10 needs the parent's own `e` tags to find the root of the thread, and
+   * its `p` tags to know who else is in the conversation. Carrying only the id
+   * and the author is what detached every reply below the first level.
+   */
+  event: NostrEvent;
   eventAuthor: string;
   eventContent: string;
 }
@@ -134,17 +141,10 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
         throw new Error('No signing method available');
       }
 
-      // Create reply event with proper tags
-      // According to NIP-10:
-      // - "e" tag with "reply" marker for the event being replied to
-      // - "p" tag for the author being replied to
       const unsignedEvent: any = withClientTag({
         kind: 1,
         created_at: Math.floor(Date.now() / 1000),
-        tags: [
-          ['e', currentReplyContext.eventId, '', 'reply'],
-          ['p', currentReplyContext.eventPubkey],
-        ],
+        tags: replyTags(currentReplyContext.event),
         content,
       });
 
