@@ -147,8 +147,19 @@ export function queryRelays(
      * which would have cut off every relay slower than a second and a half
      * and left the timeline short or empty.
      */
-    const answered = (): void => {
+    // Each relay is counted once. A relay can send EOSE and then CLOSED, or
+    // EOSE twice; counting each arrival would declare the query finished
+    // before the slower relays had been heard and cut them off.
+    const finished: Set<string> = new Set();
+    const countOnce = (relayUrl: string): boolean => {
+      if (finished.has(relayUrl)) return false;
+      finished.add(relayUrl);
       done += 1;
+      return true;
+    };
+
+    const answered = (relayUrl: string): void => {
+      if (!countOnce(relayUrl)) return;
       if (done >= relays.length) {
         finish();
         return;
@@ -157,8 +168,8 @@ export function queryRelays(
         grace = setTimeout(finish, STRAGGLER_GRACE_MS);
       }
     };
-    const gaveUp = (): void => {
-      done += 1;
+    const gaveUp = (relayUrl: string): void => {
+      if (!countOnce(relayUrl)) return;
       if (done >= relays.length) finish();
     };
 
@@ -167,14 +178,25 @@ export function queryRelays(
         onEvent: (event: NostrEvent): void => {
           if (!byId.has(event.id)) byId.set(event.id, event);
         },
-        onEose: answered,
-        onClosed: gaveUp,
+        onEose: (): void => answered(relayUrl),
+        onClosed: (): void => gaveUp(relayUrl),
       })
         .then((stop: () => void): void => {
+          // A relay that connected after the query had already returned
+          // would otherwise keep its subscription open with nobody to close
+          // it, and every refresh would leave one more behind.
+          if (settled) {
+            try {
+              stop();
+            } catch {
+              // Already gone.
+            }
+            return;
+          }
           unsubscribes.push(stop);
         })
         .catch((): void => {
-          gaveUp();
+          gaveUp(relayUrl);
         });
     }
 
