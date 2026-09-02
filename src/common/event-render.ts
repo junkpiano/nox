@@ -1927,13 +1927,40 @@ async function renderReferencedEventCards(
         }
       }
 
-      const referencedEvent: NostrEvent | null = await fetchEventWithRetry(
+      const fetchedReference: NostrEvent | null = await fetchEventWithRetry(
         eventId,
         relaysToUse,
         5,
       );
+      if (!fetchedReference) {
+        card.textContent = 'Failed to load referenced event.';
+        continue;
+      }
+
+      // A quoted repost shows the note it reposted, never its own content,
+      // which is that note as JSON. With no verified copy the target is
+      // fetched by id.
+      let referencedEvent: NostrEvent | null = fetchedReference;
+      const unwrappedReference = unwrapRepost(fetchedReference);
+      if (unwrappedReference.repostedBy) {
+        referencedEvent =
+          unwrappedReference.event ??
+          (unwrappedReference.targetId
+            ? await fetchEventWithRetry(
+                unwrappedReference.targetId,
+                relaysToUse,
+                5,
+              )
+            : null);
+      }
       if (!referencedEvent) {
         card.textContent = 'Failed to load referenced event.';
+        continue;
+      }
+      // Data, not words. This path is reached by fetching, so the guard at
+      // the top of renderEvent never saw it - the same rule applies here.
+      if (isMachineContent(referencedEvent.content)) {
+        card.textContent = 'Quoted note contains no readable text.';
         continue;
       }
 

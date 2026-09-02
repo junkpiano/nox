@@ -139,7 +139,15 @@ export function queryRelays(
      * dead no longer sets the pace.
      */
     let grace: ReturnType<typeof setTimeout> | null = null;
-    const oneDone = (): void => {
+
+    /**
+     * Only a relay that actually answered starts the clock for the others.
+     * A relay that refused the connection or dropped it has told us nothing
+     * about how long the healthy ones need - and a dead relay fails at once,
+     * which would have cut off every relay slower than a second and a half
+     * and left the timeline short or empty.
+     */
+    const answered = (): void => {
       done += 1;
       if (done >= relays.length) {
         finish();
@@ -149,20 +157,24 @@ export function queryRelays(
         grace = setTimeout(finish, STRAGGLER_GRACE_MS);
       }
     };
+    const gaveUp = (): void => {
+      done += 1;
+      if (done >= relays.length) finish();
+    };
 
     for (const relayUrl of relays) {
       openRelaySubscription(relayUrl, filter, {
         onEvent: (event: NostrEvent): void => {
           if (!byId.has(event.id)) byId.set(event.id, event);
         },
-        onEose: oneDone,
-        onClosed: oneDone,
+        onEose: answered,
+        onClosed: gaveUp,
       })
         .then((stop: () => void): void => {
           unsubscribes.push(stop);
         })
         .catch((): void => {
-          oneDone();
+          gaveUp();
         });
     }
 
