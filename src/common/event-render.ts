@@ -33,6 +33,7 @@ import {
   getCachedDeletionStatus,
   isEventDeleted,
 } from './events-queries.js';
+import { isMachineContent } from './machine-content.js';
 import { classifyMediaUrl, withPosterFrame } from './media-type.js';
 import { isMuted } from './mute-state.js';
 import type { ReactionAggregate } from './reaction-interactions.js';
@@ -52,6 +53,7 @@ import {
 } from './referenced-event.js';
 import { createRelayWebSocket } from './relay-socket.js';
 import { repostTags } from './reply-tags.js';
+import { unwrapRepost } from './repost.js';
 import { getSessionPrivateKey } from './session.js';
 import { openZapComposer } from './zap.js';
 
@@ -1046,6 +1048,18 @@ export function renderEvent(
     profile,
   );
   const isRepost: boolean = event.kind === 6 || event.kind === 16;
+
+  // Data, not words. Judged on what would be shown: a plain note on its own
+  // content, a repost on its verified embedded copy. A repost with no such
+  // copy is not judged here - its content is the serialised target and the
+  // repost path below fetches the real thing.
+  const judged: NostrEvent | null = isRepost
+    ? unwrapRepost(event).event
+    : event;
+  if (judged && isMachineContent(judged.content)) {
+    return;
+  }
+
   const repostEventId: string | null = isRepost
     ? resolveRepostEventId(event)
     : null;
