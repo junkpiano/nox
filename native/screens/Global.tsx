@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import PostList from '../components/PostList';
 import { loadGlobalTimeline, type TimelinePost } from '../lib/home-timeline';
+import { useNewPosts } from '../lib/use-new-posts';
 
 export default function Global() {
   const [posts, setPosts] = useState<TimelinePost[]>([]);
@@ -17,12 +18,21 @@ export default function Global() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Its own poll and its own waiting posts: Home's do not leak in here.
+  const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
+  const { pendingCount, showNew, forget } = useNewPosts(
+    filter,
+    posts,
+    setPosts,
+  );
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
+    forget();
     try {
       const result = await loadGlobalTimeline(setStage);
       setPosts(result.posts);
+      setFilter(result.filter);
       setStats(
         `${result.stats.events} events / ${result.stats.profiles} profiles / ` +
           `${result.stats.relays} relays / ${(result.stats.ms / 1000).toFixed(1)}s`,
@@ -34,7 +44,7 @@ export default function Global() {
       setLoading(false);
       setStage('');
     }
-  }, []);
+  }, [forget]);
 
   useEffect(() => {
     void load();
@@ -56,6 +66,8 @@ export default function Global() {
       onRefresh={onRefresh}
       loading={loading}
       emptyMessage={'Nothing on these relays in the last six hours.'}
+      pendingCount={pendingCount}
+      onShowNew={showNew}
     />
   );
 }

@@ -15,6 +15,7 @@
  */
 
 import type { NostrEvent } from '../../types/nostr';
+import { queryRelays } from './relay-query.js';
 
 export const DELETION_KIND: number = 5;
 
@@ -62,4 +63,37 @@ export function withoutDeleted<T extends { id: string }>(
     return events;
   }
   return events.filter((event: T): boolean => !deleted.has(event.id));
+}
+
+/**
+ * Which of these the author has asked to withdraw, asked of the relays.
+ *
+ * One query for the whole batch rather than one per card. Relays index `e`
+ * tags, so this is the filter they are built to answer; the ids are chunked
+ * because a filter naming a thousand of them is a filter some relays refuse.
+ */
+export async function fetchDeletedIds(
+  relays: string[],
+  events: NostrEvent[],
+): Promise<Set<string>> {
+  const ids: string[] = events.map((event: NostrEvent): string => event.id);
+  if (ids.length === 0) {
+    return new Set();
+  }
+
+  const chunks: string[][] = [];
+  for (let index = 0; index < ids.length; index += 200) {
+    chunks.push(ids.slice(index, index + 200));
+  }
+
+  const results = await Promise.allSettled(
+    chunks.map((chunk: string[]) =>
+      queryRelays(relays, { kinds: [DELETION_KIND], '#e': chunk }),
+    ),
+  );
+
+  const deletions: NostrEvent[] = results.flatMap((result) =>
+    result.status === 'fulfilled' ? result.value : [],
+  );
+  return collectDeletedIds(events, deletions);
 }

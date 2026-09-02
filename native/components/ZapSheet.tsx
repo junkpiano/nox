@@ -28,6 +28,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { queryRelays } from '../../src/common/relay-query';
 import type { ZapInvoice } from '../../src/common/zap-request';
 import { requestZapInvoice } from '../../src/common/zap-request';
 import { getRelays } from '../../src/features/relays/relays';
@@ -37,7 +38,6 @@ import {
   loadWalletConnection,
 } from '../../src/features/wallet/wallet-store';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
-import { queryRelays } from '../lib/home-timeline';
 import { signEventWithSession } from '../lib/publish';
 
 const PRESETS: number[] = [21, 100, 500, 1000, 5000];

@@ -17,15 +17,13 @@ import {
   getContentWarning,
 } from '../../src/common/content-warning';
 import {
-  collectDeletedIds,
-  DELETION_KIND,
+  fetchDeletedIds,
   withoutDeleted,
 } from '../../src/common/deleted-events';
 import { fetchFollowList } from '../../src/common/events-queries';
 import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
-import { fanOut, type RelayReport } from '../../src/common/relay-fanout';
-import { openRelaySubscription } from '../../src/common/relay-socket';
+import { queryRelays } from '../../src/common/relay-query';
 import { isRepost, readRepost, unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
@@ -36,10 +34,8 @@ const HOME_KINDS: number[] = [1, 6];
 /** Relays reject enormous `authors` lists, and this is plenty of timeline. */
 const MAX_AUTHORS: number = 300;
 const POST_LIMIT: number = 400;
-/** A relay silent for this long is given up on. */
-const QUERY_TIMEOUT_MS: number = 9000;
-/** How long the others get once one relay has answered. */
-const STRAGGLER_GRACE_MS: number = 1500;
+/** A poll for newer posts is small; anything more is a reload. */
+const NEWER_LIMIT: number = 100;
 
 export interface TimelinePost {
   /**
@@ -84,6 +80,11 @@ export interface TimelinePost {
 
 export interface TimelineResult {
   posts: TimelinePost[];
+  /**
+   * The question the relays were asked, without `limit` or `since`, so a
+   * later poll for newer posts can ask the same one from a later moment.
+   */
+  filter: Record<string, unknown>;
   stats: {
     follows: number;
     events: number;
@@ -93,47 +94,6 @@ export interface TimelineResult {
     /** How many events the mute list removed, so the filter is visible. */
     muted: number;
   };
-}
-
-/**
- * Runs one filter across every relay and collects what comes back.
- *
- * When to stop waiting is decided by the shared fan-out: once one relay has
- * answered, the rest get a short grace, and a dead relay costs nothing but
- * its own timeout. A timeline load is three or four of these in a row, which
- * is how a brand-new key once took most of a minute to be told it followed
- * nobody.
- */
-export async function queryRelays(
-  relays: string[],
-  filter: Record<string, unknown>,
-): Promise<NostrEvent[]> {
-  const byId: Map<string, NostrEvent> = new Map();
-
-  await fanOut(
-    relays,
-    (relayUrl: string, report: RelayReport): Promise<() => void> => {
-      const timeout = setTimeout((): void => report.gaveUp(), QUERY_TIMEOUT_MS);
-      return openRelaySubscription(relayUrl, filter, {
-        onEvent: (event: NostrEvent): void => {
-          if (!byId.has(event.id)) byId.set(event.id, event);
-        },
-        onEose: (): void => report.answered(),
-        onClosed: (): void => report.gaveUp(),
-      })
-        .then((stop: () => void): (() => void) => (): void => {
-          clearTimeout(timeout);
-          stop();
-        })
-        .catch((error: unknown): never => {
-          clearTimeout(timeout);
-          throw error;
-        });
-    },
-    { stragglerGraceMs: STRAGGLER_GRACE_MS },
-  );
-
-  return Array.from(byId.values());
 }
 
 export interface ProfileMeta {
@@ -172,9 +132,9 @@ export async function loadHomeTimeline(
   );
 
   onStage(`posts from ${authors.length} people...`);
+  const filter: Record<string, unknown> = { kinds: HOME_KINDS, authors };
   const events: NostrEvent[] = await queryRelays(relays, {
-    kinds: HOME_KINDS,
-    authors,
+    ...filter,
     limit: POST_LIMIT,
   });
 
@@ -183,6 +143,7 @@ export async function loadHomeTimeline(
 
   return {
     posts: decorated.posts,
+    filter,
     stats: {
       follows: follows.length,
       events: events.length,
@@ -249,38 +210,6 @@ export async function fetchProfilesForPubkeys(
  * renderer - no avatar, no time, no actions, no pictures - for no reason
  * beyond having been written second.
  */
-/**
- * Which of these the author has asked to withdraw.
- *
- * One query for the whole batch rather than one per card. Relays index `e`
- * tags, so this is the filter they are built to answer; the ids are chunked
- * because a filter naming a thousand of them is a filter some relays refuse.
- */
-async function fetchDeletedIds(
-  relays: string[],
-  events: NostrEvent[],
-): Promise<Set<string>> {
-  const ids: string[] = events.map((event: NostrEvent): string => event.id);
-  if (ids.length === 0) {
-    return new Set();
-  }
-
-  const chunks: string[][] = [];
-  for (let index = 0; index < ids.length; index += 200) {
-    chunks.push(ids.slice(index, index + 200));
-  }
-
-  const results = await Promise.allSettled(
-    chunks.map((chunk: string[]) =>
-      queryRelays(relays, { kinds: [DELETION_KIND], '#e': chunk }),
-    ),
-  );
-
-  const deletions: NostrEvent[] = results.flatMap((result) =>
-    result.status === 'fulfilled' ? result.value : [],
-  );
-  return collectDeletedIds(events, deletions);
-}
 
 export async function decorateEvents(
   relays: string[],
@@ -291,9 +220,15 @@ export async function decorateEvents(
   const deleted: Set<string> = await fetchDeletedIds(relays, events);
   // Machine output - a note whose whole body is a JSON object - is judged
   // on what would be shown, so a repost of a heartbeat goes with it.
+  // The mute list was counted in the stats and never applied to the rows:
+  // a muted author's posts were on screen under a line saying they were
+  // hidden. Judged on both sides of a repost - the author, and whoever
+  // passed it on - since muting either is a reason not to see it.
   const live: NostrEvent[] = withoutDeleted(events, deleted).filter(
     (event: NostrEvent): boolean => {
       const shown: NostrEvent = unwrapRepost(event).event ?? event;
+      const judged: NostrEvent[] = shown === event ? [event] : [event, shown];
+      if (filterMutedEvents(judged).length !== judged.length) return false;
       return withoutMachineContent([shown]).length === 1;
     },
   );
@@ -380,9 +315,12 @@ export async function loadHashtagTimeline(
   const relays: string[] = getRelays();
 
   onStage(`#${tag}...`);
-  const events: NostrEvent[] = await queryRelays(relays, {
+  const filter: Record<string, unknown> = {
     kinds: [1],
     '#t': [tag.toLowerCase()],
+  };
+  const events: NostrEvent[] = await queryRelays(relays, {
+    ...filter,
     limit: POST_LIMIT,
   });
 
@@ -391,6 +329,7 @@ export async function loadHashtagTimeline(
 
   return {
     posts: decorated.posts,
+    filter,
     stats: {
       follows: 0,
       events: events.length,
@@ -402,6 +341,29 @@ export async function loadHashtagTimeline(
   };
 }
 
+/**
+ * Posts newer than the ones on screen, in the timeline's own shape.
+ *
+ * Asked with the timeline's own filter from one second past its newest post,
+ * so a relay sends only what it has not already sent. Muted, deleted and
+ * machine-written posts leave here as they do on a full load, so what comes
+ * back is what a row saying "12 new posts" will actually add.
+ */
+export async function loadNewerPosts(
+  filter: Record<string, unknown>,
+  since: number,
+): Promise<TimelinePost[]> {
+  const relays: string[] = getRelays();
+  const events: NostrEvent[] = await queryRelays(relays, {
+    ...filter,
+    since,
+    limit: NEWER_LIMIT,
+  });
+  if (events.length === 0) return [];
+  const decorated: Decorated = await decorateEvents(relays, events);
+  return decorated.posts;
+}
+
 export async function loadGlobalTimeline(
   onStage: (stage: string) => void,
 ): Promise<TimelineResult> {
@@ -410,8 +372,9 @@ export async function loadGlobalTimeline(
   const sinceHours: number = 6;
 
   onStage('recent posts...');
+  const filter: Record<string, unknown> = { kinds: HOME_KINDS };
   const events: NostrEvent[] = await queryRelays(relays, {
-    kinds: [1, 6],
+    ...filter,
     since: Math.floor(Date.now() / 1000) - sinceHours * 3600,
     limit: POST_LIMIT,
   });
@@ -421,6 +384,7 @@ export async function loadGlobalTimeline(
 
   return {
     posts: decorated.posts,
+    filter,
     stats: {
       follows: 0,
       events: events.length,

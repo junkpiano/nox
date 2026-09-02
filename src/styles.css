@@ -551,6 +551,47 @@ body.theme-nox textarea {
   font-size: 0.82rem;
 }
 
+/* The row that says new posts are waiting. A divider with words on it,
+   thinner and quieter than a card, and part of the list rather than
+   floating over it. */
+.new-posts-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 44px;
+  padding: 0 1rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #4f46e5;
+  border-radius: 0.5rem;
+}
+
+.new-posts-row:hover,
+.new-posts-row:focus-visible {
+  background: rgba(79, 70, 229, 0.08);
+  outline: none;
+}
+
+.new-posts-rule {
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.35;
+}
+
+.theme-nox .new-posts-row {
+  color: #89a8ff;
+  background: rgba(137, 168, 255, 0.06);
+  border-radius: 1.25rem;
+}
+
+.theme-nox .new-posts-row:hover,
+.theme-nox .new-posts-row:focus-visible {
+  background: rgba(137, 168, 255, 0.14);
+}
+
 .theme-nox .event-container {
   border: 1px solid rgba(148, 163, 184, 0.14) !important;
   border-radius: 1.25rem !important;
@@ -1043,6 +1084,15 @@ main {
 
   .theme-nox .event-container:hover {
     background: rgba(148, 163, 184, 0.06) !important;
+  }
+
+  /* Full-bleed like the cards around it on a phone. */
+  .new-posts-row,
+  .theme-nox .new-posts-row {
+    border-radius: 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    padding-left: calc(1rem + var(--nox-safe-left));
+    padding-right: calc(1rem + var(--nox-safe-right));
   }
 
   /* The People block is a sibling of the post cards in the same feed, and the

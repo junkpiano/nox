@@ -254,6 +254,27 @@ function renderTimelineEvent(
   renderEvent(event, profile, npubStr, event.pubkey, output);
 }
 
+/**
+ * Draws one event that arrived after the timeline did, in its sorted
+ * place and with the same profile lookup the timeline used. The
+ * new-posts row lets its posts in through here.
+ */
+export function renderIncomingEvent(
+  output: HTMLElement,
+  event: NostrEvent,
+  relays: string[],
+  routeIsActive: () => boolean,
+): void {
+  const profile: NostrProfile | null = getLiveRenderProfile(
+    event,
+    output,
+    relays,
+    routeIsActive,
+  );
+  const npubStr: Npub = nip19.npubEncode(event.pubkey);
+  insertRenderedEventSorted(output, event, profile, npubStr);
+}
+
 export async function loadTimeline(
   options: LoadTimelineOptions,
 ): Promise<void> {

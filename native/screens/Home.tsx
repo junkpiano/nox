@@ -15,6 +15,7 @@ import { kvGet, kvSet } from '../../src/common/kv';
 import type { PubkeyHex } from '../../types/nostr';
 import PostList from '../components/PostList';
 import { loadHomeTimeline, type TimelinePost } from '../lib/home-timeline';
+import { useNewPosts } from '../lib/use-new-posts';
 
 /** The same key the web app stores the viewer's pubkey under. */
 const PUBKEY_KEY = 'nostr_pubkey';
@@ -91,28 +92,41 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  // The question the load asked, so the poll for newer posts asks the same.
+  const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
+  const { pendingCount, showNew, forget } = useNewPosts(
+    filter,
+    posts,
+    setPosts,
+  );
 
-  const load = useCallback(async (viewer: PubkeyHex): Promise<void> => {
-    setLoading(true);
-    try {
-      const result = await loadHomeTimeline(viewer, setStage);
-      setPosts(result.posts);
-      setStats(
-        `${result.stats.follows} follows / ${result.stats.events} events / ` +
-          `${result.stats.profiles} profiles / ${result.stats.relays} relays / ` +
-          `${(result.stats.ms / 1000).toFixed(1)}s` +
-          (result.stats.muted > 0
-            ? ` / ${result.stats.muted} muted hidden`
-            : ''),
-      );
-      setError(null);
-    } catch (e: any) {
-      setError(String(e?.message ?? e));
-    } finally {
-      setLoading(false);
-      setStage('');
-    }
-  }, []);
+  const load = useCallback(
+    async (viewer: PubkeyHex): Promise<void> => {
+      setLoading(true);
+      // A full load shows everything, so nothing is waiting any more.
+      forget();
+      try {
+        const result = await loadHomeTimeline(viewer, setStage);
+        setPosts(result.posts);
+        setFilter(result.filter);
+        setStats(
+          `${result.stats.follows} follows / ${result.stats.events} events / ` +
+            `${result.stats.profiles} profiles / ${result.stats.relays} relays / ` +
+            `${(result.stats.ms / 1000).toFixed(1)}s` +
+            (result.stats.muted > 0
+              ? ` / ${result.stats.muted} muted hidden`
+              : ''),
+        );
+        setError(null);
+      } catch (e: any) {
+        setError(String(e?.message ?? e));
+      } finally {
+        setLoading(false);
+        setStage('');
+      }
+    },
+    [forget],
+  );
 
   useEffect(() => {
     if (pubkey) void load(pubkey);
@@ -131,11 +145,13 @@ export default function Home() {
       onAppEvent('session-changed', (): void => {
         const next: PubkeyHex | null = readStoredPubkey();
         setPosts([]);
+        setFilter(null);
+        forget();
         setStats('');
         setError(null);
         setPubkey(next);
       }),
-    [],
+    [forget],
   );
 
   const onRefresh = useCallback(async (): Promise<void> => {
@@ -161,6 +177,8 @@ export default function Home() {
       emptyMessage={
         'You are not following anyone yet. Posts from people you follow will appear here.'
       }
+      pendingCount={pendingCount}
+      onShowNew={showNew}
     />
   );
 }

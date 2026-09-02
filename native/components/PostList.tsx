@@ -12,7 +12,7 @@
 
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,6 +25,7 @@ import {
   View,
 } from 'react-native';
 import { contentWarningSummary } from '../../src/common/content-warning';
+import { newPostsLabel } from '../../src/common/new-posts';
 import { getSessionPrivateKey } from '../../src/common/session';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
@@ -230,6 +231,34 @@ function Actions({ post }: { post: TimelinePost }) {
   );
 }
 
+/**
+ * The row that says new posts are waiting.
+ *
+ * A row, not a banner: it sits between the header and the first post,
+ * thinner and quieter than a card, and scrolls away with the list. Nothing
+ * is added to the list until it is tapped, so the words somebody is reading
+ * stay where they are.
+ */
+function NewPostsRow({
+  count,
+  onPress,
+}: {
+  count: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.newRow, pressed && styles.newRowPressed]}
+    >
+      <View style={styles.newRule} />
+      <Text style={styles.newText}>{newPostsLabel(count)}</Text>
+      <View style={styles.newRule} />
+    </Pressable>
+  );
+}
+
 /** How long ago, in the shape every timeline uses. */
 function timeAgo(createdAt: number): string {
   const seconds = Math.max(0, Math.floor(Date.now() / 1000) - createdAt);
@@ -264,6 +293,14 @@ export interface PostListProps {
   error: string | null;
   refreshing: boolean;
   onRefresh: () => void;
+  /**
+   * Posts that arrived since the list was drawn and are waiting to be let
+   * in. When there are any, a thin row at the top of the list says how many;
+   * it scrolls with the list like any other row rather than floating over
+   * it, and a tap calls `onShowNew`.
+   */
+  pendingCount?: number;
+  onShowNew?: () => void;
 }
 
 export default function PostList({
@@ -275,11 +312,20 @@ export default function PostList({
   onRefresh,
   loading,
   emptyMessage,
+  pendingCount = 0,
+  onShowNew,
 }: PostListProps) {
   const navigation = useNavigation<Nav>();
   // Rows decide whether to draw their action row from the session key, and
   // FlatList only re-renders rows when the data or this changes.
   const sessionVersion = useSessionVersion();
+  const list = useRef<FlatList<TimelinePost>>(null);
+
+  const showNew = (): void => {
+    onShowNew?.();
+    // The new posts go in at the top; the reader goes there with them.
+    list.current?.scrollToOffset({ offset: 0, animated: true });
+  };
 
   return (
     <View style={styles.screen}>
@@ -300,9 +346,15 @@ export default function PostList({
         </View>
       ) : (
         <FlatList
+          ref={list}
           data={posts}
           keyExtractor={(p: TimelinePost) => p.key}
           extraData={sessionVersion}
+          ListHeaderComponent={
+            pendingCount > 0 ? (
+              <NewPostsRow count={pendingCount} onPress={showNew} />
+            ) : null
+          }
           renderItem={({ item }: { item: TimelinePost }) => (
             <PostRow
               post={item}
@@ -383,6 +435,19 @@ const styles = StyleSheet.create({
   warningHint: { color: '#8a7550', fontSize: 11, marginTop: 4 },
   listContent: { paddingBottom: 96 },
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
+  newRow: {
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(137,168,255,0.06)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148,163,184,0.14)',
+  },
+  newRowPressed: { backgroundColor: 'rgba(137,168,255,0.14)' },
+  newRule: { flex: 1, height: 1, backgroundColor: 'rgba(137,168,255,0.35)' },
+  newText: { color: '#89a8ff', fontSize: 13, fontWeight: '600' },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
   stage: { color: '#8ea0c0', fontSize: 13 },
   empty: {
