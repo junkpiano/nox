@@ -227,7 +227,14 @@ export async function decorateEvents(
 ): Promise<Decorated> {
   // Withdrawn posts leave before anything else is done with them, so a
   // deleted post is not fetched a profile for or counted in the stats.
-  const deleted: Set<string> = await fetchDeletedIds(relays, events);
+  // Silence from every relay is not an answer: the batch is shown unjudged
+  // rather than not at all, and asked about again with the next load.
+  let deleted: Set<string> = new Set();
+  try {
+    deleted = await fetchDeletedIds(relays, events);
+  } catch (error: unknown) {
+    console.warn('[timeline] deletions could not be checked', error);
+  }
   // Machine output - a note whose whole body is a JSON object - is judged
   // on what would be shown, so a repost of a heartbeat goes with it.
   // The mute list was counted in the stats and never applied to the rows:
