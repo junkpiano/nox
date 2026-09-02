@@ -17,10 +17,18 @@ import {
   getContentWarning,
 } from '../../src/common/content-warning';
 import { queryEvents, storeEvents } from '../../src/common/db/events-store';
+import { getProfiles, storeProfiles } from '../../src/common/db/profiles-store';
+import { getCachedTimeline } from '../../src/common/db/timeline-queries';
+import {
+  appendEventsToTimeline,
+  prependEventsToTimeline,
+} from '../../src/common/db/timelines-store';
+import type { TimelineKey } from '../../src/common/db/types';
 import {
   fetchDeletedIds,
   withoutDeleted,
 } from '../../src/common/deleted-events';
+import { getCachedDeletionStatus } from '../../src/common/deletion-gate';
 import { fetchFollowList } from '../../src/common/events-queries';
 import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
@@ -28,7 +36,7 @@ import { queryRelays } from '../../src/common/relay-query';
 import { isRepost, readRepost, unwrapRepost } from '../../src/common/repost';
 import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
-import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
 
 /** Kinds the home timeline shows. Mirrors `homeKinds` in the web app. */
 const HOME_KINDS: number[] = [1, 6];
@@ -94,6 +102,8 @@ export interface TimelineResult {
    * filtered on, not the time of the note inside it.
    */
   oldestCreatedAt: number | null;
+  /** Where this timeline lives in the cache; null for one that is not kept. */
+  cacheKey: TimelineKey | null;
   stats: {
     follows: number;
     events: number;
@@ -111,26 +121,99 @@ export interface ProfileMeta {
   nip05: string | null;
 }
 
-function parseProfile(event: NostrEvent): ProfileMeta | null {
+export interface LoadOptions {
+  /**
+   * Called with what the cache held, decorated without the network, before
+   * the relays are asked - so the screen has something to show in the time
+   * the relays take. Not called when the cache is empty or too old.
+   */
+  onCached?: ((posts: TimelinePost[]) => void) | undefined;
+}
+
+/**
+ * How old a cached timeline may be and still be worth showing first. The
+ * web app's numbers: a following timeline changes slowly, the global one
+ * does not.
+ */
+const CACHE_MAX_AGE_MINUTES: Record<TimelineKey['type'], number> = {
+  home: 30,
+  global: 10,
+  user: 30,
+};
+
+/**
+ * What the cache holds for a timeline, shown before the relays are asked.
+ *
+ * Decorated from the cache alone - names and faces from the profile store,
+ * withdrawals from what this session already knows - so nothing here waits
+ * on a socket. Returns the raw events so the relay phase can judge them
+ * properly and keep them if they are still good.
+ */
+async function showFromCache(
+  key: TimelineKey,
+  relays: string[],
+  onCached: LoadOptions['onCached'],
+): Promise<NostrEvent[]> {
+  if (!onCached) return [];
   try {
-    const meta = JSON.parse(event.content);
-    if (!meta || typeof meta !== 'object') return null;
-    return {
-      name: meta.display_name || meta.name || '',
-      picture: typeof meta.picture === 'string' ? meta.picture : null,
-      nip05: typeof meta.nip05 === 'string' ? meta.nip05 : null,
-    };
-  } catch {
-    return null;
+    const cached = await getCachedTimeline(key.type, key.pubkey, {
+      limit: PAGE_LIMIT,
+    });
+    if (!cached.hasCache || cached.events.length === 0) return [];
+    const ageMinutes: number =
+      (Date.now() / 1000 - cached.newestTimestamp) / 60;
+    if (ageMinutes > CACHE_MAX_AGE_MINUTES[key.type]) return [];
+    const decorated: Decorated = await decorateEvents(relays, cached.events, {
+      profiles: 'cached',
+      deletions: 'remembered',
+    });
+    if (decorated.posts.length > 0) onCached(decorated.posts);
+    return cached.events;
+  } catch (error: unknown) {
+    console.warn('[timeline] cache could not be read', error);
+    return [];
   }
+}
+
+/** Tells the cache what the relays sent, so the next launch starts from it. */
+function rememberTimeline(key: TimelineKey, events: NostrEvent[]): void {
+  if (events.length === 0) return;
+  const newestFirst: NostrEvent[] = [...events].sort(
+    (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
+  );
+  storeEvents(events, { isHomeTimeline: key.type === 'home' }).catch(
+    (): void => {},
+  );
+  prependEventsToTimeline(
+    key.type,
+    key.pubkey,
+    newestFirst.map((event: NostrEvent): string => event.id),
+    newestFirst[0]?.created_at ?? 0,
+  ).catch((): void => {});
+}
+
+/** The two runs as one, each event once. */
+function union(a: NostrEvent[], b: NostrEvent[]): NostrEvent[] {
+  const byId: Map<string, NostrEvent> = new Map();
+  for (const event of [...a, ...b]) {
+    if (!byId.has(event.id)) byId.set(event.id, event);
+  }
+  return Array.from(byId.values());
 }
 
 export async function loadHomeTimeline(
   viewer: PubkeyHex,
   onStage: (stage: string) => void,
+  options: LoadOptions = {},
 ): Promise<TimelineResult> {
   const started: number = Date.now();
   const relays: string[] = getRelays();
+  const cacheKey: TimelineKey = { type: 'home', pubkey: viewer };
+  const cachedEvents: NostrEvent[] = await showFromCache(
+    cacheKey,
+    relays,
+    options.onCached,
+  );
 
   onStage('follow list...');
   const follows: PubkeyHex[] = await fetchFollowList(viewer, relays);
@@ -142,10 +225,12 @@ export async function loadHomeTimeline(
 
   onStage(`posts from ${authors.length} people...`);
   const filter: Record<string, unknown> = { kinds: HOME_KINDS, authors };
-  const events: NostrEvent[] = await queryRelays(relays, {
+  const fetched: NostrEvent[] = await queryRelays(relays, {
     ...filter,
     limit: POST_LIMIT,
   });
+  rememberTimeline(cacheKey, fetched);
+  const events: NostrEvent[] = union(fetched, cachedEvents);
 
   onStage('profiles...');
   const decorated: Decorated = await decorateEvents(relays, events);
@@ -154,6 +239,7 @@ export async function loadHomeTimeline(
     posts: decorated.posts,
     filter,
     oldestCreatedAt: oldestOf(events),
+    cacheKey,
     stats: {
       follows: follows.length,
       events: events.length,
@@ -188,29 +274,80 @@ interface Decorated {
 export async function fetchProfilesForPubkeys(
   pubkeys: PubkeyHex[],
   relays: string[] = getRelays(),
+  mode: 'cached' | 'cached-then-relays' = 'cached-then-relays',
 ): Promise<Map<string, ProfileMeta>> {
-  const wanted: string[] = Array.from(new Set(pubkeys)).slice(0, MAX_AUTHORS);
+  const wanted: PubkeyHex[] = Array.from(new Set(pubkeys)).slice(
+    0,
+    MAX_AUTHORS,
+  );
   const profiles: Map<string, ProfileMeta> = new Map();
   if (wanted.length === 0) {
     return profiles;
   }
 
+  // The profile store first: a name that was known yesterday is still the
+  // name, and asking a relay for it again is what made every load wait on
+  // a kind 0 query for a hundred people.
+  try {
+    const known: Map<PubkeyHex, NostrProfile> = await getProfiles(wanted);
+    for (const [pubkey, profile] of known) {
+      const meta: ProfileMeta | null = metaFrom(profile);
+      if (meta) profiles.set(pubkey, meta);
+    }
+  } catch (error: unknown) {
+    console.warn('[timeline] profile cache could not be read', error);
+  }
+
+  const missing: PubkeyHex[] = wanted.filter(
+    (pubkey: PubkeyHex): boolean => !profiles.has(pubkey),
+  );
+  if (mode === 'cached' || missing.length === 0) {
+    return profiles;
+  }
+
   const profileEvents: NostrEvent[] = await queryRelays(relays, {
     kinds: [0],
-    authors: wanted,
+    authors: missing,
   });
 
   const profileAt: Map<string, number> = new Map();
+  const fetched: Map<PubkeyHex, NostrProfile> = new Map();
   for (const event of profileEvents) {
     const previous: number | undefined = profileAt.get(event.pubkey);
     if (previous !== undefined && previous >= event.created_at) continue;
-    const meta: ProfileMeta | null = parseProfile(event);
-    if (!meta) continue;
+    const raw: NostrProfile | null = profileJson(event);
+    const meta: ProfileMeta | null = raw ? metaFrom(raw) : null;
+    if (!raw || !meta) continue;
     profiles.set(event.pubkey, meta);
+    fetched.set(event.pubkey as PubkeyHex, raw);
     profileAt.set(event.pubkey, event.created_at);
+  }
+  if (fetched.size > 0) {
+    storeProfiles(
+      Array.from(fetched, ([pubkey, profile]) => ({ pubkey, profile })),
+    ).catch((): void => {});
   }
 
   return profiles;
+}
+
+/** The kind 0's content as the object it claims to be, or null. */
+function profileJson(event: NostrEvent): NostrProfile | null {
+  try {
+    const meta: unknown = JSON.parse(event.content);
+    return meta && typeof meta === 'object' ? (meta as NostrProfile) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What the card needs from a profile, whichever way it arrived. */
+function metaFrom(meta: NostrProfile): ProfileMeta | null {
+  return {
+    name: meta.display_name || meta.name || '',
+    picture: typeof meta.picture === 'string' ? meta.picture : null,
+    nip05: typeof meta.nip05 === 'string' ? meta.nip05 : null,
+  };
 }
 
 /**
@@ -221,19 +358,37 @@ export async function fetchProfilesForPubkeys(
  * beyond having been written second.
  */
 
+export interface DecorateOptions {
+  /** Whether missing names may be fetched, or only what the store has. */
+  profiles?: 'cached' | 'cached-then-relays' | undefined;
+  /**
+   * Whether to ask the relays about withdrawals, or only use what this
+   * session already learned. The cached first paint takes the latter; the
+   * relays are asked once the real load arrives.
+   */
+  deletions?: 'ask' | 'remembered' | undefined;
+}
+
 export async function decorateEvents(
   relays: string[],
   events: NostrEvent[],
+  options: DecorateOptions = {},
 ): Promise<Decorated> {
   // Withdrawn posts leave before anything else is done with them, so a
   // deleted post is not fetched a profile for or counted in the stats.
   // Silence from every relay is not an answer: the batch is shown unjudged
   // rather than not at all, and asked about again with the next load.
   let deleted: Set<string> = new Set();
-  try {
-    deleted = await fetchDeletedIds(relays, events);
-  } catch (error: unknown) {
-    console.warn('[timeline] deletions could not be checked', error);
+  if (options.deletions === 'remembered') {
+    for (const event of events) {
+      if (getCachedDeletionStatus(event.id) === true) deleted.add(event.id);
+    }
+  } else {
+    try {
+      deleted = await fetchDeletedIds(relays, events);
+    } catch (error: unknown) {
+      console.warn('[timeline] deletions could not be checked', error);
+    }
   }
   // Machine output - a note whose whole body is a JSON object - is judged
   // on what would be shown, so a repost of a heartbeat goes with it.
@@ -265,6 +420,7 @@ export async function decorateEvents(
   const profiles: Map<string, ProfileMeta> = await fetchProfilesForPubkeys(
     authors,
     relays,
+    options.profiles ?? 'cached-then-relays',
   );
 
   const posts: TimelinePost[] = live
@@ -327,6 +483,7 @@ export async function decorateEvents(
 export async function loadHashtagTimeline(
   tag: string,
   onStage: (stage: string) => void,
+  _options: LoadOptions = {},
 ): Promise<TimelineResult> {
   const started: number = Date.now();
   const relays: string[] = getRelays();
@@ -348,6 +505,8 @@ export async function loadHashtagTimeline(
     posts: decorated.posts,
     filter,
     oldestCreatedAt: oldestOf(events),
+    // A tag is a question the cache is not indexed to answer.
+    cacheKey: null,
     stats: {
       follows: 0,
       events: events.length,
@@ -395,6 +554,7 @@ export async function loadNewerPosts(
 export async function loadOlderPosts(
   filter: Record<string, unknown>,
   until: number,
+  cacheKey: TimelineKey | null = null,
 ): Promise<{ posts: TimelinePost[]; raw: NostrEvent[] }> {
   const relays: string[] = getRelays();
 
@@ -412,9 +572,22 @@ export async function loadOlderPosts(
       if (!byId.has(event.id)) byId.set(event.id, event);
     }
     if (remote.length > 0) {
-      storeEvents(remote, { isHomeTimeline: false }).catch((): void => {
+      storeEvents(remote, {
+        isHomeTimeline: cacheKey?.type === 'home',
+      }).catch((): void => {
         // A cache that cannot be written is a slower next time, not an error.
       });
+      if (cacheKey) {
+        const oldestFirst: NostrEvent[] = [...remote].sort(
+          (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
+        );
+        appendEventsToTimeline(
+          cacheKey.type,
+          cacheKey.pubkey,
+          oldestFirst.map((event: NostrEvent): string => event.id),
+          oldestOf(remote) ?? until,
+        ).catch((): void => {});
+      }
     }
   }
 
@@ -453,18 +626,27 @@ async function readOlderFromCache(
 
 export async function loadGlobalTimeline(
   onStage: (stage: string) => void,
+  options: LoadOptions = {},
 ): Promise<TimelineResult> {
   const started: number = Date.now();
   const relays: string[] = getRelays();
   const sinceHours: number = 6;
+  const cacheKey: TimelineKey = { type: 'global' };
+  const cachedEvents: NostrEvent[] = await showFromCache(
+    cacheKey,
+    relays,
+    options.onCached,
+  );
 
   onStage('recent posts...');
   const filter: Record<string, unknown> = { kinds: HOME_KINDS };
-  const events: NostrEvent[] = await queryRelays(relays, {
+  const fetched: NostrEvent[] = await queryRelays(relays, {
     ...filter,
     since: Math.floor(Date.now() / 1000) - sinceHours * 3600,
     limit: POST_LIMIT,
   });
+  rememberTimeline(cacheKey, fetched);
+  const events: NostrEvent[] = union(fetched, cachedEvents);
 
   onStage('profiles...');
   const decorated: Decorated = await decorateEvents(relays, events);
@@ -473,6 +655,7 @@ export async function loadGlobalTimeline(
     posts: decorated.posts,
     filter,
     oldestCreatedAt: oldestOf(events),
+    cacheKey,
     stats: {
       follows: 0,
       events: events.length,

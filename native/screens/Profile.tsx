@@ -23,6 +23,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import type { TimelineKey } from '../../src/common/db/types';
 import { kvGet } from '../../src/common/kv';
 import { isMuted } from '../../src/common/mute-state';
 import { getSessionPrivateKey } from '../../src/common/session';
@@ -341,12 +342,14 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
   const [oldestCreatedAt, setOldestCreatedAt] = useState<number | null>(null);
+  const [cacheKey, setCacheKey] = useState<TimelineKey | null>(null);
   const [decorating, setDecorating] = useState(true);
   const active: boolean = useIsFocused();
   // A profile is a timeline, and reads further back like one.
   const older = useOlderPosts({
     filter,
     oldestCreatedAt,
+    cacheKey,
     posts: rows,
     setPosts: setRows,
     busy: !data || decorating,
@@ -357,10 +360,30 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Once the relays have answered, a slower decoration of the cached
+    // posts must not overwrite them.
+    let settled = false;
     setDecorating(true);
-    loadProfile(pubkey)
+    loadProfile(pubkey, {
+      // The person and their posts as the cache last saw them, drawn from
+      // the cache alone while the relays are asked.
+      onCached: (cached): void => {
+        if (cancelled) return;
+        setData(cached);
+        void decorateEvents(getRelays(), cached.posts, {
+          profiles: 'cached',
+          deletions: 'remembered',
+        })
+          .then((decorated): void => {
+            if (cancelled || settled) return;
+            setRows(decorated.posts);
+          })
+          .catch((): void => {});
+      },
+    })
       .then((result): void => {
         if (cancelled) return;
+        settled = true;
         setData(result);
         void decorateEvents(getRelays(), result.posts)
           .then((decorated): void => {
@@ -368,6 +391,7 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
             setRows(decorated.posts);
             setFilter(result.filter);
             setOldestCreatedAt(result.oldestCreatedAt);
+            setCacheKey(result.cacheKey);
           })
           .catch((): void => {})
           .finally((): void => {

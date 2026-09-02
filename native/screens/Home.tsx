@@ -11,6 +11,7 @@ import { nip19 } from 'nostr-tools';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { onAppEvent } from '../../src/common/app-events';
+import type { TimelineKey } from '../../src/common/db/types';
 import { kvGet, kvSet } from '../../src/common/kv';
 import type { PubkeyHex } from '../../types/nostr';
 import PostList from '../components/PostList';
@@ -105,9 +106,11 @@ export default function Home({ active = true }: { active?: boolean }) {
     setPosts,
   );
   const [oldestCreatedAt, setOldestCreatedAt] = useState<number | null>(null);
+  const [cacheKey, setCacheKey] = useState<TimelineKey | null>(null);
   const older = useOlderPosts({
     filter,
     oldestCreatedAt,
+    cacheKey,
     posts,
     setPosts,
     busy: loading || refreshing,
@@ -120,10 +123,19 @@ export default function Home({ active = true }: { active?: boolean }) {
       // A full load shows everything, so nothing is waiting any more.
       forget();
       try {
-        const result = await loadHomeTimeline(viewer, setStage);
+        const result = await loadHomeTimeline(viewer, setStage, {
+          // What the cache held goes up at once; the relays follow, and the
+          // refresh spinner says so until they have.
+          onCached: (cached: TimelinePost[]): void => {
+            setPosts(cached);
+            setLoading(false);
+            setRefreshing(true);
+          },
+        });
         setPosts(result.posts);
         setFilter(result.filter);
         setOldestCreatedAt(result.oldestCreatedAt);
+        setCacheKey(result.cacheKey);
         setStats(
           `${result.stats.follows} follows / ${result.stats.events} events / ` +
             `${result.stats.profiles} profiles / ${result.stats.relays} relays / ` +
@@ -137,6 +149,7 @@ export default function Home({ active = true }: { active?: boolean }) {
         setError(String(e?.message ?? e));
       } finally {
         setLoading(false);
+        setRefreshing(false);
         setStage('');
       }
     },

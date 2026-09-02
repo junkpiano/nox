@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import type { TimelineKey } from '../../src/common/db/types';
 import PostList from '../components/PostList';
 import {
   loadGlobalTimeline,
@@ -31,9 +32,11 @@ export default function Global({ active = true }: { active?: boolean }) {
     setPosts,
   );
   const [oldestCreatedAt, setOldestCreatedAt] = useState<number | null>(null);
+  const [cacheKey, setCacheKey] = useState<TimelineKey | null>(null);
   const older = useOlderPosts({
     filter,
     oldestCreatedAt,
+    cacheKey,
     posts,
     setPosts,
     busy: loading || refreshing,
@@ -44,10 +47,19 @@ export default function Global({ active = true }: { active?: boolean }) {
     setLoading(true);
     forget();
     try {
-      const result = await loadGlobalTimeline(setStage);
+      const result = await loadGlobalTimeline(setStage, {
+        // What the cache held goes up at once; the relays follow, and the
+        // refresh spinner says so until they have.
+        onCached: (cached: TimelinePost[]): void => {
+          setPosts(cached);
+          setLoading(false);
+          setRefreshing(true);
+        },
+      });
       setPosts(result.posts);
       setFilter(result.filter);
       setOldestCreatedAt(result.oldestCreatedAt);
+      setCacheKey(result.cacheKey);
       setStats(
         `${result.stats.events} events / ${result.stats.profiles} profiles / ` +
           `${result.stats.relays} relays / ${(result.stats.ms / 1000).toFixed(1)}s`,
@@ -57,6 +69,7 @@ export default function Global({ active = true }: { active?: boolean }) {
       setError(String(e?.message ?? e));
     } finally {
       setLoading(false);
+      setRefreshing(false);
       setStage('');
     }
   }, [forget]);

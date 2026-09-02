@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { TimelineKey } from '../../src/common/db/types';
 import {
   judgePage,
   MAX_FILTERED_PAGES,
@@ -51,6 +52,8 @@ export function useOlderPosts(args: {
   filter: Record<string, unknown> | null;
   /** The oldest raw event the first load brought back. */
   oldestCreatedAt: number | null;
+  /** Where the timeline lives in the cache, so pages are recorded there. */
+  cacheKey?: TimelineKey | null | undefined;
   posts: TimelinePost[];
   setPosts: (update: (previous: TimelinePost[]) => TimelinePost[]) => void;
   /** The first load or a refresh is in flight. */
@@ -59,6 +62,7 @@ export function useOlderPosts(args: {
   active: boolean;
 }): OlderPosts {
   const { filter, oldestCreatedAt, posts, setPosts, busy, active } = args;
+  const cacheKey: TimelineKey | null = args.cacheKey ?? null;
 
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -116,7 +120,7 @@ export function useOlderPosts(args: {
           const until: number | null = nextUntil(previousOldest);
           if (until === null) break;
 
-          const page = await loadOlderPosts(filter, until);
+          const page = await loadOlderPosts(filter, until, cacheKey);
           // Reloaded under a new question, or hidden meanwhile: this page
           // belongs to a screen nobody is looking at.
           if (!stillWanted() || !activeRef.current) return;
@@ -175,7 +179,7 @@ export function useOlderPosts(args: {
         }
       }
     })();
-  }, [filter, setPosts]);
+  }, [filter, setPosts, cacheKey]);
 
   return { loadingOlder, hasMore, loadOlderError, atCap, loadOlder };
 }

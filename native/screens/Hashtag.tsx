@@ -8,6 +8,7 @@
 
 import { type RouteProp, useIsFocused } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
+import type { TimelineKey } from '../../src/common/db/types';
 import type { RootStackParamList } from '../App';
 import PostList from '../components/PostList';
 import {
@@ -35,10 +36,12 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
     setPosts,
   );
   const [oldestCreatedAt, setOldestCreatedAt] = useState<number | null>(null);
+  const [cacheKey, setCacheKey] = useState<TimelineKey | null>(null);
   const active: boolean = useIsFocused();
   const older = useOlderPosts({
     filter,
     oldestCreatedAt,
+    cacheKey,
     posts,
     setPosts,
     busy: loading || refreshing,
@@ -49,10 +52,19 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
     setLoading(true);
     forget();
     try {
-      const result = await loadHashtagTimeline(tag, setStage);
+      const result = await loadHashtagTimeline(tag, setStage, {
+        // What the cache held goes up at once; the relays follow, and the
+        // refresh spinner says so until they have.
+        onCached: (cached: TimelinePost[]): void => {
+          setPosts(cached);
+          setLoading(false);
+          setRefreshing(true);
+        },
+      });
       setPosts(result.posts);
       setFilter(result.filter);
       setOldestCreatedAt(result.oldestCreatedAt);
+      setCacheKey(result.cacheKey);
       setStats(
         `${result.stats.events} events / ${result.stats.profiles} profiles / ` +
           `${result.stats.relays} relays / ` +
@@ -63,6 +75,7 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
       setError(String(e?.message ?? e));
     } finally {
       setLoading(false);
+      setRefreshing(false);
       setStage('');
     }
   }, [tag, forget]);
