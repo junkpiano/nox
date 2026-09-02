@@ -5,20 +5,17 @@ import { promiseAny, RelayMissError } from './promise-utils.js';
 import { fanOut, type RelayReport } from './relay-fanout.js';
 import { openRelaySubscription } from './relay-socket.js';
 
-const deletionCache: Map<string, boolean> = new Map();
 const FOLLOW_LIST_MAX_FUTURE_SKEW_SECONDS: number = 5 * 60;
 /** A relay silent for this long is recorded as failing and given up on. */
 const FOLLOW_LIST_RELAY_TIMEOUT_MS: number = 5000;
 /** How long the other relays get once one has answered. */
 const FOLLOW_LIST_STRAGGLER_GRACE_MS: number = 1500;
 
-export function getCachedDeletionStatus(eventId: string): boolean | undefined {
-  return deletionCache.get(eventId);
-}
-
-export function cacheDeletionStatus(eventId: string, deleted: boolean): void {
-  deletionCache.set(eventId, deleted);
-}
+// The memory of what was withdrawn lives with the gate that consults it.
+export {
+  cacheDeletionStatus,
+  getCachedDeletionStatus,
+} from './deletion-gate.js';
 
 export interface FollowListFetchOptions {
   /**

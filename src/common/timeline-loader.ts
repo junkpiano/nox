@@ -22,11 +22,14 @@ import { getAvatarURL, getDisplayName } from '../utils/utils.js';
 import type { CachedTimelineResult, TimelineType } from './db/index.js';
 import {
   appendEventsToTimeline,
+  deleteEvents,
   getProfile as getCachedDbProfile,
   getCachedTimeline,
   prependEventsToTimeline,
+  removeEventFromTimeline,
   storeEvents,
 } from './db/index.js';
+import { createDeletionGate, findDeletedIds } from './deletion-gate.js';
 import { renderEvent } from './event-render.js';
 import { fetchingProfiles, profileCache } from './timeline-cache.js';
 import { applyStatusesToTimeline } from './timeline-status.js';
@@ -303,7 +306,6 @@ export async function loadTimeline(
   let relayConnectionCount: number = 0;
   let eventsReceivedCount: number = 0;
   let relayCompletionCount: number = 0;
-  let flushScheduled: boolean = false;
   let finalized: boolean = false;
   let clearedPlaceholder: boolean =
     options.output.querySelectorAll('.event-container').length > 0;
@@ -328,6 +330,18 @@ export async function loadTimeline(
     output: options.output,
     getUntilTimestamp: (): number => currentUntilTimestamp,
   });
+
+  /** A withdrawn post leaves the cache too, or it comes back on restore. */
+  const forgetWithdrawn = (ids: string[]): void => {
+    void deleteEvents(ids);
+    for (const id of ids) {
+      void removeEventFromTimeline(
+        options.timelineType,
+        options.timelinePubkey,
+        id,
+      );
+    }
+  };
 
   const cacheOptions: TimelineCacheOptions | undefined = options.cache;
 
@@ -360,12 +374,23 @@ export async function loadTimeline(
           if (!routeIsActive()) {
             return;
           }
+          // Withdrawn since it was cached, for all the cache knows. Asked
+          // once for the whole batch before any of it is drawn.
+          const withdrawn: Set<string> = await findDeletedIds(
+            relays,
+            cached.events,
+          );
+          if (withdrawn.size > 0) forgetWithdrawn(Array.from(withdrawn));
+          if (!routeIsActive()) {
+            return;
+          }
           clearedPlaceholder = true;
           options.output.innerHTML = '';
 
           if (routeIsActive()) {
             for (const event of cached.events) {
               if (
+                withdrawn.has(event.id) ||
                 renderedEventIds.has(event.id) ||
                 options.seenEventIds.has(event.id)
               ) {
@@ -445,41 +470,56 @@ export async function loadTimeline(
     options.onUntilTimestampChange?.(currentUntilTimestamp);
   };
 
-  const flushBufferedEvents = (): void => {
-    if (!routeIsActive()) {
-      return;
-    }
-
-    if (renderMode === 'sorted-batch') {
-      bufferedEvents.sort(
-        (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
-      );
-    }
-
-    bufferedEvents.forEach((event: NostrEvent): void => {
-      renderOne(event);
-    });
-
-    if (options.connectingMsg && renderedEventIds.size > 0) {
-      options.connectingMsg.style.display = 'none';
-    }
-  };
+  /**
+   * Nothing is drawn until the relays have been asked whether its author
+   * withdrew it. Arrivals are held briefly and asked about together -
+   * longer for the home timeline, which sorts its batches, than for the
+   * ones that draw in arrival order - and a post that was withdrawn is
+   * dropped from the cache as well as from the screen.
+   */
+  const gate = createDeletionGate<NostrEvent>({
+    relays,
+    delayMs: receiveMode === 'buffered' ? 300 : 150,
+    onDeleted: forgetWithdrawn,
+    render: (events: NostrEvent[]): void => {
+      if (!routeIsActive()) {
+        return;
+      }
+      const batch: NostrEvent[] =
+        renderMode === 'sorted-batch'
+          ? [...events].sort(
+              (a: NostrEvent, b: NostrEvent): number =>
+                b.created_at - a.created_at,
+            )
+          : events;
+      for (const event of batch) {
+        renderOne(event);
+      }
+      if (options.connectingMsg && renderedEventIds.size > 0) {
+        options.connectingMsg.style.display = 'none';
+      }
+    },
+  });
 
   const persistBufferedTimeline = (): void => {
     if (!persistEvents || bufferedEvents.length === 0) {
       return;
     }
 
-    storeEvents(bufferedEvents, {
+    const kept: NostrEvent[] = bufferedEvents.filter(
+      (event: NostrEvent): boolean => renderedEventIds.has(event.id),
+    );
+    if (kept.length === 0) {
+      return;
+    }
+    storeEvents(kept, {
       isHomeTimeline: options.isHomeTimelineStorage === true,
     }).catch((error) => {
       console.error(`[${options.logPrefix}] Failed to store events:`, error);
     });
 
-    const eventIds: string[] = bufferedEvents.map((event) => event.id);
-    const timestamps: number[] = bufferedEvents.map(
-      (event) => event.created_at,
-    );
+    const eventIds: string[] = kept.map((event) => event.id);
+    const timestamps: number[] = kept.map((event) => event.created_at);
     const newestTimestamp: number = Math.max(...timestamps);
     const oldestTimestamp: number = Math.min(...timestamps);
 
@@ -511,13 +551,18 @@ export async function loadTimeline(
     });
   };
 
-  const finalizeLoading = (): void => {
+  const finalizeLoading = async (): Promise<void> => {
     if (!routeIsActive() || finalized) {
       return;
     }
     finalized = true;
 
-    flushBufferedEvents();
+    // Whatever is still waiting at the gate is checked and drawn before
+    // the timeline is declared complete.
+    await gate.settle();
+    if (!routeIsActive()) {
+      return;
+    }
     persistBufferedTimeline();
 
     // After the cards exist and before anyone scrolls: one lookup covering
@@ -537,18 +582,6 @@ export async function loadTimeline(
     subscription?.unsubscribe();
     connectionSub?.unsubscribe();
     options.onFinalize?.(getContext());
-  };
-
-  const scheduleFlush = (): void => {
-    if (receiveMode !== 'buffered' || flushScheduled) {
-      return;
-    }
-    flushScheduled = true;
-    const timeoutId = window.setTimeout((): void => {
-      flushScheduled = false;
-      flushBufferedEvents();
-    }, 300);
-    activeTimeouts.push(timeoutId);
   };
 
   let subscription: Subscription | null = null;
@@ -574,12 +607,7 @@ export async function loadTimeline(
         options.connectingMsg.style.display = 'none';
       }
 
-      if (receiveMode === 'buffered') {
-        scheduleFlush();
-        return;
-      }
-
-      renderOne(event);
+      gate.offer(event);
     },
     error: (error: unknown): void => {
       if (!routeIsActive()) {
@@ -588,7 +616,7 @@ export async function loadTimeline(
 
       options.onSubscriptionError?.(error, getContext());
       if (finalizeOnError) {
-        finalizeLoading();
+        void finalizeLoading();
         return;
       }
 
@@ -598,7 +626,7 @@ export async function loadTimeline(
       relayCompletionCount = relays.length;
       options.onSubscriptionComplete?.(getContext());
       if (finalizeOnComplete) {
-        finalizeLoading();
+        void finalizeLoading();
         return;
       }
 
@@ -614,7 +642,7 @@ export async function loadTimeline(
 
   const timeoutId = window.setTimeout((): void => {
     options.onTimeout?.(getContext());
-    finalizeLoading();
+    void finalizeLoading();
   }, timeoutMs);
   activeTimeouts.push(timeoutId);
 }
