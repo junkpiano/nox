@@ -16,8 +16,10 @@ export default function Global() {
   const [stats, setStats] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (): Promise<void> => {
+    setLoading(true);
     try {
       const result = await loadGlobalTimeline(setStage);
       setPosts(result.posts);
@@ -28,6 +30,9 @@ export default function Global() {
       setError(null);
     } catch (e: any) {
       setError(String(e?.message ?? e));
+    } finally {
+      setLoading(false);
+      setStage('');
     }
   }, []);
 
@@ -49,6 +54,8 @@ export default function Global() {
       error={error}
       refreshing={refreshing}
       onRefresh={onRefresh}
+      loading={loading}
+      emptyMessage={'Nothing on these relays in the last six hours.'}
     />
   );
 }

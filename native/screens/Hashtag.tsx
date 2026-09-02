@@ -21,8 +21,10 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
   const [stats, setStats] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (): Promise<void> => {
+    setLoading(true);
     try {
       const result = await loadHashtagTimeline(tag, setStage);
       setPosts(result.posts);
@@ -34,6 +36,9 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
       setError(null);
     } catch (e: any) {
       setError(String(e?.message ?? e));
+    } finally {
+      setLoading(false);
+      setStage('');
     }
   }, [tag]);
 
@@ -55,6 +60,8 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
       error={error}
       refreshing={refreshing}
       onRefresh={onRefresh}
+      loading={loading}
+      emptyMessage={`No posts tagged #${tag} on these relays.`}
     />
   );
 }

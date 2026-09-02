@@ -243,6 +243,15 @@ function timeAgo(createdAt: number): string {
 export interface PostListProps {
   posts: TimelinePost[];
   /**
+   * True while a load is in flight. Without this, an empty result was
+   * indistinguishable from a load that had not finished: the spinner and
+   * the last stage text stayed up forever over a timeline that had
+   * simply come back with nothing.
+   */
+  loading: boolean;
+  /** What to say when the load finished and there is nothing to show. */
+  emptyMessage: string;
+  /**
    * Kept in the props and no longer drawn.
    *
    * "1036 events / 281 profiles / 4 relays / 5.7s" over a timeline, and a
@@ -264,6 +273,8 @@ export default function PostList({
   error,
   refreshing,
   onRefresh,
+  loading,
+  emptyMessage,
 }: PostListProps) {
   const navigation = useNavigation<Nav>();
   // Rows decide whether to draw their action row from the session key, and
@@ -276,10 +287,16 @@ export default function PostList({
         <View style={styles.centre}>
           <Text style={styles.error}>{error}</Text>
         </View>
-      ) : posts.length === 0 ? (
+      ) : posts.length === 0 && loading ? (
         <View style={styles.centre}>
           <ActivityIndicator color="#89a8ff" />
           <Text style={styles.stage}>{stage || 'loading...'}</Text>
+        </View>
+      ) : posts.length === 0 ? (
+        // Finished, and empty. Said so, rather than left looking like a
+        // load that never ends.
+        <View style={styles.centre}>
+          <Text style={styles.empty}>{emptyMessage}</Text>
         </View>
       ) : (
         <FlatList
@@ -368,5 +385,12 @@ const styles = StyleSheet.create({
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
   stage: { color: '#8ea0c0', fontSize: 13 },
+  empty: {
+    color: '#8ea0c0',
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
   error: { color: '#ff9a9a', fontSize: 13, paddingHorizontal: 24 },
 });

@@ -90,8 +90,10 @@ export default function Home() {
   const [stats, setStats] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (viewer: PubkeyHex): Promise<void> => {
+    setLoading(true);
     try {
       const result = await loadHomeTimeline(viewer, setStage);
       setPosts(result.posts);
@@ -106,6 +108,9 @@ export default function Home() {
       setError(null);
     } catch (e: any) {
       setError(String(e?.message ?? e));
+    } finally {
+      setLoading(false);
+      setStage('');
     }
   }, []);
 
@@ -152,6 +157,10 @@ export default function Home() {
       error={error}
       refreshing={refreshing}
       onRefresh={onRefresh}
+      loading={loading}
+      emptyMessage={
+        'You are not following anyone yet. Posts from people you follow will appear here.'
+      }
     />
   );
 }
