@@ -18,13 +18,13 @@ import {
   fetchLatestFollowListEvent,
   lookupFollowList,
 } from '../../src/common/events-queries';
+import { kvGet } from '../../src/common/kv';
 import { replyTags, repostTags } from '../../src/common/reply-tags';
 import { getSessionPrivateKey } from '../../src/common/session';
 import {
   isFollowing as listHasFollow,
   nextFollowListTags,
 } from '../../src/features/profile/follow-list';
-import { kvGet } from '../../src/common/kv';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { NotSignedInError, type PublishResult, publishSigned } from './publish';
@@ -171,7 +171,9 @@ export async function setFollowing(
   // The lookup reports whether any relay answered, which is what separates
   // "you have no list yet" from "nobody would tell us". Only the second is a
   // reason to refuse; the first is a new account making its first list.
-  const lookup = await lookupFollowList(viewer, relays);
+  // Every relay gets its say here: the list published next replaces
+  // whatever the slowest relay was holding.
+  const lookup = await lookupFollowList(viewer, relays, { waitForAll: true });
   const current: NostrEvent | null = lookup.event;
 
   // Throws UnknownFollowListError when nothing answered.

@@ -2,10 +2,15 @@ import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { recordRelayFailure } from '../features/relays/relays.js';
 import { promiseAny, RelayMissError } from './promise-utils.js';
+import { fanOut, type RelayReport } from './relay-fanout.js';
 import { openRelaySubscription } from './relay-socket.js';
 
 const deletionCache: Map<string, boolean> = new Map();
 const FOLLOW_LIST_MAX_FUTURE_SKEW_SECONDS: number = 5 * 60;
+/** A relay silent for this long is recorded as failing and given up on. */
+const FOLLOW_LIST_RELAY_TIMEOUT_MS: number = 5000;
+/** How long the other relays get once one has answered. */
+const FOLLOW_LIST_STRAGGLER_GRACE_MS: number = 1500;
 
 export function getCachedDeletionStatus(eventId: string): boolean | undefined {
   return deletionCache.get(eventId);
@@ -15,14 +20,16 @@ export function cacheDeletionStatus(eventId: string, deleted: boolean): void {
   deletionCache.set(eventId, deleted);
 }
 
-/**
- * Fetch the most recent kind-3 (follow list) event for a pubkey.
- *
- * Returns the full event so callers can preserve tags/content when republishing,
- * and returns `null` when no valid kind-3 was received from any relay. Callers that
- * mutate and republish the follow list MUST treat `null` as "unknown" (abort) rather
- * than "no follows" — publishing an empty list would wipe the user's follows.
- */
+export interface FollowListFetchOptions {
+  /**
+   * Wait for every relay to answer or time out, rather than returning
+   * shortly after the first answer. For a lookup whose result is about to
+   * be republished: the newest list may be on the slow relay, and
+   * publishing an older one in its place drops every follow made since.
+   */
+  waitForAll?: boolean;
+}
+
 /**
  * What a follow-list lookup actually learned.
  *
@@ -48,6 +55,7 @@ export interface FollowListLookup {
 export async function lookupFollowList(
   pubkeyHex: PubkeyHex,
   relays: string[],
+  options: FollowListFetchOptions = {},
 ): Promise<FollowListLookup> {
   console.log(`Fetching follow list for ${pubkeyHex}`);
   let latestFollowTimestamp: number = -1;
@@ -59,103 +67,96 @@ export async function lookupFollowList(
     { gotEvent: boolean; tagCount: number; createdAt: number | null }
   > = new Map();
 
-  const promises = relays.map(async (relayUrl: string): Promise<void> => {
-    try {
-      await new Promise<void>((resolve) => {
-        let settled: boolean = false;
-        let unsubscribe: (() => void) | null = null;
+  // Readers return once one relay has answered and the rest have had a
+  // moment; a dead relay no longer costs its full timeout on every load.
+  // A caller about to republish waits for everyone, since the list it
+  // publishes replaces whatever the slow relay had.
+  await fanOut(
+    relays,
+    (relayUrl: string, report: RelayReport): Promise<() => void> => {
+      const timeout = setTimeout((): void => {
+        recordRelayFailure(relayUrl);
+        report.gaveUp();
+      }, FOLLOW_LIST_RELAY_TIMEOUT_MS);
 
-        const finish = (): void => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          unsubscribe?.();
-          resolve();
-        };
+      console.log(`Requesting follows from ${relayUrl}`);
+      return openRelaySubscription(
+        relayUrl,
+        { kinds: [3], authors: [pubkeyHex], limit: 50 },
+        {
+          onEvent: (event: NostrEvent): void => {
+            if (event.kind !== 3 || event.pubkey !== pubkeyHex) {
+              return;
+            }
 
-        const timeout = setTimeout(() => {
-          recordRelayFailure(relayUrl);
-          finish();
-        }, 5000);
-
-        console.log(`Requesting follows from ${relayUrl}`);
-        void openRelaySubscription(
-          relayUrl,
-          { kinds: [3], authors: [pubkeyHex], limit: 50 },
-          {
-            onEvent: (event: NostrEvent): void => {
-              if (event.kind !== 3 || event.pubkey !== pubkeyHex) {
-                return;
-              }
-
-              if (!verifyEvent(event)) {
-                console.warn(
-                  `Ignoring invalid follow-list signature from ${relayUrl}`,
-                );
-                return;
-              }
-
-              const nowSeconds: number = Math.floor(Date.now() / 1000);
-              if (
-                event.created_at >
-                nowSeconds + FOLLOW_LIST_MAX_FUTURE_SKEW_SECONDS
-              ) {
-                console.warn(
-                  `Ignoring future-skewed follow list from ${relayUrl}: ${event.created_at}`,
-                );
-                return;
-              }
-
-              const prevTagCount: number = latestFollowEvent
-                ? latestFollowEvent.tags.length
-                : 0;
-              const isNewer: boolean = event.created_at > latestFollowTimestamp;
-              const isSameSecondButRicher: boolean =
-                event.created_at === latestFollowTimestamp &&
-                event.tags.length > prevTagCount;
-              if (isNewer || isSameSecondButRicher) {
-                latestFollowTimestamp = event.created_at;
-                latestFollowTagCount = event.tags.length;
-                latestFollowEvent = event;
-              }
-              relayResults.set(relayUrl, {
-                gotEvent: true,
-                tagCount: event.tags.length,
-                createdAt: event.created_at,
-              });
-              console.log(
-                `Got kind 3 event from ${relayUrl} with ${event.tags.length} tags at ${event.created_at}`,
+            if (!verifyEvent(event)) {
+              console.warn(
+                `Ignoring invalid follow-list signature from ${relayUrl}`,
               );
-            },
-            onEose: (): void => {
-              if (!relayResults.has(relayUrl)) {
-                relayResults.set(relayUrl, {
-                  gotEvent: false,
-                  tagCount: 0,
-                  createdAt: null,
-                });
-              }
-              finish();
-            },
-            onClosed: (): void => {
-              finish();
-            },
-          },
-        )
-          .then((nextUnsubscribe: () => void): void => {
-            unsubscribe = nextUnsubscribe;
-          })
-          .catch((error: unknown): void => {
-            console.error(`WebSocket error [${relayUrl}]`, error);
-            finish();
-          });
-      });
-    } catch (e) {
-      console.warn(`Failed to fetch follows from ${relayUrl}:`, e);
-    }
-  });
+              return;
+            }
 
-  await Promise.allSettled(promises);
+            const nowSeconds: number = Math.floor(Date.now() / 1000);
+            if (
+              event.created_at >
+              nowSeconds + FOLLOW_LIST_MAX_FUTURE_SKEW_SECONDS
+            ) {
+              console.warn(
+                `Ignoring future-skewed follow list from ${relayUrl}: ${event.created_at}`,
+              );
+              return;
+            }
+
+            const prevTagCount: number = latestFollowEvent
+              ? latestFollowEvent.tags.length
+              : 0;
+            const isNewer: boolean = event.created_at > latestFollowTimestamp;
+            const isSameSecondButRicher: boolean =
+              event.created_at === latestFollowTimestamp &&
+              event.tags.length > prevTagCount;
+            if (isNewer || isSameSecondButRicher) {
+              latestFollowTimestamp = event.created_at;
+              latestFollowTagCount = event.tags.length;
+              latestFollowEvent = event;
+            }
+            relayResults.set(relayUrl, {
+              gotEvent: true,
+              tagCount: event.tags.length,
+              createdAt: event.created_at,
+            });
+            console.log(
+              `Got kind 3 event from ${relayUrl} with ${event.tags.length} tags at ${event.created_at}`,
+            );
+          },
+          onEose: (): void => {
+            if (!relayResults.has(relayUrl)) {
+              relayResults.set(relayUrl, {
+                gotEvent: false,
+                tagCount: 0,
+                createdAt: null,
+              });
+            }
+            report.answered();
+          },
+          onClosed: (): void => {
+            report.gaveUp();
+          },
+        },
+      )
+        .then((unsubscribe: () => void): (() => void) => (): void => {
+          clearTimeout(timeout);
+          unsubscribe();
+        })
+        .catch((error: unknown): never => {
+          console.error(`WebSocket error [${relayUrl}]`, error);
+          clearTimeout(timeout);
+          throw error;
+        });
+    },
+    options.waitForAll
+      ? {}
+      : { stragglerGraceMs: FOLLOW_LIST_STRAGGLER_GRACE_MS },
+  );
 
   console.log(`Follow list relay summary:`, Array.from(relayResults.entries()));
   console.log(
@@ -180,8 +181,13 @@ export async function lookupFollowList(
 export async function fetchLatestFollowListEvent(
   pubkeyHex: PubkeyHex,
   relays: string[],
+  options: FollowListFetchOptions = {},
 ): Promise<NostrEvent | null> {
-  const lookup: FollowListLookup = await lookupFollowList(pubkeyHex, relays);
+  const lookup: FollowListLookup = await lookupFollowList(
+    pubkeyHex,
+    relays,
+    options,
+  );
   return lookup.event;
 }
 
