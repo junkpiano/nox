@@ -8,6 +8,7 @@
 
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { openRelaySubscription } from '../../src/common/relay-socket';
+import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 
@@ -165,7 +166,8 @@ export async function loadNotifications(
         kind: classify(event),
         pubkey: event.pubkey as PubkeyHex,
         createdAt: event.created_at,
-        content: event.content,
+        // A repost's content is the reposted event as JSON, not words.
+        content: unwrapRepost(event).event?.content ?? '',
         targetId: targetOf(event),
         name: meta?.name || `${event.pubkey.slice(0, 8)}...`,
         picture: meta?.picture ?? null,

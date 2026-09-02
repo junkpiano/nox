@@ -28,6 +28,7 @@ import {
   getContentWarning,
 } from '../../src/common/content-warning';
 import { fetchReferencedEvent } from '../../src/common/referenced-event';
+import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
@@ -61,8 +62,22 @@ export default function QuoteCard({ eventId, relays }: QuoteCardProps) {
     void fetchReferencedEvent(eventId, getRelays(), {
       ...(relays && relays.length > 0 ? { hintRelays: relays } : {}),
     })
-      .then((event): void => {
+      .then(async (fetched): Promise<void> => {
         if (cancelled) return;
+        // A quoted repost shows the note it reposted, never its own
+        // content, which is that note as JSON.
+        let event: NostrEvent | null = fetched;
+        if (fetched) {
+          const unwrapped = unwrapRepost(fetched);
+          if (unwrapped.repostedBy) {
+            event =
+              unwrapped.event ??
+              (unwrapped.targetId
+                ? await fetchReferencedEvent(unwrapped.targetId, getRelays())
+                : null);
+            if (cancelled) return;
+          }
+        }
         if (!event) {
           setMissing(true);
           return;

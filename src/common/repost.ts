@@ -88,3 +88,37 @@ export function readRepost(event: NostrEvent): RepostTarget {
 
   return { event: null, eventId: tagged };
 }
+
+export interface UnwrappedRepost {
+  /** The event to show: the reposted note when there is a copy, else null. */
+  event: NostrEvent | null;
+  /** Who passed it on; null when the input was not a repost. */
+  repostedBy: string | null;
+  /** The reposted event's id, for fetching when there was no copy. */
+  targetId: string | null;
+}
+
+/**
+ * The one rule for a repost, wherever it is drawn.
+ *
+ * A kind:6's `content` is never body text - it is the reposted event
+ * serialised, and drawing it as text puts a card full of `{"id":...}` in
+ * front of the reader. The timeline knew this; the thread screen, the quote
+ * card and the notification row each read `content` directly and did not.
+ * Every path goes through here now: a repost resolves to the event inside
+ * it, or to an id to fetch, and never to its own content.
+ *
+ * A non-repost passes through unchanged, so callers can apply this without
+ * first asking what they have.
+ */
+export function unwrapRepost(event: NostrEvent): UnwrappedRepost {
+  if (!isRepost(event)) {
+    return { event, repostedBy: null, targetId: null };
+  }
+  const target: RepostTarget = readRepost(event);
+  return {
+    event: target.event,
+    repostedBy: event.pubkey,
+    targetId: target.eventId,
+  };
+}

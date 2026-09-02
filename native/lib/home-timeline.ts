@@ -22,9 +22,10 @@ import {
   withoutDeleted,
 } from '../../src/common/deleted-events';
 import { fetchFollowList } from '../../src/common/events-queries';
+import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { openRelaySubscription } from '../../src/common/relay-socket';
-import { isRepost, readRepost } from '../../src/common/repost';
+import { isRepost, readRepost, unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 
@@ -301,7 +302,14 @@ export async function decorateEvents(
   // Withdrawn posts leave before anything else is done with them, so a
   // deleted post is not fetched a profile for or counted in the stats.
   const deleted: Set<string> = await fetchDeletedIds(relays, events);
-  const live: NostrEvent[] = withoutDeleted(events, deleted);
+  // Machine output - a note whose whole body is a JSON object - is judged
+  // on what would be shown, so a repost of a heartbeat goes with it.
+  const live: NostrEvent[] = withoutDeleted(events, deleted).filter(
+    (event: NostrEvent): boolean => {
+      const shown: NostrEvent = unwrapRepost(event).event ?? event;
+      return withoutMachineContent([shown]).length === 1;
+    },
+  );
 
   // Both the author and, for a repost, whoever passed it on: the card names
   // them both and a missing name is a hex string on screen.
@@ -326,8 +334,10 @@ export async function decorateEvents(
     .map((event: NostrEvent): TimelinePost => {
       // A repost is a wrapper. What the card shows, and what a like or a
       // reply is addressed to, is the event inside it.
-      const repostTarget = isRepost(event) ? readRepost(event) : null;
-      const reposted: NostrEvent | null = repostTarget?.event ?? null;
+      const unwrapped = unwrapRepost(event);
+      const reposted: NostrEvent | null = isRepost(event)
+        ? unwrapped.event
+        : null;
       const shown: NostrEvent = reposted ?? event;
       const meta: ProfileMeta | undefined = profiles.get(shown.pubkey);
       const sharer: ProfileMeta | undefined = profiles.get(event.pubkey);
@@ -353,7 +363,7 @@ export async function decorateEvents(
             }
           : null,
         repostTargetId:
-          repostTarget && !repostTarget.event ? repostTarget.eventId : null,
+          isRepost(event) && !unwrapped.event ? unwrapped.targetId : null,
       };
     });
 

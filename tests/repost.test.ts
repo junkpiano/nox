@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isRepost, readRepost } from '../src/common/repost.js';
+import { isRepost, readRepost, unwrapRepost } from '../src/common/repost.js';
 import type { NostrEvent } from '../types/nostr';
 
 const INNER: NostrEvent = {
@@ -90,4 +90,33 @@ test('repost: the last e tag wins', () => {
 test('repost: a plain note reports nothing', () => {
   const note = { ...repost('hello'), kind: 1 } as NostrEvent;
   assert.deepEqual(readRepost(note), { event: null, eventId: null });
+});
+
+// --- one rule for every screen ----------------------------------------------
+
+test('unwrap: a plain note passes through as itself', () => {
+  const note = { ...repost('hello'), kind: 1 } as NostrEvent;
+  assert.deepEqual(unwrapRepost(note), {
+    event: note,
+    repostedBy: null,
+    targetId: null,
+  });
+});
+
+test('unwrap: a repost with a copy resolves to the copy, never its content', () => {
+  const wrapped = repost(JSON.stringify(INNER));
+  const out = unwrapRepost(wrapped);
+  assert.equal(out.event?.content, 'the original post');
+  assert.notEqual(out.event?.content, wrapped.content);
+  assert.equal(out.repostedBy, wrapped.pubkey);
+  assert.equal(out.targetId, INNER.id);
+});
+
+test('unwrap: a repost without a copy gives an id and no body', () => {
+  // The caller fetches the id. What it must not do is fall back to the
+  // wrapper's content, which is exactly the JSON this exists to prevent.
+  const out = unwrapRepost(repost('', [['e', INNER.id]]));
+  assert.equal(out.event, null);
+  assert.equal(out.targetId, INNER.id);
+  assert.equal(out.repostedBy, 'e'.repeat(64));
 });

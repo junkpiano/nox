@@ -26,10 +26,11 @@ import {
   View,
 } from 'react-native';
 import {
-  fetchEventById,
   fetchRepliesForEvent,
   isEventDeleted,
 } from '../../src/common/events-queries';
+import { fetchReferencedEvent } from '../../src/common/referenced-event';
+import { unwrapRepost } from '../../src/common/repost';
 import { getSessionPrivateKey } from '../../src/common/session';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
@@ -149,6 +150,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
    * every thread opened afterwards - a box appearing on a post nobody had
    * asked to answer.
    */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: eventId is the trigger - a different thread arriving in the same screen resets the box
   useEffect((): void => {
     setReplying(route.params.reply ?? false);
   }, [route.params.reply, route.params.eventId]);
@@ -163,8 +165,23 @@ export default function Thread({ route }: { route: ThreadRoute }) {
 
     (async (): Promise<void> => {
       try {
-        const root = await fetchEventById(eventId, relays);
+        const fetched = await fetchReferencedEvent(eventId, relays);
         if (cancelled) return;
+        // A repost opened directly shows the note it reposted, never its
+        // own content - which is that note as JSON. Without an embedded
+        // copy the target is fetched, cache first.
+        let root: NostrEvent | null = fetched;
+        if (fetched) {
+          const unwrapped = unwrapRepost(fetched);
+          if (unwrapped.repostedBy) {
+            root =
+              unwrapped.event ??
+              (unwrapped.targetId
+                ? await fetchReferencedEvent(unwrapped.targetId, relays)
+                : null);
+            if (cancelled) return;
+          }
+        }
         if (!root) {
           setData({ root: null, deleted: false, replies: [] });
           return;
