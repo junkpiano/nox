@@ -24,6 +24,7 @@ import {
 import { fetchFollowList } from '../../src/common/events-queries';
 import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
+import { fanOut, type RelayReport } from '../../src/common/relay-fanout';
 import { openRelaySubscription } from '../../src/common/relay-socket';
 import { isRepost, readRepost, unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
@@ -35,8 +36,9 @@ const HOME_KINDS: number[] = [1, 6];
 /** Relays reject enormous `authors` lists, and this is plenty of timeline. */
 const MAX_AUTHORS: number = 300;
 const POST_LIMIT: number = 400;
+/** A relay silent for this long is given up on. */
 const QUERY_TIMEOUT_MS: number = 9000;
-/** How long the others get once the first relay has finished. */
+/** How long the others get once one relay has answered. */
 const STRAGGLER_GRACE_MS: number = 1500;
 
 export interface TimelinePost {
@@ -96,112 +98,42 @@ export interface TimelineResult {
 /**
  * Runs one filter across every relay and collects what comes back.
  *
- * Resolves when every relay has sent EOSE or the timeout expires. A relay that
- * never answers costs the timeout and nothing else - the others are not held
- * up waiting for it.
+ * When to stop waiting is decided by the shared fan-out: once one relay has
+ * answered, the rest get a short grace, and a dead relay costs nothing but
+ * its own timeout. A timeline load is three or four of these in a row, which
+ * is how a brand-new key once took most of a minute to be told it followed
+ * nobody.
  */
-export function queryRelays(
+export async function queryRelays(
   relays: string[],
   filter: Record<string, unknown>,
 ): Promise<NostrEvent[]> {
-  return new Promise<NostrEvent[]>((resolve) => {
-    const byId: Map<string, NostrEvent> = new Map();
-    const unsubscribes: Array<() => void> = [];
-    let done: number = 0;
-    let settled: boolean = false;
+  const byId: Map<string, NostrEvent> = new Map();
 
-    const finish = (): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (grace !== null) clearTimeout(grace);
-      for (const stop of unsubscribes) {
-        try {
-          stop();
-        } catch {
-          // A subscription that is already gone is not a problem.
-        }
-      }
-      resolve(Array.from(byId.values()));
-    };
-
-    const timer = setTimeout(finish, QUERY_TIMEOUT_MS);
-
-    /**
-     * Once any relay has answered, the rest get a short grace and then the
-     * query returns with what it has.
-     *
-     * The query used to wait for every relay, so one that never answered cost
-     * the full timeout every time - and a timeline load is three or four
-     * queries in a row, which is how a brand-new key took most of a minute to
-     * be told it followed nobody. A relay that is merely slow loses its
-     * contribution to this load and gets it back on the next; a relay that is
-     * dead no longer sets the pace.
-     */
-    let grace: ReturnType<typeof setTimeout> | null = null;
-
-    /**
-     * Only a relay that actually answered starts the clock for the others.
-     * A relay that refused the connection or dropped it has told us nothing
-     * about how long the healthy ones need - and a dead relay fails at once,
-     * which would have cut off every relay slower than a second and a half
-     * and left the timeline short or empty.
-     */
-    // Each relay is counted once. A relay can send EOSE and then CLOSED, or
-    // EOSE twice; counting each arrival would declare the query finished
-    // before the slower relays had been heard and cut them off.
-    const finished: Set<string> = new Set();
-    const countOnce = (relayUrl: string): boolean => {
-      if (finished.has(relayUrl)) return false;
-      finished.add(relayUrl);
-      done += 1;
-      return true;
-    };
-
-    const answered = (relayUrl: string): void => {
-      if (!countOnce(relayUrl)) return;
-      if (done >= relays.length) {
-        finish();
-        return;
-      }
-      if (grace === null) {
-        grace = setTimeout(finish, STRAGGLER_GRACE_MS);
-      }
-    };
-    const gaveUp = (relayUrl: string): void => {
-      if (!countOnce(relayUrl)) return;
-      if (done >= relays.length) finish();
-    };
-
-    for (const relayUrl of relays) {
-      openRelaySubscription(relayUrl, filter, {
+  await fanOut(
+    relays,
+    (relayUrl: string, report: RelayReport): Promise<() => void> => {
+      const timeout = setTimeout((): void => report.gaveUp(), QUERY_TIMEOUT_MS);
+      return openRelaySubscription(relayUrl, filter, {
         onEvent: (event: NostrEvent): void => {
           if (!byId.has(event.id)) byId.set(event.id, event);
         },
-        onEose: (): void => answered(relayUrl),
-        onClosed: (): void => gaveUp(relayUrl),
+        onEose: (): void => report.answered(),
+        onClosed: (): void => report.gaveUp(),
       })
-        .then((stop: () => void): void => {
-          // A relay that connected after the query had already returned
-          // would otherwise keep its subscription open with nobody to close
-          // it, and every refresh would leave one more behind.
-          if (settled) {
-            try {
-              stop();
-            } catch {
-              // Already gone.
-            }
-            return;
-          }
-          unsubscribes.push(stop);
+        .then((stop: () => void): (() => void) => (): void => {
+          clearTimeout(timeout);
+          stop();
         })
-        .catch((): void => {
-          gaveUp(relayUrl);
+        .catch((error: unknown): never => {
+          clearTimeout(timeout);
+          throw error;
         });
-    }
+    },
+    { stragglerGraceMs: STRAGGLER_GRACE_MS },
+  );
 
-    if (relays.length === 0) finish();
-  });
+  return Array.from(byId.values());
 }
 
 export interface ProfileMeta {
