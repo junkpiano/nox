@@ -96,7 +96,13 @@ function publishTo(
  * One relay accepting is enough for the note to exist, so the caller is given
  * both lists and decides what to say about it.
  */
-export async function publishNote(content: string): Promise<PublishResult> {
+export async function publishNote(
+  content: string,
+  options: {
+    /** Tags the author chose to put on the note - a content warning, say. */
+    tags?: string[][] | undefined;
+  } = {},
+): Promise<PublishResult> {
   const key: Uint8Array | null = getSessionPrivateKey();
   if (!key) {
     throw new NotSignedInError();
@@ -105,7 +111,7 @@ export async function publishNote(content: string): Promise<PublishResult> {
   const draft = withClientTag({
     kind: 1,
     created_at: Math.floor(Date.now() / 1000),
-    tags: [] as string[][],
+    tags: [...(options.tags ?? [])],
     content,
     pubkey: '',
   });

@@ -77,6 +77,30 @@ export function getContentWarning(event: NostrEvent): ContentWarning {
   };
 }
 
+/**
+ * The tags that put a warning on a post of your own.
+ *
+ * Written in both spellings this file reads - the NIP-36 tag and the NIP-32
+ * label in its namespace - so a reader that knows only one still covers the
+ * post. The reason is optional and trimmed; an empty one is no reason, not
+ * an empty label. Both composers build their tags here, so what one app
+ * writes is exactly what the other reads.
+ */
+export function contentWarningTags(
+  reason: string | null | undefined,
+): string[][] {
+  const words: string = (reason ?? '').trim();
+  const tags: string[][] = [];
+  if (words) {
+    tags.push(['content-warning', words]);
+    tags.push(['l', words, 'content-warning']);
+  } else {
+    tags.push(['content-warning']);
+  }
+  tags.push(['L', 'content-warning']);
+  return tags;
+}
+
 /** The longest reason worth showing on the covering line. */
 const MAX_REASON_LENGTH = 80;
 

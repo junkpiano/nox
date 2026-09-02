@@ -12,6 +12,7 @@ import test from 'node:test';
 
 import {
   contentWarningSummary,
+  contentWarningTags,
   getContentWarning,
 } from '../src/common/content-warning.js';
 import type { NostrEvent } from '../types/nostr';
@@ -144,4 +145,34 @@ test('content warning summary: whitespace-only reason falls back', () => {
     contentWarningSummary({ hasWarning: true, reason: '   \n  ' }),
     'Content warning',
   );
+});
+
+// --- writing one, in the words this file reads ------------------------------------
+
+test('content warning: the tags a composer writes are the tags a reader honours', () => {
+  const withReason = getContentWarning({
+    ...event([]),
+    tags: contentWarningTags('  spoilers  '),
+  } as NostrEvent);
+  assert.equal(withReason.hasWarning, true);
+  assert.equal(withReason.reason, 'spoilers');
+
+  const bare = getContentWarning({
+    ...event([]),
+    tags: contentWarningTags(null),
+  } as NostrEvent);
+  assert.equal(bare.hasWarning, true);
+  assert.equal(bare.reason, '');
+});
+
+test('content warning: both spellings are written, and a blank reason is no reason', () => {
+  assert.deepEqual(contentWarningTags('nsfw'), [
+    ['content-warning', 'nsfw'],
+    ['l', 'nsfw', 'content-warning'],
+    ['L', 'content-warning'],
+  ]);
+  assert.deepEqual(contentWarningTags('   '), [
+    ['content-warning'],
+    ['L', 'content-warning'],
+  ]);
 });
