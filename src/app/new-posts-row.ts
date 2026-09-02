@@ -32,12 +32,7 @@ import { queryRelays } from '../common/relay-query.js';
 import { unwrapRepost } from '../common/repost.js';
 import { renderIncomingEvent } from '../common/timeline-loader.js';
 import { applyStatusesToTimeline } from '../common/timeline-status.js';
-import {
-  appState,
-  createRouteGuard,
-  output,
-  seenEventIds,
-} from './app-state.js';
+import { appState, output, seenEventIds } from './app-state.js';
 
 const POLL_MS: number = 30000;
 /** A poll is small; anything more is a reload. */
@@ -71,7 +66,11 @@ export function startNewPostsPolling(next: NewPostsSource): void {
   clearNewPosts();
   source = next;
   newestSeen = null;
-  routeIsActive = createRouteGuard();
+  // The route's own token, read rather than renewed: `createRouteGuard()`
+  // advances it, which would tell the timeline still loading beside this
+  // that it had been navigated away from.
+  const token: number = appState.activeRouteToken;
+  routeIsActive = (): boolean => token === appState.activeRouteToken;
   timer = window.setInterval((): void => {
     void pollForNewPosts();
   }, POLL_MS);
