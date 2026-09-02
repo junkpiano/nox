@@ -149,9 +149,12 @@ export async function setupFollowToggle(
       // Fetch the full current kind-3 so we can mutate it in place, preserving
       // petnames/relay hints on existing `p` tags, any non-`p` tags, and the
       // legacy relay JSON in `content`.
+      // Every relay gets its say here: the list published next replaces
+      // whatever the slowest relay was holding.
       const currentEvent: NostrEvent | null = await fetchLatestFollowListEvent(
         storedPubkey as PubkeyHex,
         options.getRelays(),
+        { waitForAll: true },
       );
 
       // A null result means every relay failed or returned nothing — we do NOT
