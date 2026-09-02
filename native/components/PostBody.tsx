@@ -22,8 +22,10 @@ import {
 } from 'react-native';
 import type { PartitionedContent } from '../../src/common/content-segments';
 import { partitionContent } from '../../src/common/content-segments';
+import { cardWorthyUrls } from '../../src/common/link-card';
 
 import ImageViewer from './ImageViewer';
+import LinkCard from './LinkCard';
 import QuoteCard from './QuoteCard';
 import RichText from './RichText';
 
@@ -102,6 +104,12 @@ export default function PostBody({
           full cards buries whatever the author actually wrote. */}
       {quotes.slice(0, 2).map((quote) => (
         <QuoteCard key={quote.id} eventId={quote.id} relays={quote.relays} />
+      ))}
+
+      {/* Web links, the same way: a card each for the first couple, drawn
+          once the page has said what it is. */}
+      {cardWorthyUrls(segments).map((url: string) => (
+        <LinkCard key={url} url={url} />
       ))}
 
       <ImageViewer

@@ -33,6 +33,7 @@ import {
   getCachedDeletionStatus,
   isEventDeleted,
 } from './events-queries.js';
+import { describeLink, type LinkCard } from './link-card.js';
 import { isMachineContent } from './machine-content.js';
 import { classifyMediaUrl, withPosterFrame } from './media-type.js';
 import { isMuted } from './mute-state.js';
@@ -2034,18 +2035,14 @@ async function renderReferencedEventCards(
 }
 
 function renderOGPCard(ogpData: OGPResponse, container: HTMLElement): void {
-  const title: string =
-    ogpData.data['og:title'] || ogpData.data.title || 'No title';
-  const description: string =
-    ogpData.data['og:description'] || ogpData.data.description || '';
-  const siteName: string = ogpData.data['og:site_name'] || '';
-  const url: string | null = normalizeHttpUrl(ogpData.url);
-  const image: string | null = ogpData.data['og:image']
-    ? normalizeHttpUrl(ogpData.data['og:image'])
-    : null;
-  if (!url) {
+  // What the card says is decided by the shared describer, so the phone's
+  // card and this one agree about the same page.
+  const described: LinkCard | null = describeLink(ogpData);
+  if (!described) {
     return;
   }
+  const { url, title, description, image } = described;
+  const siteName: string = described.site;
 
   const card: HTMLDivElement = document.createElement('div');
   card.className =
