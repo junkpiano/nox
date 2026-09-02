@@ -36,6 +36,8 @@ const HOME_KINDS: number[] = [1, 6];
 const MAX_AUTHORS: number = 300;
 const POST_LIMIT: number = 400;
 const QUERY_TIMEOUT_MS: number = 9000;
+/** How long the others get once the first relay has finished. */
+const STRAGGLER_GRACE_MS: number = 1500;
 
 export interface TimelinePost {
   /**
@@ -112,6 +114,7 @@ export function queryRelays(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (grace !== null) clearTimeout(grace);
       for (const stop of unsubscribes) {
         try {
           stop();
@@ -124,9 +127,27 @@ export function queryRelays(
 
     const timer = setTimeout(finish, QUERY_TIMEOUT_MS);
 
+    /**
+     * Once any relay has answered, the rest get a short grace and then the
+     * query returns with what it has.
+     *
+     * The query used to wait for every relay, so one that never answered cost
+     * the full timeout every time - and a timeline load is three or four
+     * queries in a row, which is how a brand-new key took most of a minute to
+     * be told it followed nobody. A relay that is merely slow loses its
+     * contribution to this load and gets it back on the next; a relay that is
+     * dead no longer sets the pace.
+     */
+    let grace: ReturnType<typeof setTimeout> | null = null;
     const oneDone = (): void => {
       done += 1;
-      if (done >= relays.length) finish();
+      if (done >= relays.length) {
+        finish();
+        return;
+      }
+      if (grace === null) {
+        grace = setTimeout(finish, STRAGGLER_GRACE_MS);
+      }
     };
 
     for (const relayUrl of relays) {
