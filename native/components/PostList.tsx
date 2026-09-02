@@ -17,7 +17,10 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  type FlatListProps,
   Image,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -259,6 +262,88 @@ function NewPostsRow({
   );
 }
 
+/**
+ * The list props that ask for older posts.
+ *
+ * `onEndReached` alone is not enough. The list reports its end only from a
+ * scroll, a layout or a content-size change, and only once per content
+ * length; a report made while a page was still loading is the last one at
+ * that length, and cells that render later do not report at all. After a
+ * fast fling that was every time: the page arrived, the list sat at its
+ * end, and nothing asked for the next one. So the end of a fling or a drag
+ * reads the scroll metrics itself and asks as well. Asking is idempotent -
+ * one request at a time, whatever the count of askers.
+ */
+export function olderPostsListProps(
+  older: OlderPostsState | undefined,
+): Partial<FlatListProps<TimelinePost>> {
+  if (!older) return {};
+  // Within about a screen of the end.
+  const nearEnd = (event: NativeSyntheticEvent<NativeScrollEvent>): boolean => {
+    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+    return contentOffset.y + layoutMeasurement.height * 2 >= contentSize.height;
+  };
+  return {
+    onEndReached: (): void => older.loadOlder(),
+    onEndReachedThreshold: 1,
+    onMomentumScrollEnd: (event): void => {
+      if (nearEnd(event)) older.loadOlder();
+    },
+    onScrollEndDrag: (event): void => {
+      if (nearEnd(event)) older.loadOlder();
+    },
+  };
+}
+
+/**
+ * The last row of a timeline that reads further back.
+ *
+ * A row in the list, not something over it. It says what the reading is
+ * doing so an end that is merely slow is not mistaken for the end, and an
+ * error leaves the posts above it alone and offers another try.
+ */
+export function TimelineFooter({
+  state,
+  hasPosts,
+}: {
+  state: OlderPostsState;
+  hasPosts: boolean;
+}) {
+  if (!hasPosts) return null;
+  if (state.loadingOlder) {
+    return (
+      <View style={styles.footer}>
+        <ActivityIndicator color="#89a8ff" />
+        <Text style={styles.footerText}>Loading older posts…</Text>
+      </View>
+    );
+  }
+  if (state.loadOlderError) {
+    return (
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Could not load older posts</Text>
+        <Pressable
+          onPress={(): void => state.loadOlder()}
+          hitSlop={8}
+          style={styles.footerButton}
+        >
+          <Text style={styles.footerButtonText}>Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
+  if (!state.hasMore) {
+    return (
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          {state.atCap ? 'Display limit reached' : 'No older posts'}
+        </Text>
+      </View>
+    );
+  }
+  return null;
+}
+
 /** How long ago, in the shape every timeline uses. */
 function timeAgo(createdAt: number): string {
   const seconds = Math.max(0, Math.floor(Date.now() / 1000) - createdAt);
@@ -301,6 +386,20 @@ export interface PostListProps {
    */
   pendingCount?: number;
   onShowNew?: () => void;
+  /**
+   * Reading further back. When given, nearing the end of the list asks for
+   * the page before it, and the last row says what is happening: loading,
+   * failed with a retry, or nothing older. Absent for lists that end.
+   */
+  older?: OlderPostsState;
+}
+
+export interface OlderPostsState {
+  loadingOlder: boolean;
+  hasMore: boolean;
+  loadOlderError: string | null;
+  atCap: boolean;
+  loadOlder: () => void;
 }
 
 export default function PostList({
@@ -314,6 +413,7 @@ export default function PostList({
   emptyMessage,
   pendingCount = 0,
   onShowNew,
+  older,
 }: PostListProps) {
   const navigation = useNavigation<Nav>();
   // Rows decide whether to draw their action row from the session key, and
@@ -371,6 +471,14 @@ export default function PostList({
           // Room for the compose button to sit over, so the last card can be
           // scrolled out from under it rather than staying half-covered.
           contentContainerStyle={styles.listContent}
+          // About a screen before the end, not at it, so the next page is
+          // usually there before the last post is.
+          {...olderPostsListProps(older)}
+          ListFooterComponent={
+            older ? (
+              <TimelineFooter state={older} hasPosts={posts.length > 0} />
+            ) : null
+          }
           ItemSeparatorComponent={() => <View style={styles.sep} />}
           refreshControl={
             <RefreshControl
@@ -448,6 +556,21 @@ const styles = StyleSheet.create({
   newRowPressed: { backgroundColor: 'rgba(137,168,255,0.14)' },
   newRule: { flex: 1, height: 1, backgroundColor: 'rgba(137,168,255,0.35)' },
   newText: { color: '#89a8ff', fontSize: 13, fontWeight: '600' },
+  footer: {
+    paddingVertical: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  footerText: { color: '#8ea0c0', fontSize: 13 },
+  footerButton: {
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 7,
+  },
+  footerButtonText: { color: '#89a8ff', fontSize: 13, fontWeight: '600' },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
   stage: { color: '#8ea0c0', fontSize: 13 },
   empty: {

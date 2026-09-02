@@ -14,8 +14,13 @@ import { onAppEvent } from '../../src/common/app-events';
 import { kvGet, kvSet } from '../../src/common/kv';
 import type { PubkeyHex } from '../../types/nostr';
 import PostList from '../components/PostList';
-import { loadHomeTimeline, type TimelinePost } from '../lib/home-timeline';
+import {
+  loadHomeTimeline,
+  loadNewerPosts,
+  type TimelinePost,
+} from '../lib/home-timeline';
 import { useNewPosts } from '../lib/use-new-posts';
+import { mergeTimelinePosts, useOlderPosts } from '../lib/use-older-posts';
 
 /** The same key the web app stores the viewer's pubkey under. */
 const PUBKEY_KEY = 'nostr_pubkey';
@@ -84,7 +89,7 @@ function IdentityPrompt({ onChosen }: { onChosen: (key: PubkeyHex) => void }) {
   );
 }
 
-export default function Home() {
+export default function Home({ active = true }: { active?: boolean }) {
   const [pubkey, setPubkey] = useState<PubkeyHex | null>(readStoredPubkey);
   const [posts, setPosts] = useState<TimelinePost[]>([]);
   const [stage, setStage] = useState('');
@@ -99,6 +104,15 @@ export default function Home() {
     posts,
     setPosts,
   );
+  const [oldestCreatedAt, setOldestCreatedAt] = useState<number | null>(null);
+  const older = useOlderPosts({
+    filter,
+    oldestCreatedAt,
+    posts,
+    setPosts,
+    busy: loading || refreshing,
+    active,
+  });
 
   const load = useCallback(
     async (viewer: PubkeyHex): Promise<void> => {
@@ -109,6 +123,7 @@ export default function Home() {
         const result = await loadHomeTimeline(viewer, setStage);
         setPosts(result.posts);
         setFilter(result.filter);
+        setOldestCreatedAt(result.oldestCreatedAt);
         setStats(
           `${result.stats.follows} follows / ${result.stats.events} events / ` +
             `${result.stats.profiles} profiles / ${result.stats.relays} relays / ` +
@@ -154,12 +169,34 @@ export default function Home() {
     [forget],
   );
 
+  /**
+   * Pull-to-refresh asks for the newer side only. The pages already read
+   * further back stay, and so does the cursor: a refresh is not a reload.
+   * With nothing on screen yet there is nothing to be newer than, and the
+   * first load runs instead.
+   */
   const onRefresh = useCallback(async (): Promise<void> => {
     if (!pubkey) return;
     setRefreshing(true);
-    await load(pubkey);
-    setRefreshing(false);
-  }, [pubkey, load]);
+    try {
+      if (!filter || posts.length === 0) {
+        await load(pubkey);
+        return;
+      }
+      const newest: number = Math.max(
+        ...posts.map((post: TimelinePost): number => post.createdAt),
+      );
+      const fresh: TimelinePost[] = await loadNewerPosts(filter, newest + 1);
+      setPosts((previous: TimelinePost[]): TimelinePost[] =>
+        mergeTimelinePosts(previous, fresh),
+      );
+      forget();
+    } catch {
+      // The posts on screen are still the posts on screen.
+    } finally {
+      setRefreshing(false);
+    }
+  }, [pubkey, filter, posts, load, forget]);
 
   if (!pubkey) {
     return <IdentityPrompt onChosen={setPubkey} />;
@@ -179,6 +216,7 @@ export default function Home() {
       }
       pendingCount={pendingCount}
       onShowNew={showNew}
+      older={older}
     />
   );
 }

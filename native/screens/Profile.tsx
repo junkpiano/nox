@@ -8,7 +8,7 @@
  */
 
 import type { RouteProp } from '@react-navigation/native';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { nip19 } from 'nostr-tools';
 import { useEffect, useState } from 'react';
@@ -33,7 +33,11 @@ import {
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
-import { PostRow } from '../components/PostList';
+import {
+  olderPostsListProps,
+  PostRow,
+  TimelineFooter,
+} from '../components/PostList';
 import ReportSheet from '../components/ReportSheet';
 import RichText from '../components/RichText';
 import ZapSheet from '../components/ZapSheet';
@@ -45,6 +49,7 @@ import {
   UnknownFollowListError,
 } from '../lib/interact';
 import { loadProfile, type Profile as ProfileData } from '../lib/profile';
+import { useOlderPosts } from '../lib/use-older-posts';
 
 type ProfileRoute = RouteProp<RootStackParamList, 'Profile'>;
 
@@ -334,20 +339,40 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   } | null>(null);
   const [rows, setRows] = useState<TimelinePost[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
+  const [oldestCreatedAt, setOldestCreatedAt] = useState<number | null>(null);
+  const [decorating, setDecorating] = useState(true);
+  const active: boolean = useIsFocused();
+  // A profile is a timeline, and reads further back like one.
+  const older = useOlderPosts({
+    filter,
+    oldestCreatedAt,
+    posts: rows,
+    setPosts: setRows,
+    busy: !data || decorating,
+    active,
+  });
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   useEffect(() => {
     let cancelled = false;
+    setDecorating(true);
     loadProfile(pubkey)
       .then((result): void => {
         if (cancelled) return;
         setData(result);
         void decorateEvents(getRelays(), result.posts)
           .then((decorated): void => {
-            if (!cancelled) setRows(decorated.posts);
+            if (cancelled) return;
+            setRows(decorated.posts);
+            setFilter(result.filter);
+            setOldestCreatedAt(result.oldestCreatedAt);
           })
-          .catch((): void => {});
+          .catch((): void => {})
+          .finally((): void => {
+            if (!cancelled) setDecorating(false);
+          });
       })
       .catch((e: any) => setError(String(e?.message ?? e)));
     return (): void => {
@@ -381,6 +406,10 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
         <Text style={styles.empty}>No posts found on these relays.</Text>
       }
       ItemSeparatorComponent={() => <View style={styles.sep} />}
+      {...olderPostsListProps(older)}
+      ListFooterComponent={
+        <TimelineFooter state={older} hasPosts={rows.length > 0} />
+      }
       // The same card the timelines draw. A profile is a timeline; it had a
       // stripped-down renderer of its own for no reason but having been
       // written second, and it showed - no time, no actions, no pictures.

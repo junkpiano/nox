@@ -6,12 +6,12 @@
  * it is not the thing to reuse - but everything underneath it is.
  */
 
-import { openRelaySubscription } from '../../src/common/relay-socket';
+import { queryRelays } from '../../src/common/relay-query';
+import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 
-const QUERY_TIMEOUT_MS: number = 8000;
-const POST_LIMIT: number = 100;
+const POST_LIMIT: number = PAGE_LIMIT;
 
 export interface Profile {
   pubkey: PubkeyHex;
@@ -26,54 +26,10 @@ export interface Profile {
 export interface ProfileResult {
   profile: Profile;
   posts: NostrEvent[];
-}
-
-function queryRelays(
-  relays: string[],
-  filter: Record<string, unknown>,
-): Promise<NostrEvent[]> {
-  return new Promise<NostrEvent[]>((resolve) => {
-    const byId: Map<string, NostrEvent> = new Map();
-    const stops: Array<() => void> = [];
-    let done: number = 0;
-    let settled: boolean = false;
-
-    const finish = (): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      for (const stop of stops) {
-        try {
-          stop();
-        } catch {
-          // Already gone.
-        }
-      }
-      resolve(Array.from(byId.values()));
-    };
-
-    const timer = setTimeout(finish, QUERY_TIMEOUT_MS);
-    const oneDone = (): void => {
-      done += 1;
-      if (done >= relays.length) finish();
-    };
-
-    for (const relayUrl of relays) {
-      openRelaySubscription(relayUrl, filter, {
-        onEvent: (event: NostrEvent): void => {
-          if (!byId.has(event.id)) byId.set(event.id, event);
-        },
-        onEose: oneDone,
-        onClosed: oneDone,
-      })
-        .then((stop: () => void): void => {
-          stops.push(stop);
-        })
-        .catch(oneDone);
-    }
-
-    if (relays.length === 0) finish();
-  });
+  /** The question the posts answer, for reading further back. */
+  filter: Record<string, unknown>;
+  /** The oldest of them, the cursor for the next page. */
+  oldestCreatedAt: number | null;
 }
 
 /**
@@ -114,9 +70,10 @@ function parseProfile(pubkey: PubkeyHex, event: NostrEvent | null): Profile {
 export async function loadProfile(pubkey: PubkeyHex): Promise<ProfileResult> {
   const relays: string[] = getRelays();
 
+  const filter: Record<string, unknown> = { kinds: [1], authors: [pubkey] };
   const [metaEvents, postEvents] = await Promise.all([
     queryRelays(relays, { kinds: [0], authors: [pubkey], limit: 1 }),
-    queryRelays(relays, { kinds: [1], authors: [pubkey], limit: POST_LIMIT }),
+    queryRelays(relays, { ...filter, limit: POST_LIMIT }),
   ]);
 
   // Relays disagree about which revision is current; the newest wins.
@@ -130,5 +87,7 @@ export async function loadProfile(pubkey: PubkeyHex): Promise<ProfileResult> {
     posts: postEvents.sort(
       (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
     ),
+    filter,
+    oldestCreatedAt: oldestOf(postEvents),
   };
 }

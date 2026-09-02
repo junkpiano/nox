@@ -6,11 +6,17 @@
  * text search that happens to find the word in the middle of a sentence.
  */
 
-import type { RouteProp } from '@react-navigation/native';
+import { type RouteProp, useIsFocused } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
 import type { RootStackParamList } from '../App';
 import PostList from '../components/PostList';
-import { loadHashtagTimeline, type TimelinePost } from '../lib/home-timeline';
+import {
+  loadHashtagTimeline,
+  loadNewerPosts,
+  type TimelinePost,
+} from '../lib/home-timeline';
+import { useNewPosts } from '../lib/use-new-posts';
+import { mergeTimelinePosts, useOlderPosts } from '../lib/use-older-posts';
 
 type HashtagRoute = RouteProp<RootStackParamList, 'Hashtag'>;
 
@@ -22,12 +28,31 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
+  const { pendingCount, showNew, forget } = useNewPosts(
+    filter,
+    posts,
+    setPosts,
+  );
+  const [oldestCreatedAt, setOldestCreatedAt] = useState<number | null>(null);
+  const active: boolean = useIsFocused();
+  const older = useOlderPosts({
+    filter,
+    oldestCreatedAt,
+    posts,
+    setPosts,
+    busy: loading || refreshing,
+    active,
+  });
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
+    forget();
     try {
       const result = await loadHashtagTimeline(tag, setStage);
       setPosts(result.posts);
+      setFilter(result.filter);
+      setOldestCreatedAt(result.oldestCreatedAt);
       setStats(
         `${result.stats.events} events / ${result.stats.profiles} profiles / ` +
           `${result.stats.relays} relays / ` +
@@ -40,17 +65,39 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
       setLoading(false);
       setStage('');
     }
-  }, [tag]);
+  }, [tag, forget]);
 
   useEffect((): void => {
     void load();
   }, [load]);
 
+  /**
+   * Pull-to-refresh asks for the newer side only. The pages already read
+   * further back stay, and so does the cursor: a refresh is not a reload.
+   * With nothing on screen yet there is nothing to be newer than, and the
+   * first load runs instead.
+   */
   const onRefresh = useCallback(async (): Promise<void> => {
     setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  }, [load]);
+    try {
+      if (!filter || posts.length === 0) {
+        await load();
+        return;
+      }
+      const newest: number = Math.max(
+        ...posts.map((post: TimelinePost): number => post.createdAt),
+      );
+      const fresh: TimelinePost[] = await loadNewerPosts(filter, newest + 1);
+      setPosts((previous: TimelinePost[]): TimelinePost[] =>
+        mergeTimelinePosts(previous, fresh),
+      );
+      forget();
+    } catch {
+      // The posts on screen are still the posts on screen.
+    } finally {
+      setRefreshing(false);
+    }
+  }, [filter, posts, load, forget]);
 
   return (
     <PostList
@@ -62,6 +109,9 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
       onRefresh={onRefresh}
       loading={loading}
       emptyMessage={`No posts tagged #${tag} on these relays.`}
+      pendingCount={pendingCount}
+      onShowNew={showNew}
+      older={older}
     />
   );
 }

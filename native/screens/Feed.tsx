@@ -62,11 +62,11 @@ export default function Feed() {
       </View>
 
       <View style={[styles.pane, which !== 'home' && styles.hidden]}>
-        <Home />
+        <Home active={which === 'home'} />
       </View>
       {globalMounted ? (
         <View style={[styles.pane, which !== 'global' && styles.hidden]}>
-          <Global />
+          <Global active={which === 'global'} />
         </View>
       ) : null}
 

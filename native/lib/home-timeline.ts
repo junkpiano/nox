@@ -16,6 +16,7 @@ import {
   type ContentWarning,
   getContentWarning,
 } from '../../src/common/content-warning';
+import { queryEvents, storeEvents } from '../../src/common/db/events-store';
 import {
   fetchDeletedIds,
   withoutDeleted,
@@ -25,6 +26,7 @@ import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { queryRelays } from '../../src/common/relay-query';
 import { isRepost, readRepost, unwrapRepost } from '../../src/common/repost';
+import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 
@@ -33,7 +35,8 @@ const HOME_KINDS: number[] = [1, 6];
 
 /** Relays reject enormous `authors` lists, and this is plenty of timeline. */
 const MAX_AUTHORS: number = 300;
-const POST_LIMIT: number = 400;
+/** The first load is one page; the rest come as the list is scrolled. */
+const POST_LIMIT: number = PAGE_LIMIT;
 /** A poll for newer posts is small; anything more is a reload. */
 const NEWER_LIMIT: number = 100;
 
@@ -85,6 +88,12 @@ export interface TimelineResult {
    * later poll for newer posts can ask the same one from a later moment.
    */
   filter: Record<string, unknown>;
+  /**
+   * The oldest raw event this load brought back - the cursor for reading
+   * further. Raw rather than shown: a repost's own time is what the relay
+   * filtered on, not the time of the note inside it.
+   */
+  oldestCreatedAt: number | null;
   stats: {
     follows: number;
     events: number;
@@ -144,6 +153,7 @@ export async function loadHomeTimeline(
   return {
     posts: decorated.posts,
     filter,
+    oldestCreatedAt: oldestOf(events),
     stats: {
       follows: follows.length,
       events: events.length,
@@ -330,6 +340,7 @@ export async function loadHashtagTimeline(
   return {
     posts: decorated.posts,
     filter,
+    oldestCreatedAt: oldestOf(events),
     stats: {
       follows: 0,
       events: events.length,
@@ -364,6 +375,75 @@ export async function loadNewerPosts(
   return decorated.posts;
 }
 
+/**
+ * The page before `until`, in the timeline's own shape.
+ *
+ * Cache first: the main event cache is asked for the range, and the relays
+ * only for what it could not supply. What the relays send is written back
+ * to that cache. Muted, withdrawn and machine-written posts leave here as
+ * they do on the first load - there is one decoration path, not a lighter
+ * one for pages - and the raw events come back too, because the cursor and
+ * the end of the timeline are judged on those rather than on what survived.
+ */
+export async function loadOlderPosts(
+  filter: Record<string, unknown>,
+  until: number,
+): Promise<{ posts: TimelinePost[]; raw: NostrEvent[] }> {
+  const relays: string[] = getRelays();
+
+  const cached: NostrEvent[] = await readOlderFromCache(filter, until);
+  const byId: Map<string, NostrEvent> = new Map(
+    cached.map((event: NostrEvent): [string, NostrEvent] => [event.id, event]),
+  );
+  if (cached.length < PAGE_LIMIT) {
+    const remote: NostrEvent[] = await queryRelays(relays, {
+      ...filter,
+      until,
+      limit: PAGE_LIMIT,
+    });
+    for (const event of remote) {
+      if (!byId.has(event.id)) byId.set(event.id, event);
+    }
+    if (remote.length > 0) {
+      storeEvents(remote, { isHomeTimeline: false }).catch((): void => {
+        // A cache that cannot be written is a slower next time, not an error.
+      });
+    }
+  }
+
+  const raw: NostrEvent[] = Array.from(byId.values());
+  if (raw.length === 0) return { posts: [], raw };
+  const decorated: Decorated = await decorateEvents(relays, raw);
+  return { posts: decorated.posts, raw };
+}
+
+/**
+ * What the main cache holds for this page. A tag filter is a question the
+ * cache is not indexed to answer, so it is passed straight to the relays.
+ */
+async function readOlderFromCache(
+  filter: Record<string, unknown>,
+  until: number,
+): Promise<NostrEvent[]> {
+  if ('#t' in filter) return [];
+  const kinds: number[] | undefined = Array.isArray(filter.kinds)
+    ? (filter.kinds as number[])
+    : undefined;
+  const authors: PubkeyHex[] | undefined = Array.isArray(filter.authors)
+    ? (filter.authors as PubkeyHex[])
+    : undefined;
+  try {
+    return await queryEvents({
+      ...(kinds ? { kinds } : {}),
+      ...(authors ? { authors } : {}),
+      until,
+      limit: PAGE_LIMIT,
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function loadGlobalTimeline(
   onStage: (stage: string) => void,
 ): Promise<TimelineResult> {
@@ -385,6 +465,7 @@ export async function loadGlobalTimeline(
   return {
     posts: decorated.posts,
     filter,
+    oldestCreatedAt: oldestOf(events),
     stats: {
       follows: 0,
       events: events.length,
