@@ -373,6 +373,7 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
         void decorateEvents(getRelays(), cached.posts, {
           profiles: 'cached',
           deletions: 'remembered',
+          cacheKey: cached.cacheKey,
         })
           .then((decorated): void => {
             if (cancelled || settled) return;
@@ -385,7 +386,9 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
         if (cancelled) return;
         settled = true;
         setData(result);
-        void decorateEvents(getRelays(), result.posts)
+        void decorateEvents(getRelays(), result.posts, {
+          cacheKey: result.cacheKey,
+        })
           .then((decorated): void => {
             if (cancelled) return;
             setRows(decorated.posts);

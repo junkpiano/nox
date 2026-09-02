@@ -16,19 +16,28 @@ import {
   type ContentWarning,
   getContentWarning,
 } from '../../src/common/content-warning';
-import { queryEvents, storeEvents } from '../../src/common/db/events-store';
-import { getProfiles, storeProfiles } from '../../src/common/db/profiles-store';
+import {
+  deleteEvents,
+  queryEvents,
+  storeEvents,
+} from '../../src/common/db/events-store';
+import {
+  getProfiles,
+  profileNeedsRefresh,
+  storeProfiles,
+} from '../../src/common/db/profiles-store';
 import { getCachedTimeline } from '../../src/common/db/timeline-queries';
 import {
   appendEventsToTimeline,
   prependEventsToTimeline,
+  removeEventFromTimeline,
 } from '../../src/common/db/timelines-store';
 import type { TimelineKey } from '../../src/common/db/types';
+import { withoutDeleted } from '../../src/common/deleted-events';
 import {
-  fetchDeletedIds,
-  withoutDeleted,
-} from '../../src/common/deleted-events';
-import { getCachedDeletionStatus } from '../../src/common/deletion-gate';
+  findDeletedIds,
+  getCachedDeletionStatus,
+} from '../../src/common/deletion-gate';
 import { fetchFollowList } from '../../src/common/events-queries';
 import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
@@ -166,6 +175,7 @@ async function showFromCache(
     const decorated: Decorated = await decorateEvents(relays, cached.events, {
       profiles: 'cached',
       deletions: 'remembered',
+      cacheKey: key,
     });
     if (decorated.posts.length > 0) onCached(decorated.posts);
     return cached.events;
@@ -233,7 +243,9 @@ export async function loadHomeTimeline(
   const events: NostrEvent[] = union(fetched, cachedEvents);
 
   onStage('profiles...');
-  const decorated: Decorated = await decorateEvents(relays, events);
+  const decorated: Decorated = await decorateEvents(relays, events, {
+    cacheKey,
+  });
 
   return {
     posts: decorated.posts,
@@ -287,27 +299,39 @@ export async function fetchProfilesForPubkeys(
 
   // The profile store first: a name that was known yesterday is still the
   // name, and asking a relay for it again is what made every load wait on
-  // a kind 0 query for a hundred people.
+  // a kind 0 query for a hundred people. A name known for more than a day
+  // is still shown, and asked about again: people do change their names
+  // and pictures, and a timeline that only ever read the store would not
+  // find out until their profile page was opened.
+  const stale: Set<PubkeyHex> = new Set();
   try {
     const known: Map<PubkeyHex, NostrProfile> = await getProfiles(wanted);
     for (const [pubkey, profile] of known) {
       const meta: ProfileMeta | null = metaFrom(profile);
       if (meta) profiles.set(pubkey, meta);
     }
+    const refresh: boolean[] = await Promise.all(
+      Array.from(known.keys(), (pubkey: PubkeyHex) =>
+        profileNeedsRefresh(pubkey),
+      ),
+    );
+    Array.from(known.keys()).forEach((pubkey: PubkeyHex, index: number) => {
+      if (refresh[index]) stale.add(pubkey);
+    });
   } catch (error: unknown) {
     console.warn('[timeline] profile cache could not be read', error);
   }
 
-  const missing: PubkeyHex[] = wanted.filter(
-    (pubkey: PubkeyHex): boolean => !profiles.has(pubkey),
+  const toAsk: PubkeyHex[] = wanted.filter(
+    (pubkey: PubkeyHex): boolean => !profiles.has(pubkey) || stale.has(pubkey),
   );
-  if (mode === 'cached' || missing.length === 0) {
+  if (mode === 'cached' || toAsk.length === 0) {
     return profiles;
   }
 
   const profileEvents: NostrEvent[] = await queryRelays(relays, {
     kinds: [0],
-    authors: missing,
+    authors: toAsk,
   });
 
   const profileAt: Map<string, number> = new Map();
@@ -367,6 +391,22 @@ export interface DecorateOptions {
    * relays are asked once the real load arrives.
    */
   deletions?: 'ask' | 'remembered' | undefined;
+  /**
+   * Where these events live in the cache, so one that turns out withdrawn
+   * is removed there too. Without this the cache would hand it back on the
+   * next launch, to be shown for a second and then taken away again.
+   */
+  cacheKey?: TimelineKey | null | undefined;
+}
+
+/** A withdrawn post leaves the cache, or the next launch shows it again. */
+function forgetWithdrawn(ids: string[], key: TimelineKey | null): void {
+  if (ids.length === 0) return;
+  deleteEvents(ids).catch((): void => {});
+  if (!key) return;
+  for (const id of ids) {
+    removeEventFromTimeline(key.type, key.pubkey, id).catch((): void => {});
+  }
 }
 
 export async function decorateEvents(
@@ -378,6 +418,8 @@ export async function decorateEvents(
   // deleted post is not fetched a profile for or counted in the stats.
   // Silence from every relay is not an answer: the batch is shown unjudged
   // rather than not at all, and asked about again with the next load.
+  // Asked through the shared gate, so what is learned is remembered for the
+  // session - the cached first paint of the next screen reads that memory.
   let deleted: Set<string> = new Set();
   if (options.deletions === 'remembered') {
     for (const event of events) {
@@ -385,11 +427,12 @@ export async function decorateEvents(
     }
   } else {
     try {
-      deleted = await fetchDeletedIds(relays, events);
+      deleted = await findDeletedIds(relays, events);
     } catch (error: unknown) {
       console.warn('[timeline] deletions could not be checked', error);
     }
   }
+  forgetWithdrawn(Array.from(deleted), options.cacheKey ?? null);
   // Machine output - a note whose whole body is a JSON object - is judged
   // on what would be shown, so a repost of a heartbeat goes with it.
   // The mute list was counted in the stats and never applied to the rows:
@@ -593,7 +636,7 @@ export async function loadOlderPosts(
 
   const raw: NostrEvent[] = Array.from(byId.values());
   if (raw.length === 0) return { posts: [], raw };
-  const decorated: Decorated = await decorateEvents(relays, raw);
+  const decorated: Decorated = await decorateEvents(relays, raw, { cacheKey });
   return { posts: decorated.posts, raw };
 }
 
@@ -649,7 +692,9 @@ export async function loadGlobalTimeline(
   const events: NostrEvent[] = union(fetched, cachedEvents);
 
   onStage('profiles...');
-  const decorated: Decorated = await decorateEvents(relays, events);
+  const decorated: Decorated = await decorateEvents(relays, events, {
+    cacheKey,
+  });
 
   return {
     posts: decorated.posts,
