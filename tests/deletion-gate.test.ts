@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
 import { collectDeletedIds } from '../src/common/deleted-events.js';
 import {
+  CLEARED_TTL_MS,
   cacheDeletionStatus,
   createDeletionGate,
   type DeletedIdsFetcher,
@@ -144,17 +146,17 @@ test('gate: nothing waiting means nothing asked', async () => {
 // the gate what a relay would send - the notes and the kind 5s - and check
 // what reaches the screen.
 
-function deletionOf(note: NostrEvent, by: string = note.pubkey): NostrEvent {
-  counter += 1;
-  return {
-    id: `del-${counter}`,
-    pubkey: by,
-    created_at: note.created_at + 1,
-    kind: 5,
-    tags: [['e', note.id]],
-    content: '',
-    sig: '',
-  } as NostrEvent;
+/** A deletion request really signed by `key` - the judgement checks. */
+function deletionOf(note: NostrEvent, key: Uint8Array): NostrEvent {
+  return finalizeEvent(
+    {
+      created_at: note.created_at + 1,
+      kind: 5,
+      tags: [['e', note.id]],
+      content: '',
+    },
+    key,
+  ) as unknown as NostrEvent;
 }
 
 /** A relay that answers a kind 5 query from a fixed set of deletion requests. */
@@ -163,7 +165,8 @@ function relayWith(deletions: NostrEvent[]): DeletedIdsFetcher {
 }
 
 test('profile: a note its author withdrew is not drawn, though the relay still serves it', async () => {
-  const author = 'b'.repeat(64);
+  const authorKey: Uint8Array = generateSecretKey();
+  const author: string = getPublicKey(authorKey);
   const kept = { ...note(), pubkey: author };
   const withdrawn = { ...note(), pubkey: author };
   const drawn: string[] = [];
@@ -171,7 +174,7 @@ test('profile: a note its author withdrew is not drawn, though the relay still s
     relays: ['wss://r'],
     delayMs: 5,
     render: (events) => drawn.push(...events.map((e) => e.id)),
-    fetch: relayWith([deletionOf(withdrawn)]),
+    fetch: relayWith([deletionOf(withdrawn, authorKey)]),
   });
   gate.offer(kept);
   gate.offer(withdrawn);
@@ -180,8 +183,9 @@ test('profile: a note its author withdrew is not drawn, though the relay still s
 });
 
 test('home and global: the same judgement across authors, and only the author can withdraw', async () => {
-  const alice = 'c'.repeat(64);
-  const bob = 'd'.repeat(64);
+  const aliceKey: Uint8Array = generateSecretKey();
+  const alice: string = getPublicKey(aliceKey);
+  const bob: string = getPublicKey(generateSecretKey());
   const aliceKept = { ...note(), pubkey: alice };
   const aliceGone = { ...note(), pubkey: alice };
   const bobKept = { ...note(), pubkey: bob };
@@ -192,9 +196,9 @@ test('home and global: the same judgement across authors, and only the author ca
     delayMs: 5,
     render: (events) => drawn.push(...events.map((e) => e.id)),
     fetch: relayWith([
-      deletionOf(aliceGone),
+      deletionOf(aliceGone, aliceKey),
       // A stranger asking for somebody else's post to go is not honoured.
-      deletionOf(bobTargeted, alice),
+      deletionOf(bobTargeted, aliceKey),
     ]),
   });
   for (const event of [aliceKept, aliceGone, bobKept, bobTargeted]) {
@@ -202,4 +206,53 @@ test('home and global: the same judgement across authors, and only the author ca
   }
   await gate.settle();
   assert.deepEqual(drawn, [aliceKept.id, bobKept.id, bobTargeted.id]);
+});
+
+// --- a clearance is believed only for a while --------------------------------------
+
+test('deletion: a clearance expires, a withdrawal does not', () => {
+  const cleared = note();
+  const gone = note();
+  const at: number = 1_000_000;
+  cacheDeletionStatus(cleared.id, false, at);
+  cacheDeletionStatus(gone.id, true, at);
+  assert.equal(getCachedDeletionStatus(cleared.id, at + CLEARED_TTL_MS), false);
+  assert.equal(
+    getCachedDeletionStatus(cleared.id, at + CLEARED_TTL_MS + 1),
+    undefined,
+  );
+  assert.equal(
+    getCachedDeletionStatus(gone.id, at + CLEARED_TTL_MS * 100),
+    true,
+  );
+});
+
+test('deletion: after the clearance expires the relays are asked again, and a new kind 5 is honoured', async () => {
+  // The author withdraws the post after this tab first checked it. A tab
+  // that never asked again would keep showing it for as long as it stayed
+  // open.
+  const a = note();
+  const at: number = 2_000_000;
+  let withdrawnNow: boolean = false;
+  let calls: number = 0;
+  const fetch: DeletedIdsFetcher = async () => {
+    calls += 1;
+    return withdrawnNow ? new Set([a.id]) : new Set();
+  };
+  assert.equal((await findDeletedIds(['wss://r'], [a], fetch, at)).size, 0);
+  assert.equal(
+    (await findDeletedIds(['wss://r'], [a], fetch, at + 1000)).size,
+    0,
+  );
+  assert.equal(calls, 1, 'asked again while the clearance was still believed');
+
+  withdrawnNow = true;
+  const later: number = at + CLEARED_TTL_MS + 1;
+  const deleted = await findDeletedIds(['wss://r'], [a], fetch, later);
+  assert.equal(calls, 2);
+  assert.deepEqual(Array.from(deleted), [a.id]);
+  assert.equal(
+    getCachedDeletionStatus(a.id, later + CLEARED_TTL_MS * 100),
+    true,
+  );
 });
