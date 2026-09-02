@@ -138,7 +138,9 @@ src/
 1. NIP-07 browser extension (Alby, nos2x) provides pubkey
 2. `fetchFollowList()` fetches kind 3 event from relays
 3. `loadHomeTimeline()` fetches kind 1 posts from followed pubkeys
-4. Events deduplicated via `Set<string>`, stored in IndexedDB
+4. Events deduplicated via `Set<string>`, held briefly at the deletion gate
+   (`src/common/deletion-gate.ts`: one kind 5 query per batch, answers
+   remembered), stored in IndexedDB
 5. `renderEvent()` generates HTML cards
 
 **Global timeline:**

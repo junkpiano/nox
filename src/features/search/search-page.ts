@@ -6,6 +6,7 @@ import type {
   PubkeyHex,
 } from '../../../types/nostr';
 import { getProfile as getCachedDbProfile } from '../../common/db/index.js';
+import { createDeletionGate } from '../../common/deletion-gate.js';
 import { renderEvent } from '../../common/event-render.js';
 import { fetchFollowList } from '../../common/events-queries.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
@@ -307,17 +308,94 @@ export async function loadSearchPage(
   const totalRelays: number = relays.length;
 
   const finishSearch = (): void => {
+    // What is still waiting at the gate is checked and drawn first.
+    void gate.settle().then((): void => {
+      if (!routeIsActive()) {
+        return;
+      }
+      if (connectingMsg) {
+        connectingMsg.style.display = 'none';
+      }
+      updateSearchHeader(query, renderedCount);
+      if (renderedCount === 0) {
+        showSearchMessage(postsContainer, 'No posts found.');
+      }
+    });
+  };
+
+  /** Draws one result that survived the gate. */
+  const renderResult = (event: NostrEvent): void => {
     if (!routeIsActive()) {
       return;
     }
+    renderedCount += 1;
+
     if (connectingMsg) {
       connectingMsg.style.display = 'none';
     }
-    updateSearchHeader(query, renderedCount);
-    if (renderedCount === 0) {
-      showSearchMessage(postsContainer, 'No posts found.');
+
+    let profile: NostrProfile | null = profileCache.get(event.pubkey) || null;
+    if (!profileCache.has(event.pubkey)) {
+      const persistentProfile: NostrProfile | null = getPersistentCachedProfile(
+        event.pubkey as PubkeyHex,
+      );
+      if (persistentProfile) {
+        profile = persistentProfile;
+        profileCache.set(event.pubkey, persistentProfile);
+      } else {
+        void getCachedDbProfile(event.pubkey as PubkeyHex).then(
+          (cached: NostrProfile | null): void => {
+            if (!routeIsActive() || !cached) return;
+            profileCache.set(event.pubkey, cached);
+            updateRenderedProfile(output, event.pubkey as PubkeyHex, cached);
+          },
+        );
+      }
     }
+
+    if (!fetchingProfiles.has(event.pubkey)) {
+      fetchingProfiles.add(event.pubkey);
+      fetchProfile(event.pubkey, relays, {
+        usePersistentCache: false,
+        persistProfile: true,
+        forceRefresh: true,
+      })
+        .then((fetchedProfile: NostrProfile | null): void => {
+          if (!routeIsActive()) return;
+          fetchingProfiles.delete(event.pubkey);
+          if (!fetchedProfile) {
+            return;
+          }
+          profileCache.set(event.pubkey, fetchedProfile);
+          updateRenderedProfile(
+            output,
+            event.pubkey as PubkeyHex,
+            fetchedProfile,
+          );
+        })
+        .catch((error: unknown): void => {
+          console.error(
+            `[Search] Failed to fetch profile for ${event.pubkey}`,
+            error,
+          );
+          fetchingProfiles.delete(event.pubkey);
+        });
+    }
+
+    const npubStr: Npub = nip19.npubEncode(event.pubkey);
+    renderEvent(event, profile, npubStr, event.pubkey, postsContainer);
+    updateSearchHeader(query, renderedCount);
   };
+
+  // Results are held briefly, asked about together, and drawn only if
+  // their authors did not withdraw them - the same gate the timelines use.
+  const gate = createDeletionGate<NostrEvent>({
+    relays,
+    delayMs: 150,
+    render: (events: NostrEvent[]): void => {
+      for (const event of events) renderResult(event);
+    },
+  });
 
   const timeoutId: number = window.setTimeout((): void => {
     finishSearch();
@@ -371,67 +449,7 @@ export async function loadSearchPage(
             return;
           }
           seenEventIds.add(event.id);
-          renderedCount += 1;
-
-          if (connectingMsg) {
-            connectingMsg.style.display = 'none';
-          }
-
-          let profile: NostrProfile | null =
-            profileCache.get(event.pubkey) || null;
-          if (!profileCache.has(event.pubkey)) {
-            const persistentProfile: NostrProfile | null =
-              getPersistentCachedProfile(event.pubkey as PubkeyHex);
-            if (persistentProfile) {
-              profile = persistentProfile;
-              profileCache.set(event.pubkey, persistentProfile);
-            } else {
-              void getCachedDbProfile(event.pubkey as PubkeyHex).then(
-                (cached: NostrProfile | null): void => {
-                  if (!routeIsActive() || !cached) return;
-                  profileCache.set(event.pubkey, cached);
-                  updateRenderedProfile(
-                    output,
-                    event.pubkey as PubkeyHex,
-                    cached,
-                  );
-                },
-              );
-            }
-          }
-
-          if (!fetchingProfiles.has(event.pubkey)) {
-            fetchingProfiles.add(event.pubkey);
-            fetchProfile(event.pubkey, relays, {
-              usePersistentCache: false,
-              persistProfile: true,
-              forceRefresh: true,
-            })
-              .then((fetchedProfile: NostrProfile | null): void => {
-                if (!routeIsActive()) return;
-                fetchingProfiles.delete(event.pubkey);
-                if (!fetchedProfile) {
-                  return;
-                }
-                profileCache.set(event.pubkey, fetchedProfile);
-                updateRenderedProfile(
-                  output,
-                  event.pubkey as PubkeyHex,
-                  fetchedProfile,
-                );
-              })
-              .catch((error: unknown): void => {
-                console.error(
-                  `[Search] Failed to fetch profile for ${event.pubkey}`,
-                  error,
-                );
-                fetchingProfiles.delete(event.pubkey);
-              });
-          }
-
-          const npubStr: Npub = nip19.npubEncode(event.pubkey);
-          renderEvent(event, profile, npubStr, event.pubkey, postsContainer);
-          updateSearchHeader(query, renderedCount);
+          gate.offer(event);
           return;
         }
 

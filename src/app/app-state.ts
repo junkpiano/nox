@@ -6,9 +6,11 @@ import type {
   PubkeyHex,
 } from '../../types/nostr';
 import {
+  deleteEvents,
   getProfile as getCachedDbProfile,
   getCachedTimeline,
 } from '../common/db/index.js';
+import { findDeletedIds } from '../common/deletion-gate.js';
 import { renderEvent } from '../common/event-render.js';
 import { publishEventToRelays } from '../features/profile/follow.js';
 import { getCachedProfile as getPersistentCachedProfile } from '../features/profile/profile-cache.js';
@@ -467,6 +469,19 @@ export async function restoreTimelineFromCache(params: {
     return { restored: false, oldestTimestamp: 0, newestTimestamp: 0 };
   }
 
+  // Withdrawn since it was cached, for all the cache knows: asked once for
+  // the batch, and the cache told, before anything is drawn.
+  const withdrawn: Set<string> = await findDeletedIds(
+    getRelays(),
+    cached.events,
+  );
+  if (withdrawn.size > 0) {
+    void deleteEvents(Array.from(withdrawn));
+  }
+  if (!params.isRouteActive()) {
+    return { restored: false, oldestTimestamp: 0, newestTimestamp: 0 };
+  }
+
   // Render cached events (no relay fetch). This is used for browser back/forward restore.
   output.innerHTML = '';
   seenEventIds.clear();
@@ -496,6 +511,7 @@ export async function restoreTimelineFromCache(params: {
     if (!params.isRouteActive()) {
       return { restored: false, oldestTimestamp: 0, newestTimestamp: 0 };
     }
+    if (withdrawn.has(event.id)) continue;
     seenEventIds.add(event.id);
     const profile: NostrProfile | null =
       profileMap.get(event.pubkey as PubkeyHex) || null;
