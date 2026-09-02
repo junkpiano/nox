@@ -8,22 +8,53 @@
  * asked in one batch before drawing anything. This is that batch, for both.
  *
  * `findDeletedIds` asks the relays once about a whole list and remembers
- * every answer, so nothing is asked about twice. `createDeletionGate` is
- * the shape a streaming list needs: events are offered as they arrive, held
- * for a moment, checked together, and drawn only if they survive.
+ * the answers. A withdrawal is remembered for good - nothing un-withdraws a
+ * post. A clearance is remembered only for a while, because the author may
+ * withdraw the post after it was checked, and a tab that never asked again
+ * would keep showing it. `createDeletionGate` is the shape a streaming list
+ * needs: events are offered as they arrive, held for a moment, checked
+ * together, and drawn only if they survive.
  */
 
 import type { NostrEvent } from '../../types/nostr';
 import { fetchDeletedIds } from './deleted-events.js';
 
-const known: Map<string, boolean> = new Map();
+/** How long "not withdrawn" is believed before the relays are asked again. */
+export const CLEARED_TTL_MS: number = 5 * 60 * 1000;
 
-export function getCachedDeletionStatus(eventId: string): boolean | undefined {
-  return known.get(eventId);
+interface Remembered {
+  deleted: boolean;
+  /** When the answer came. */
+  at: number;
 }
 
-export function cacheDeletionStatus(eventId: string, deleted: boolean): void {
-  known.set(eventId, deleted);
+const known: Map<string, Remembered> = new Map();
+
+/**
+ * What was remembered about an event: `true` withdrawn, `false` cleared
+ * recently enough to still believe, `undefined` never asked or worth
+ * asking again.
+ */
+export function getCachedDeletionStatus(
+  eventId: string,
+  now: number = Date.now(),
+): boolean | undefined {
+  const remembered: Remembered | undefined = known.get(eventId);
+  if (!remembered) return undefined;
+  if (remembered.deleted) return true;
+  if (now - remembered.at > CLEARED_TTL_MS) {
+    known.delete(eventId);
+    return undefined;
+  }
+  return false;
+}
+
+export function cacheDeletionStatus(
+  eventId: string,
+  deleted: boolean,
+  at: number = Date.now(),
+): void {
+  known.set(eventId, { deleted, at });
 }
 
 export type DeletedIdsFetcher = (
@@ -34,20 +65,21 @@ export type DeletedIdsFetcher = (
 /**
  * Which of these the author has withdrawn.
  *
- * Only the ones nobody has asked about yet go to the relays; the rest are
- * answered from memory. A relay that cannot be reached answers nothing, and
- * nothing is remembered for the events it was asked about, so they are
- * asked about again next time rather than shown as if cleared.
+ * Only the ones nobody has asked about lately go to the relays; the rest
+ * are answered from memory. When no relay could be reached the fetch
+ * throws, nothing is remembered for the events it was asked about, and
+ * they are asked about again next time rather than shown as if cleared.
  */
 export async function findDeletedIds(
   relays: string[],
   events: NostrEvent[],
   fetch: DeletedIdsFetcher = fetchDeletedIds,
+  now: number = Date.now(),
 ): Promise<Set<string>> {
   const deleted: Set<string> = new Set();
   const unknown: NostrEvent[] = [];
   for (const event of events) {
-    const status: boolean | undefined = known.get(event.id);
+    const status: boolean | undefined = getCachedDeletionStatus(event.id, now);
     if (status === true) deleted.add(event.id);
     else if (status === undefined) unknown.push(event);
   }
@@ -61,7 +93,7 @@ export async function findDeletedIds(
   }
   for (const event of unknown) {
     const gone: boolean = found.has(event.id);
-    known.set(event.id, gone);
+    cacheDeletionStatus(event.id, gone, now);
     if (gone) deleted.add(event.id);
   }
   return deleted;
