@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { collectDeletedIds } from '../src/common/deleted-events.js';
 import {
   cacheDeletionStatus,
   createDeletionGate,
+  type DeletedIdsFetcher,
   findDeletedIds,
   getCachedDeletionStatus,
 } from '../src/common/deletion-gate.js';
@@ -133,4 +135,71 @@ test('gate: nothing waiting means nothing asked', async () => {
   await gate.flush();
   await gate.settle();
   assert.equal(calls, 0);
+});
+
+// --- the regression, as the timelines see it --------------------------------------
+//
+// Home, Global and Profile all draw through loadTimeline, which offers every
+// event to this gate; the judgement itself is collectDeletedIds. These feed
+// the gate what a relay would send - the notes and the kind 5s - and check
+// what reaches the screen.
+
+function deletionOf(note: NostrEvent, by: string = note.pubkey): NostrEvent {
+  counter += 1;
+  return {
+    id: `del-${counter}`,
+    pubkey: by,
+    created_at: note.created_at + 1,
+    kind: 5,
+    tags: [['e', note.id]],
+    content: '',
+    sig: '',
+  } as NostrEvent;
+}
+
+/** A relay that answers a kind 5 query from a fixed set of deletion requests. */
+function relayWith(deletions: NostrEvent[]): DeletedIdsFetcher {
+  return async (_relays, events) => collectDeletedIds(events, deletions);
+}
+
+test('profile: a note its author withdrew is not drawn, though the relay still serves it', async () => {
+  const author = 'b'.repeat(64);
+  const kept = { ...note(), pubkey: author };
+  const withdrawn = { ...note(), pubkey: author };
+  const drawn: string[] = [];
+  const gate = createDeletionGate<NostrEvent>({
+    relays: ['wss://r'],
+    delayMs: 5,
+    render: (events) => drawn.push(...events.map((e) => e.id)),
+    fetch: relayWith([deletionOf(withdrawn)]),
+  });
+  gate.offer(kept);
+  gate.offer(withdrawn);
+  await gate.settle();
+  assert.deepEqual(drawn, [kept.id]);
+});
+
+test('home and global: the same judgement across authors, and only the author can withdraw', async () => {
+  const alice = 'c'.repeat(64);
+  const bob = 'd'.repeat(64);
+  const aliceKept = { ...note(), pubkey: alice };
+  const aliceGone = { ...note(), pubkey: alice };
+  const bobKept = { ...note(), pubkey: bob };
+  const bobTargeted = { ...note(), pubkey: bob };
+  const drawn: string[] = [];
+  const gate = createDeletionGate<NostrEvent>({
+    relays: ['wss://r'],
+    delayMs: 5,
+    render: (events) => drawn.push(...events.map((e) => e.id)),
+    fetch: relayWith([
+      deletionOf(aliceGone),
+      // A stranger asking for somebody else's post to go is not honoured.
+      deletionOf(bobTargeted, alice),
+    ]),
+  });
+  for (const event of [aliceKept, aliceGone, bobKept, bobTargeted]) {
+    gate.offer(event);
+  }
+  await gate.settle();
+  assert.deepEqual(drawn, [aliceKept.id, bobKept.id, bobTargeted.id]);
 });
