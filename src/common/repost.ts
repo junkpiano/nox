@@ -10,13 +10,16 @@
  * `content` and leave only the `e` tag, so both are reported and the caller
  * decides whether an id alone is worth a relay round trip.
  *
- * Nothing here trusts the embedded copy any further than it has to. It arrived
- * inside somebody else's event and its signature is not checked at this layer,
- * so it is treated as a claim about what was reposted - fine for showing, and
- * the reason a reply or a reaction is addressed to the id rather than to
- * whatever the blob says about itself.
+ * The embedded copy arrived inside somebody else's event, and showing it means
+ * putting words under a name. So it is accepted only when its own signature
+ * proves the named author wrote them and its id proves they were not edited
+ * on the way - and, when the wrapper names a target in its `e` tag, only when
+ * the copy is that target. A kind 6 that fails any of these is treated as a
+ * repost with no copy: the id is still worth fetching, the blob is not worth
+ * believing.
  */
 
+import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
 
 /** kind 6 is a repost; kind 16 is a generic repost of a non-kind-1 event. */
@@ -54,6 +57,26 @@ function taggedEventId(event: NostrEvent): string | null {
   return null;
 }
 
+/**
+ * Whether an embedded copy can be shown under its author's name.
+ *
+ * `verifyEvent` checks that the id is the hash of the content and that the
+ * signature is the author's - so neither the words nor the attribution were
+ * changed by whoever wrapped it. The `e` tag check closes the other gap: a
+ * genuine old note of the author's, embedded in a repost that claims to be
+ * of something else.
+ */
+function isGenuineCopy(copy: NostrEvent, taggedId: string | null): boolean {
+  if (taggedId && copy.id !== taggedId) {
+    return false;
+  }
+  try {
+    return verifyEvent(copy);
+  } catch {
+    return false;
+  }
+}
+
 export function isRepost(event: NostrEvent): boolean {
   return REPOST_KINDS.has(event.kind);
 }
@@ -78,7 +101,7 @@ export function readRepost(event: NostrEvent): RepostTarget {
 
   try {
     const parsed: unknown = JSON.parse(event.content);
-    if (looksLikeEvent(parsed)) {
+    if (looksLikeEvent(parsed) && isGenuineCopy(parsed, tagged)) {
       return { event: parsed, eventId: parsed.id };
     }
   } catch {

@@ -11,18 +11,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { finalizeEvent, generateSecretKey } from 'nostr-tools';
 import { isRepost, readRepost, unwrapRepost } from '../src/common/repost.js';
 import type { NostrEvent } from '../types/nostr';
 
-const INNER: NostrEvent = {
-  id: 'b'.repeat(64),
-  pubkey: 'c'.repeat(64),
-  created_at: 1700000000,
-  kind: 1,
-  tags: [],
-  content: 'the original post',
-  sig: 'd'.repeat(128),
-} as NostrEvent;
+// A real signed note. The copy inside a repost is only shown when its own
+// signature proves the named author wrote it, so a hand-made fixture with
+// a fake signature would fail the very check under test.
+const INNER: NostrEvent = finalizeEvent(
+  {
+    kind: 1,
+    created_at: 1700000000,
+    tags: [],
+    content: 'the original post',
+  },
+  generateSecretKey(),
+) as unknown as NostrEvent;
 
 function repost(content: string, tags: string[][] = []): NostrEvent {
   return {
@@ -119,4 +123,37 @@ test('unwrap: a repost without a copy gives an id and no body', () => {
   assert.equal(out.event, null);
   assert.equal(out.targetId, INNER.id);
   assert.equal(out.repostedBy, 'e'.repeat(64));
+});
+
+// --- a copy is a claim until its signature says otherwise -------------------
+
+test('repost: a copy with a forged body is refused', () => {
+  // The attack: take somebody's real note, change the words, wrap it. The id
+  // no longer hashes the content, so verification fails and only the id
+  // from the e tag survives - which points at the real note.
+  const forged = { ...INNER, content: 'words they never wrote' };
+  const target = readRepost(repost(JSON.stringify(forged), [['e', INNER.id]]));
+  assert.equal(target.event, null);
+  assert.equal(target.eventId, INNER.id);
+});
+
+test('repost: a copy attributed to somebody else is refused', () => {
+  // Same words, different name on them. The signature is not that person's.
+  const misattributed = { ...INNER, pubkey: 'f'.repeat(64) };
+  const target = readRepost(repost(JSON.stringify(misattributed)));
+  assert.equal(target.event, null);
+});
+
+test('repost: a genuine copy of the wrong note is refused', () => {
+  // A real note of the author's, embedded in a repost whose e tag names a
+  // different event. The copy is authentic and still not what was reposted.
+  const other = 'd'.repeat(64);
+  const target = readRepost(repost(JSON.stringify(INNER), [['e', other]]));
+  assert.equal(target.event, null);
+  assert.equal(target.eventId, other);
+});
+
+test('repost: a genuine copy matching the e tag is accepted', () => {
+  const target = readRepost(repost(JSON.stringify(INNER), [['e', INNER.id]]));
+  assert.equal(target.event?.id, INNER.id);
 });

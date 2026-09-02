@@ -6,6 +6,7 @@
  * reply to your own post is a conversation you are already having, not news.
  */
 
+import { isMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { openRelaySubscription } from '../../src/common/relay-socket';
 import { unwrapRepost } from '../../src/common/repost';
@@ -158,6 +159,12 @@ export async function loadNotifications(
   }
 
   const notifications: Notification[] = fromOthers
+    // A JSON blob that happens to p-tag you is not a reply, whatever kind
+    // it claims. The timeline hides these and so does this.
+    .filter((event: NostrEvent): boolean => {
+      const shown: NostrEvent | null = unwrapRepost(event).event;
+      return !isMachineContent(shown?.content ?? event.content);
+    })
     .sort((a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at)
     .map((event: NostrEvent): Notification => {
       const meta = names.get(event.pubkey);

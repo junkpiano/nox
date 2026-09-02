@@ -27,6 +27,7 @@ import {
   contentWarningSummary,
   getContentWarning,
 } from '../../src/common/content-warning';
+import { isMachineContent } from '../../src/common/machine-content';
 import { fetchReferencedEvent } from '../../src/common/referenced-event';
 import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
@@ -78,7 +79,9 @@ export default function QuoteCard({ eventId, relays }: QuoteCardProps) {
             if (cancelled) return;
           }
         }
-        if (!event) {
+        // Data, not words. The timeline hides these; a card reached through a
+        // quote must not become the way they get drawn after all.
+        if (!event || isMachineContent(event.content)) {
           setMissing(true);
           return;
         }

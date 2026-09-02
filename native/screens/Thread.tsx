@@ -29,6 +29,7 @@ import {
   fetchRepliesForEvent,
   isEventDeleted,
 } from '../../src/common/events-queries';
+import { isMachineContent } from '../../src/common/machine-content';
 import { fetchReferencedEvent } from '../../src/common/referenced-event';
 import { unwrapRepost } from '../../src/common/repost';
 import { getSessionPrivateKey } from '../../src/common/session';
@@ -198,10 +199,16 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         setData({
           root,
           deleted,
-          replies: replies.sort(
-            (a: NostrEvent, b: NostrEvent): number =>
-              a.created_at - b.created_at,
-          ),
+          // Reached by a link or a notification, this screen bypasses the
+          // timeline's filter, so it applies the same one.
+          replies: replies
+            .filter(
+              (reply: NostrEvent): boolean => !isMachineContent(reply.content),
+            )
+            .sort(
+              (a: NostrEvent, b: NostrEvent): number =>
+                a.created_at - b.created_at,
+            ),
         });
       } catch (e: any) {
         if (!cancelled) setError(String(e?.message ?? e));
@@ -323,6 +330,10 @@ export default function Thread({ route }: { route: ThreadRoute }) {
             {data.deleted ? (
               <Text style={styles.deleted}>
                 The author asked for this to be deleted.
+              </Text>
+            ) : isMachineContent(root.content) ? (
+              <Text style={styles.deleted}>
+                This note is data written for software, not text.
               </Text>
             ) : (
               <PostBody
