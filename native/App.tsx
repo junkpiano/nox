@@ -16,7 +16,11 @@
  * minutes of compiling. `expo-linking` still gives us the deep links.
  */
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import {
+  type LinkingOptions,
+  NavigationContainer,
+  useNavigation,
+} from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -26,6 +30,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { onAppEvent } from '../src/common/app-events';
 import { kvGet } from '../src/common/kv';
+import { resolveNostrLink } from '../src/common/nostr-link';
 import { hidesWallet } from '../src/common/platform';
 import { hasAcceptedTerms } from '../src/common/terms';
 import type { PubkeyHex } from '../types/nostr';
@@ -54,8 +59,11 @@ export type RootStackParamList = {
   Relays: undefined;
   Checks: undefined;
   Profile: { pubkey: PubkeyHex };
-  /** `reply` opens the thread with the composer already up. */
-  Thread: { eventId: string; reply?: boolean };
+  /**
+   * `reply` opens the thread with the composer already up. `relays` are the
+   * hints an nevent carried: where the note is known to be, tried first.
+   */
+  Thread: { eventId: string; reply?: boolean; relays?: string[] };
   Chat: { peer: PubkeyHex; name: string };
   Wallet: undefined;
   Hashtag: { tag: string };
@@ -79,6 +87,54 @@ export type TabParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator<TabParamList>();
+
+/**
+ * Links into the app.
+ *
+ * A `nostr:` URI from another client, a `web+nostr:` one from a browser, a
+ * link to nox.garden, or the app's own scheme: each names a person, a note
+ * or a tag, and the shared resolver says which. The screen is pushed on top
+ * of the tabs, so the back gesture returns to the timeline rather than to
+ * nowhere. A link the resolver does not understand opens the front door.
+ */
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: [
+    'nox://',
+    'nox:',
+    'nostr:',
+    'web+nostr:',
+    'https://nox.garden',
+    'https://www.nox.garden',
+  ],
+  getStateFromPath: (path: string) => {
+    const target = resolveNostrLink(path);
+    const home = { name: 'Tabs' as const };
+    if (!target) return { routes: [home] };
+    switch (target.kind) {
+      case 'profile':
+        return {
+          routes: [
+            home,
+            { name: 'Profile', params: { pubkey: target.pubkey } },
+          ],
+        };
+      case 'event':
+        return {
+          routes: [
+            home,
+            {
+              name: 'Thread',
+              params: { eventId: target.eventId, relays: target.relays },
+            },
+          ],
+        };
+      case 'hashtag':
+        return {
+          routes: [home, { name: 'Hashtag', params: { tag: target.tag } }],
+        };
+    }
+  },
+};
 
 const theme = {
   dark: true,
@@ -233,7 +289,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <NavigationContainer theme={theme}>
+      <NavigationContainer theme={theme} linking={linking}>
         <Stack.Navigator>
           <Stack.Screen
             name="Tabs"

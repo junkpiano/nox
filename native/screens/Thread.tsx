@@ -166,7 +166,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
 
     (async (): Promise<void> => {
       try {
-        const fetched = await fetchReferencedEvent(eventId, relays);
+        // A link that arrived as an nevent says where the note is; those
+        // relays are tried first, since ours may never have seen it.
+        const fetched = await fetchReferencedEvent(eventId, relays, {
+          hintRelays: route.params.relays ?? [],
+        });
         if (cancelled) return;
         // A repost opened directly shows the note it reposted, never its
         // own content - which is that note as JSON. Without an embedded

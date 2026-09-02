@@ -18,12 +18,23 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "garden.nox.rn"
+      "package": "garden.nox.rn",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/" },
+            { "scheme": "https", "host": "www.nox.garden", "pathPrefix": "/" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "nox",
+    "scheme": ["nox", "nostr", "web+nostr"],
     "plugins": ["expo-status-bar", "expo-secure-store", "expo-sqlite"]
   }
 }
