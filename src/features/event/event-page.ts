@@ -5,15 +5,15 @@ import type {
   Npub,
   PubkeyHex,
 } from '../../../types/nostr';
-import {
-  getProfile as getCachedProfile,
-} from '../../common/db/index.js';
+import { getProfile as getCachedProfile } from '../../common/db/index.js';
+import { withoutDeleted } from '../../common/deleted-events.js';
+import { findDeletedIds } from '../../common/deletion-gate.js';
+import { getCachedEvent, setCachedEvent } from '../../common/event-cache.js';
 import {
   getTagMarker,
   loadReactionsForEvent,
   renderEvent,
 } from '../../common/event-render.js';
-import { getCachedEvent, setCachedEvent } from '../../common/event-cache.js';
 import {
   fetchEventById,
   fetchRepliesForEvent,
@@ -404,10 +404,14 @@ async function renderReplyTree(
   // Check if route is still active before fetching
   if (!isRouteActive()) return;
 
-  const replies: NostrEvent[] = await fetchRepliesForEvent(
+  const fetched: NostrEvent[] = await fetchRepliesForEvent(
     rootEvent.id,
     relays,
   );
+  // A reply its author withdrew is not part of the conversation. Asked
+  // once for the whole thread before any of it is drawn.
+  const withdrawn: Set<string> = await findDeletedIds(relays, fetched);
+  const replies: NostrEvent[] = withoutDeleted(fetched, withdrawn);
   // Warm event cache so parent cards can resolve from local cache first.
   void Promise.allSettled(
     [rootEvent, ...replies].map((event: NostrEvent) => setCachedEvent(event)),
