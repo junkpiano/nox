@@ -22,6 +22,8 @@
 export type AppEventName =
   | 'app-route-changed'
   | 'session-changed'
+  /** A note of the viewer's own reached a relay. */
+  | 'note-published'
   | 'mute-list-updated'
   | 'dm-messages-updated'
   | 'wallet-connection-changed'

@@ -211,6 +211,17 @@ export default function Home({ active = true }: { active?: boolean }) {
     }
   }, [pubkey, filter, posts, load, forget]);
 
+  // A note just posted belongs at the top of this list, which includes the
+  // viewer's own. An empty list is reloaded outright, since it has nothing
+  // to be newer than and the poll does not run on it.
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('note-published', (): void => {
+        void onRefresh();
+      }),
+    [onRefresh],
+  );
+
   if (!pubkey) {
     return <IdentityPrompt onChosen={setPubkey} />;
   }

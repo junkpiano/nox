@@ -29,6 +29,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { emitAppEvent } from '../../src/common/app-events';
 import { contentWarningTags } from '../../src/common/content-warning';
 import { NotSignedInError, publishNote } from '../lib/publish';
 
@@ -68,6 +69,9 @@ export default function Compose() {
       setText('');
       setWarned(false);
       setReason('');
+      // The timeline behind this screen shows the viewer's own posts, and
+      // was loaded before this one existed.
+      emitAppEvent('note-published');
       navigation.goBack();
     } catch (e: any) {
       if (e instanceof NotSignedInError) {
