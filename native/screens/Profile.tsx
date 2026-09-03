@@ -31,6 +31,7 @@ import {
   muteUser,
   unmuteUser,
 } from '../../src/features/moderation/moderation-actions';
+import type { UserStatus } from '../../src/features/profile/user-status';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
@@ -51,6 +52,7 @@ import {
 } from '../lib/interact';
 import { loadProfile, type Profile as ProfileData } from '../lib/profile';
 import { useOlderPosts } from '../lib/use-older-posts';
+import { useUserStatus, useUserStatuses } from '../lib/use-user-statuses';
 
 type ProfileRoute = RouteProp<RootStackParamList, 'Profile'>;
 
@@ -264,6 +266,9 @@ function ReportLink({ target }: { target: PubkeyHex }) {
 
 function Header({ profile }: { profile: ProfileData }) {
   const npub: string = nip19.npubEncode(profile.pubkey);
+  // NIP-38: filled in after the fact, like the web app does it. A status
+  // is decoration on a profile, and not finding one is not an error.
+  const status: UserStatus | null = useUserStatus(profile.pubkey);
 
   return (
     <View>
@@ -286,6 +291,22 @@ function Header({ profile }: { profile: ProfileData }) {
         ) : (
           <Text style={styles.npub}>{`${npub.slice(0, 20)}...`}</Text>
         )}
+        {status ? (
+          <Pressable
+            disabled={!status.url}
+            onPress={(): void => {
+              // The shared reader only keeps an http(s) link.
+              if (status.url) void Linking.openURL(status.url);
+            }}
+          >
+            <Text
+              style={[styles.status, status.url ? styles.link : null]}
+              numberOfLines={2}
+            >
+              {status.text}
+            </Text>
+          </Pressable>
+        ) : null}
 
         {profile.about ? (
           <RichText
@@ -357,6 +378,7 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   });
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const statuses = useUserStatuses(rows);
 
   useEffect(() => {
     let cancelled = false;
@@ -443,6 +465,7 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
       renderItem={({ item }: { item: TimelinePost }) => (
         <PostRow
           post={item}
+          status={statuses.get(item.pubkey) ?? null}
           onOpenThread={() => navigation.push('Thread', { eventId: item.id })}
           onOpenProfile={() =>
             navigation.push('Profile', { pubkey: item.pubkey })
@@ -470,6 +493,12 @@ const styles = StyleSheet.create({
   name: { color: '#f5f8ff', fontSize: 20, fontWeight: '700', marginTop: 8 },
   nip05: { color: '#89a8ff', fontSize: 13, marginTop: 2 },
   npub: { color: '#5b6b88', fontSize: 12, marginTop: 2 },
+  status: {
+    color: '#8fa3c7',
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginTop: 6,
+  },
   about: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 10 },
   website: { color: '#89a8ff', fontSize: 13, marginTop: 8 },
   follow: {

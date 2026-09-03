@@ -30,11 +30,13 @@ import {
 import { contentWarningSummary } from '../../src/common/content-warning';
 import { newPostsLabel } from '../../src/common/new-posts';
 import { getSessionPrivateKey } from '../../src/common/session';
+import type { UserStatus } from '../../src/features/profile/user-status';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import type { TimelinePost } from '../lib/home-timeline';
 import { likeEvent, NotSignedInError, repostEvent } from '../lib/interact';
 import { useSessionVersion } from '../lib/use-session-version';
+import { useUserStatuses } from '../lib/use-user-statuses';
 import PostBody from './PostBody';
 import PostMenu from './PostMenu';
 import QuoteCard from './QuoteCard';
@@ -43,10 +45,13 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function PostRow({
   post,
+  status = null,
   onOpenThread,
   onOpenProfile,
 }: {
   post: TimelinePost;
+  /** NIP-38: what the author says they are up to, when they said. */
+  status?: UserStatus | null;
   onOpenThread: () => void;
   onOpenProfile: () => void;
 }) {
@@ -95,6 +100,11 @@ export function PostRow({
         {post.nip05 ? (
           <Text style={styles.nip05} numberOfLines={1}>
             {post.nip05}
+          </Text>
+        ) : null}
+        {status ? (
+          <Text style={styles.status} numberOfLines={1}>
+            {status.text}
           </Text>
         ) : null}
         {post.warning.hasWarning && !revealed ? (
@@ -422,6 +432,7 @@ export default function PostList({
   // Rows decide whether to draw their action row from the session key, and
   // FlatList only re-renders rows when the data or this changes.
   const sessionVersion = useSessionVersion();
+  const statuses = useUserStatuses(posts);
   const list = useRef<FlatList<TimelinePost>>(null);
 
   const showNew = (): void => {
@@ -452,7 +463,7 @@ export default function PostList({
           ref={list}
           data={posts}
           keyExtractor={(p: TimelinePost) => p.key}
-          extraData={sessionVersion}
+          extraData={{ sessionVersion, statuses }}
           ListHeaderComponent={
             pendingCount > 0 ? (
               <NewPostsRow count={pendingCount} onPress={showNew} />
@@ -461,6 +472,7 @@ export default function PostList({
           renderItem={({ item }: { item: TimelinePost }) => (
             <PostRow
               post={item}
+              status={statuses.get(item.pubkey) ?? null}
               onOpenThread={() =>
                 navigation.push('Thread', { eventId: item.id })
               }
@@ -528,6 +540,12 @@ const styles = StyleSheet.create({
   },
   nip05: { color: '#5b6b88', fontSize: 11, marginTop: 1 },
   time: { color: '#5b6b88', fontSize: 11, marginLeft: 'auto' },
+  status: {
+    color: '#8fa3c7',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
   content: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 5 },
   link: { color: '#89a8ff' },
   actions: { flexDirection: 'row', gap: 28, marginTop: 10 },
