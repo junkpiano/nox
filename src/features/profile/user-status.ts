@@ -212,7 +212,7 @@ export function collectUserStatuses(
     if (firstTagValue(event, 'd') !== GENERAL) continue;
     if (!genuine(event)) continue;
     const held: NostrEvent | undefined = newest.get(author);
-    if (!held || event.created_at >= held.created_at) {
+    if (!held || newerThan(event, held)) {
       newest.set(author, event);
     }
   }
@@ -225,6 +225,20 @@ export function collectUserStatuses(
     }
   }
   return result;
+}
+
+/**
+ * Which of two revisions is current.
+ *
+ * Later `created_at` wins. For the same second, NIP-01 says the one with
+ * the lexically smaller id is the one to keep - so every client that reads
+ * the same two events agrees, whichever relay delivered which first.
+ */
+function newerThan(candidate: NostrEvent, held: NostrEvent): boolean {
+  if (candidate.created_at !== held.created_at) {
+    return candidate.created_at > held.created_at;
+  }
+  return candidate.id < held.id;
 }
 
 function genuine(event: NostrEvent): boolean {
