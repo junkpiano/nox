@@ -1,6 +1,5 @@
-import { finalizeEvent } from 'nostr-tools';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
-import { getSessionPrivateKey } from '../../common/session.js';
+import { signWithSession } from '../../common/signer.js';
 import { normalizeRelayUrl, recordRelayFailure } from './relays.js';
 
 // Local structural types to avoid module-resolution edge cases with `types/nostr`.
@@ -158,15 +157,5 @@ export async function signNip65RelayListEvent(params: {
     content: '',
   };
 
-  if ((window as any).nostr?.signEvent) {
-    return (await (window as any).nostr.signEvent(unsignedEvent)) as NostrEvent;
-  }
-
-  const privateKey: Uint8Array | null = getSessionPrivateKey();
-  if (!privateKey) {
-    throw new Error(
-      'No signing method available (extension or private key required).',
-    );
-  }
-  return finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
+  return signWithSession(unsignedEvent);
 }

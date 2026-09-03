@@ -1,11 +1,11 @@
-import { finalizeEvent, nip19 } from 'nostr-tools';
+import { nip19 } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { deleteEvents } from '../../common/db/index.js';
 import { isMuted } from '../../common/mute-state.js';
 import { setActiveNav } from '../../common/navigation.js';
 import { filterDeletedReactionEvents } from '../../common/reaction-interactions.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
-import { getSessionPrivateKey } from '../../common/session.js';
+import { signWithSession } from '../../common/signer.js';
 import { recordRelayFailure } from '../relays/relays.js';
 
 interface LoadReactionsPageOptions {
@@ -202,16 +202,7 @@ async function deleteEventOnRelays(
     content: '',
   };
 
-  let signedEvent: NostrEvent;
-  if ((window as any).nostr?.signEvent) {
-    signedEvent = await (window as any).nostr.signEvent(unsignedEvent);
-  } else {
-    const privateKey: Uint8Array | null = getSessionPrivateKey();
-    if (!privateKey) {
-      throw new Error('No signing method available');
-    }
-    signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
-  }
+  const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
 
   const publishPromises = relays.map(
     async (relayUrl: string): Promise<void> => {

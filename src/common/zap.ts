@@ -1,9 +1,10 @@
 import { bech32 } from '@scure/base';
-import { finalizeEvent, nip57 } from 'nostr-tools';
+import { nip57 } from 'nostr-tools';
 import * as QRCode from 'qrcode';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
 import { getWalletConnection } from '../features/wallet/wallet-store.js';
 import { crossOriginFetch } from './native-http.js';
+import { signWithSession } from './signer.js';
 
 interface ZapOverlayOptions {
   getSessionPrivateKey: () => Uint8Array | null;
@@ -283,18 +284,10 @@ async function signZapRequest(
   unsignedEvent: Omit<NostrEvent, 'id' | 'sig'>,
   options: ZapOverlayOptions,
 ): Promise<NostrEvent> {
-  const nostr: WindowWithNostrAndWebLn['nostr'] = (
+  const _nostr: WindowWithNostrAndWebLn['nostr'] = (
     window as WindowWithNostrAndWebLn
   ).nostr;
-  if (nostr?.signEvent) {
-    return await nostr.signEvent(unsignedEvent);
-  }
-
-  const privateKey: Uint8Array | null = options.getSessionPrivateKey();
-  if (!privateKey) {
-    throw new Error('No signing method available.');
-  }
-  return finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
+  return signWithSession(unsignedEvent);
 }
 
 async function requestZapInvoice(

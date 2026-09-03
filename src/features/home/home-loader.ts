@@ -1,5 +1,6 @@
 import type { PubkeyHex } from '../../../types/nostr';
 import { fetchFollowList } from '../../common/events-queries.js';
+import { isReadOnlySession } from '../../common/session.js';
 import { loadHomeTimeline } from './home-timeline.js';
 
 interface LoadUserHomeTimelineOptions {
@@ -101,7 +102,10 @@ export async function loadUserHomeTimeline(
     }
   } catch (error: unknown) {
     console.error('Error loading home timeline:', error);
-    localStorage.removeItem('nostr_pubkey');
+    // Browsing as a key that follows nobody is not a broken extension.
+    if (!isReadOnlySession()) {
+      localStorage.removeItem('nostr_pubkey');
+    }
 
     if (options.output) {
       options.output.innerHTML = `

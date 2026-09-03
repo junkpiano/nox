@@ -1,3 +1,4 @@
+import { isReadOnlySession } from '../../common/session.js';
 /**
  * User-facing mute and report actions.
  *
@@ -26,6 +27,11 @@ import type { ReportType } from './report.js';
 import { signReportEvent } from './report.js';
 
 function getViewerPubkey(): PubkeyHex | null {
+  // Browsing as a key: there is a pubkey, but nothing here can be decrypted
+  // or signed for it, so for this feature there is nobody.
+  if (isReadOnlySession()) {
+    return null;
+  }
   try {
     const stored: string | null = localStorage.getItem('nostr_pubkey');
     return stored ? (stored as PubkeyHex) : null;

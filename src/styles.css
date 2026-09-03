@@ -1534,3 +1534,33 @@ main {
   padding: 0.45rem 0.6rem;
   border-radius: 0.5rem;
 }
+
+/* Browsing as a public key is a state, not a status, and it is drawn dashed:
+   a dashed line is how a form says "not settled" without saying "wrong". No
+   key was given, nothing can be written, and nothing here pretends
+   otherwise. The pill sits with the session controls, and stays. */
+.nox-readonly-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.75rem 0.5rem 0;
+  padding: 0.4rem 0.75rem;
+  border: 1px dashed rgba(207, 216, 234, 0.45);
+  border-radius: 999px;
+  color: #cfd8ea;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+/* The way in without a secret, set apart from the two ways in with one by
+   the same dashed line, so the eye reads it as the lighter commitment. */
+.nox-browse {
+  padding-top: 1.1rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.28);
+}
+
+.nox-auth-error {
+  margin: 0;
+  color: #ffb4b4;
+  font-size: 0.8rem;
+}

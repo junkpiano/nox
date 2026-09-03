@@ -9,9 +9,11 @@ import { isNip05Identifier, resolveNip05 } from '../common/nip05.js';
 import { hidesWallet } from '../common/platform.js';
 import {
   clearSessionPrivateKey,
+  isReadOnlySession,
   setSessionPrivateKeyFromRaw,
   updateLogoutButton,
 } from '../common/session.js';
+import { canWrite } from '../common/signer.js';
 import { loadReactionsPage } from '../features/reactions/reactions-page.js';
 import {
   getAllRelays,
@@ -301,8 +303,9 @@ export function handleRoute(scrollRestoreState?: unknown): void {
     }
 
     if (path === '/signin') {
-      if (storedPubkey) {
-        // Nothing to sign in to.
+      if (storedPubkey && !isReadOnlySession()) {
+        // Nothing to sign in to. Read-only is the exception: signing in is
+        // exactly how it stops being read-only.
         replaceAppHistoryPath('/home');
         await loadHomePage(isRouteActive);
         return;
@@ -1069,16 +1072,20 @@ async function startAppCore(
     // Attached without waiting for the status to arrive: the editor watches
     // the line and reapplies itself when the relays fill it in, so there is no
     // ordering here to get wrong.
-    const { setupStatusEditor } = await import(
-      '../features/profile/status-editor.js'
-    );
-    setupStatusEditor(pubkeyHex, profileSection, {
-      getRelays: (): string[] => appState.relays,
-      publishEvent: publishEventToRelays,
-      onPublished: (): void => {
-        handleRoute();
-      },
-    });
+    // Only for someone who can sign it. Browsing as your own key shows
+    // your status like anyone else's, and offers no box to change it.
+    if (canWrite()) {
+      const { setupStatusEditor } = await import(
+        '../features/profile/status-editor.js'
+      );
+      setupStatusEditor(pubkeyHex, profileSection, {
+        getRelays: (): string[] => appState.relays,
+        publishEvent: publishEventToRelays,
+        onPublished: (): void => {
+          handleRoute();
+        },
+      });
+    }
   }
 
   try {

@@ -1,8 +1,8 @@
-import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
 import { storeEvent } from './db/index.js';
 import { replyTags } from './reply-tags.js';
+import { signWithSession } from './signer.js';
 
 interface ReplyOverlayOptions {
   getSessionPrivateKey: () => Uint8Array | null;
@@ -148,15 +148,7 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
         content,
       });
 
-      let signedEvent: NostrEvent;
-
-      if (hasExtension) {
-        signedEvent = await (window as any).nostr.signEvent(unsignedEvent);
-      } else if (sessionPrivateKey) {
-        signedEvent = finalizeEvent(unsignedEvent, sessionPrivateKey);
-      } else {
-        throw new Error('No signing method available');
-      }
+      const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
 
       const relays: string[] = options.getRelays();
       await options.publishEvent(signedEvent, relays);
