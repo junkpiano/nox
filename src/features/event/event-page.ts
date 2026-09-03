@@ -5,6 +5,7 @@ import type {
   Npub,
   PubkeyHex,
 } from '../../../types/nostr';
+import { setAvatar } from '../../common/avatar-dom.js';
 import { getProfile as getCachedProfile } from '../../common/db/index.js';
 import { withoutDeleted } from '../../common/deleted-events.js';
 import { findDeletedIds } from '../../common/deletion-gate.js';
@@ -21,7 +22,7 @@ import {
 } from '../../common/events-queries.js';
 import { setEventMeta } from '../../common/meta.js';
 import { setActiveNav } from '../../common/navigation.js';
-import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
+import { getDisplayName } from '../../utils/utils.js';
 import { fetchProfile, getAuthoritativeProfile } from '../profile/profile.js';
 import { getRelays, normalizeRelayUrl } from '../relays/relays.js';
 
@@ -245,8 +246,7 @@ export async function loadEventPage(
         nameEl.textContent = `👤 ${getDisplayName(npubStr, renderProfile)}`;
       }
       if (avatarEl) {
-        const avatarUrl = getAvatarURL(event.pubkey, renderProfile);
-        avatarEl.src = avatarUrl;
+        setAvatar(avatarEl, event.pubkey, renderProfile);
       }
     }
 

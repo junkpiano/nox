@@ -5,6 +5,11 @@ import type {
   Npub,
   PubkeyHex,
 } from '../../../types/nostr';
+import {
+  avatarErrorAttribute,
+  fallbackAvatarUrl,
+} from '../../common/avatar.js';
+import { loadableOnThisPage } from '../../common/avatar-dom.js';
 import { storeProfile } from '../../common/db/index.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
 import { openRelaySubscription } from '../../common/relay-socket.js';
@@ -488,7 +493,7 @@ export function renderProfile(
   // Validate scheme (reject javascript:/data: etc.) and escape for the src="" attribute
   // context. A profile's picture/banner are attacker-controlled kind-0 fields.
   const avatar: string =
-    normalizeHttpUrl(avatarRaw) ?? `https://robohash.org/${pubkey}.png`;
+    loadableOnThisPage(avatarRaw) ?? fallbackAvatarUrl(pubkey);
   const rawName: string = getDisplayName(npub, renderProfileData);
   const banner: string | null = renderProfileData?.banner
     ? normalizeHttpUrl(renderProfileData.banner)
@@ -512,7 +517,7 @@ export function renderProfile(
   const avatarHtml: string = isEnergySavingMode
     ? `<div class="w-20 h-20 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-3xl mb-2 border-4 ${banner ? 'border-white shadow-lg' : 'border-gray-200'}">👤</div>`
     : `<img src="${escapeHtml(avatar)}" alt="Avatar" class="w-20 h-20 rounded-full object-cover mb-2 border-4 ${banner ? 'border-white shadow-lg' : 'border-gray-200'}"
-            onerror="this.src='https://placekitten.com/100/100';" />`;
+            onerror="${avatarErrorAttribute(pubkey)}" />`;
 
   // Banner HTML based on energy saving mode
   const bannerHtml: string =

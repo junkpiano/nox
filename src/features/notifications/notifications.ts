@@ -5,10 +5,10 @@ import type {
   Npub,
   PubkeyHex,
 } from '../../../types/nostr';
+import { setAvatar } from '../../common/avatar-dom.js';
 import { isMuted } from '../../common/mute-state.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import {
-  getAvatarURL,
   getDisplayName,
   replaceEmojiShortcodes,
 } from '../../utils/utils.js';
@@ -119,7 +119,7 @@ function renderNotifications(
     avatar.className = 'h-10 w-10 flex-none rounded-full object-cover';
     avatar.loading = 'lazy';
     avatar.alt = '';
-    avatar.src = getAvatarURL(event.pubkey, profile);
+    setAvatar(avatar, event.pubkey, profile);
 
     const body: HTMLDivElement = document.createElement('div');
     body.className = 'min-w-0 flex-1';
