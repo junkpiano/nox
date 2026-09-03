@@ -4,9 +4,11 @@
  * The web app has shown these since it was written: the page's title, a
  * line of its description, its picture and the name of the site, fetched
  * from the page's Open Graph tags. The phone showed the bare URL. The page
- * is read directly here - a phone's requests were never bound by CORS - and
- * what the card says is decided by the shared describer, so this card and
- * the web's agree about the same page.
+ * is read through the proxy, the way a browser tab reads it, and not by
+ * the phone itself: a request from the reader's own device is one a post
+ * could aim at the reader's own network. What the card says is decided by
+ * the shared describer, so this card and the web's agree about the same
+ * page.
  *
  * Nothing is drawn until the page has answered, and nothing at all when it
  * had nothing to say: the URL is still in the text, and a box saying only

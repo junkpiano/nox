@@ -2,46 +2,62 @@
  * Reading a page's Open Graph tags, whichever way the page can be reached.
  *
  * A browser tab cannot read another site's HTML - CORS - so it asks the
- * proxy worker, which answers with the tags as JSON. The Tauri shell and the
- * phone read the page themselves and parse it with the shared parser; the
- * result is the same shape either way. One promise per URL is kept for the
- * session, so a link that appears in ten posts is fetched once.
+ * proxy worker, which answers with the tags as JSON. So does the phone, for
+ * a different reason: see fetchOGPViaProxy. The Tauri shell reads the page
+ * itself and parses it with the shared parser; the result is the same shape
+ * either way. One promise per URL is kept for the session, so a link that
+ * appears in ten posts is fetched once.
  *
  * Kept apart from utils.ts, which pulls in the emoji dictionary and the
  * rest of the web's kitchen drawer; the phone wants only this.
  */
 
 import type { OGPMetadata, OGPResponse } from '../../types/nostr';
-import {
-  crossOriginFetch,
-  hasCrossOriginFetch,
-  isNativeRuntime,
-} from './native-http.js';
+import { crossOriginFetch, isNativeRuntime } from './native-http.js';
 import { parseOgpDocument } from './ogp-parse.js';
 import { isPublicWebUrl } from './url-safety.js';
 
 const ogpCache: Map<string, Promise<OGPResponse | null>> = new Map();
 
+export const OGP_PROXY: string =
+  'https://nostr-proxy-worker.junkpiano.workers.dev/api/ogp';
+
 /**
- * Fetches OGP metadata through the CORS proxy worker.
+ * Fetches OGP metadata through the proxy worker.
  *
- * Used on the web, where the WebView cannot read cross-origin HTML directly.
+ * Used on the web, where a tab cannot read another site's HTML, and on the
+ * phone, where it could but must not: the URL came out of somebody else's
+ * post, and a request made from the reader's own device reaches whatever is
+ * on the reader's own network. Checking the name is not enough - a public
+ * name can resolve to a private address, and a runtime that follows
+ * redirects itself has already made the request by the time the landing
+ * address can be looked at. The proxy makes the request from somewhere
+ * that is nobody's home network, refuses private targets, and answers
+ * with the tags as a small JSON document.
  */
-async function fetchOGPViaProxy(url: string): Promise<OGPResponse | null> {
-  const encodedURL: string = encodeURIComponent(url);
-  const apiURL: string = `https://nostr-proxy-worker.junkpiano.workers.dev/api/ogp?url=${encodedURL}`;
-
-  const response: Response = await fetch(apiURL);
-
-  if (!response.ok) {
-    console.error(
-      `Failed to fetch OGP for ${url}: ${response.status} ${response.statusText}`,
-    );
-    return null;
+export async function fetchOGPViaProxy(
+  url: string,
+  fetchFn: DirectFetch = (target, init) => fetch(target, init),
+): Promise<OGPResponse | null> {
+  const apiURL: string = `${OGP_PROXY}?url=${encodeURIComponent(url)}`;
+  const abort: AbortController = new AbortController();
+  const deadline = setTimeout(
+    (): void => abort.abort(),
+    DIRECT_FETCH_TIMEOUT_MS,
+  );
+  try {
+    const response: Response = await fetchFn(apiURL, { signal: abort.signal });
+    if (!response.ok) {
+      console.error(
+        `Failed to fetch OGP for ${url}: ${response.status} ${response.statusText}`,
+      );
+      return null;
+    }
+    const data: OGPResponse = await response.json();
+    return data && typeof data === 'object' && data.data ? data : null;
+  } finally {
+    clearTimeout(deadline);
   }
-
-  const data: OGPResponse = await response.json();
-  return data;
 }
 
 /** How long a page gets to answer, including any redirects. */
@@ -56,9 +72,10 @@ export type DirectFetch = (url: string, init: RequestInit) => Promise<Response>;
 /**
  * Fetches OGP metadata straight from the origin and parses it locally.
  *
- * Only where requests are not subject to CORS: the Tauri shell and the
- * phone. The URL came out of somebody else's post, and the request is made
- * by the reader's own device on the reader's own network, so:
+ * Only in the Tauri shell, where it always has been. The URL came out of
+ * somebody else's post, and the request is made by the reader's own device
+ * on the reader's own network, so, as far as a name can be judged before
+ * it is resolved:
  *
  * - only a public web address is asked for, and every redirect is held to
  *   the same rule before it is followed, so a link cannot steer the phone
@@ -209,9 +226,12 @@ export async function fetchOGP(url: string): Promise<OGPResponse | null> {
   const request: Promise<OGPResponse | null> =
     (async (): Promise<OGPResponse | null> => {
       try {
-        // The Tauri shell and the phone both read the page themselves; only
-        // a browser tab needs the proxy to get past CORS.
-        return isNativeRuntime() || hasCrossOriginFetch()
+        // Only the Tauri shell reads the page itself, as it always has. The
+        // phone goes through the proxy like a browser tab: it could read the
+        // page, but a request from the reader's own device is one a post
+        // could aim at the reader's own network, and nothing on the phone
+        // can pin where a name resolves.
+        return isNativeRuntime()
           ? await fetchOGPDirect(url)
           : await fetchOGPViaProxy(url);
       } catch (error: unknown) {

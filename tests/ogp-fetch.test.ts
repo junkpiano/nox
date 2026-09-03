@@ -12,6 +12,8 @@ import {
   DIRECT_FETCH_MAX_BYTES,
   type DirectFetch,
   fetchOGPDirect,
+  fetchOGPViaProxy,
+  OGP_PROXY,
 } from '../src/common/ogp-fetch.js';
 
 const PAGE =
@@ -174,4 +176,38 @@ test('direct: something that is not a page is not read', async () => {
     null,
   );
   assert.equal(read, false);
+});
+
+// --- the proxy, which is where the phone goes ----------------------------------------
+
+test('proxy: the page is asked for by the worker, not the device, under a deadline', async () => {
+  let askedUrl = '';
+  let hadSignal = false;
+  const fetchFn: DirectFetch = async (url, init) => {
+    askedUrl = url;
+    hadSignal = init.signal instanceof AbortSignal;
+    return new Response(
+      JSON.stringify({ url: 'http://192.168.1.1/', data: { title: 'x' } }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  };
+  const result = await fetchOGPViaProxy('http://192.168.1.1/', fetchFn);
+  assert.equal(
+    askedUrl,
+    `${OGP_PROXY}?url=${encodeURIComponent('http://192.168.1.1/')}`,
+  );
+  assert.equal(hadSignal, true);
+  assert.equal(result?.data.title, 'x');
+});
+
+test('proxy: a refusal from the worker, or an answer that is not a card, is null', async () => {
+  const refused: DirectFetch = async () =>
+    new Response('bad target', { status: 400 });
+  assert.equal(await fetchOGPViaProxy('http://127.0.0.1/', refused), null);
+  const junk: DirectFetch = async () =>
+    new Response('"not an object"', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  assert.equal(await fetchOGPViaProxy('https://example.com/', junk), null);
 });

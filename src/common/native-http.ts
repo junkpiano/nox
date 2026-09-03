@@ -43,15 +43,6 @@ export function isNativeRuntime(): boolean {
   return Boolean((globalThis as { isTauri?: boolean }).isTauri);
 }
 
-/**
- * Whether a fetch that is not bound by CORS has been installed - the phone
- * installs one at start-up, since its requests never had CORS to begin
- * with. A caller that would otherwise go through the proxy can go direct.
- */
-export function hasCrossOriginFetch(): boolean {
-  return installedFetch !== null;
-}
-
 async function loadNativeFetch(): Promise<FetchFn> {
   const module = await import('@tauri-apps/plugin-http');
   return module.fetch as FetchFn;
