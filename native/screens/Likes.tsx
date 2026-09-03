@@ -43,17 +43,20 @@ export default function Likes() {
       const events: NostrEvent[] = await fetchLikedEvents(likes, relays);
       const decorated = await decorateEvents(relays, events);
       // decorateEvents sorts by the post's own time; this list is ordered by
-      // when you liked, which is what "newest first" means here.
+      // when you liked, which is what "newest first" means here. A like
+      // names the event as it arrived - for a repost, the wrapper - which is
+      // the row's key, not its id (the note inside).
       const order: Map<string, number> = new Map(
         likes.map((like: Like, index: number): [string, number] => [
           like.targetId,
           index,
         ]),
       );
+      const last: number = likes.length;
       setPosts(
         [...decorated.posts].sort(
           (a: TimelinePost, b: TimelinePost): number =>
-            (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+            (order.get(a.key) ?? last) - (order.get(b.key) ?? last),
         ),
       );
       setError(null);
