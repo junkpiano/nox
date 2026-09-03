@@ -56,9 +56,16 @@ export function useUserStatuses(
           const status = known.get(pubkey);
           return status ? [status.until] : [];
         });
+        // Only an expiry before the next scheduled ask needs a timer of its
+        // own; the interval covers the rest. Never a long timer: past about
+        // 24.8 days a setTimeout delay overflows 32 bits and fires at once,
+        // and an author can set an `expiration` years out - which would
+        // have made ask, setState and setTimeout a tight loop.
         if (ends.length > 0) {
           const wait: number = Math.min(...ends) * 1000 - Date.now();
-          atExpiry = setTimeout(ask, Math.max(0, wait) + 50);
+          if (wait <= STATUS_ANSWER_TTL_SECONDS * 1000) {
+            atExpiry = setTimeout(ask, Math.max(0, wait) + 50);
+          }
         }
       });
     };
