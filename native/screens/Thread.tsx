@@ -32,15 +32,21 @@ import {
 } from '../../src/common/events-queries';
 import { isMachineContent } from '../../src/common/machine-content';
 import { fetchReferencedEvent } from '../../src/common/referenced-event';
+import { replyParentOf } from '../../src/common/reply-target';
 import { unwrapRepost } from '../../src/common/repost';
 import { getSessionPrivateKey } from '../../src/common/session';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import PostBody from '../components/PostBody';
+import { PostRow } from '../components/PostList';
 import ReportSheet from '../components/ReportSheet';
 import { customEmojiOf } from '../lib/avatar';
-import { fetchProfilesForPubkeys } from '../lib/home-timeline';
+import {
+  decorateEvents,
+  fetchProfilesForPubkeys,
+  type TimelinePost,
+} from '../lib/home-timeline';
 import {
   likeEvent,
   NotSignedInError,
@@ -49,6 +55,7 @@ import {
 } from '../lib/interact';
 import { useOwnReactions } from '../lib/use-own-reactions';
 import { useSessionVersion } from '../lib/use-session-version';
+import { useUserStatuses } from '../lib/use-user-statuses';
 
 type ThreadRoute = RouteProp<RootStackParamList, 'Thread'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -56,7 +63,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 interface ThreadData {
   root: NostrEvent | null;
   deleted: boolean;
-  replies: NostrEvent[];
+  /** Decorated like a timeline, so the same card draws them. */
+  replies: TimelinePost[];
 }
 
 function timeAgo(createdAt: number): string {
@@ -78,11 +86,14 @@ function Author({
   pubkey,
   at,
   client,
+  large = false,
 }: {
   pubkey: PubkeyHex;
   at: number;
   /** NIP-89: what the event says it was posted with, if anything. */
   client: string | null;
+  /** The subject of the page gets a larger face and name than a reply. */
+  large?: boolean;
 }) {
   const navigation = useNavigation<Nav>();
   const [meta, setMeta] = useState<{
@@ -112,12 +123,24 @@ function Author({
       hitSlop={4}
     >
       {meta?.picture ? (
-        <Image source={{ uri: meta.picture }} style={styles.authorAvatar} />
+        <Image
+          source={{ uri: meta.picture }}
+          style={[styles.authorAvatar, large && styles.authorAvatarLarge]}
+        />
       ) : (
-        <View style={[styles.authorAvatar, styles.authorAvatarBlank]} />
+        <View
+          style={[
+            styles.authorAvatar,
+            large && styles.authorAvatarLarge,
+            styles.authorAvatarBlank,
+          ]}
+        />
       )}
       <View style={styles.authorText}>
-        <Text style={styles.authorName} numberOfLines={1}>
+        <Text
+          style={[styles.authorName, large && styles.authorNameLarge]}
+          numberOfLines={1}
+        >
           {meta?.name || `${pubkey.slice(0, 8)}...`}
         </Text>
         {meta?.nip05 ? (
@@ -140,7 +163,12 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const [error, setError] = useState<string | null>(null);
   // Whether you already liked or reposted this, from the shared book: the
   // relays are asked once, and a like made on a card shows here too.
-  const own = useOwnReactions(data?.root ? [data.root.id] : []);
+  const own = useOwnReactions(
+    data?.root
+      ? [data.root.id, ...data.replies.map((reply): string => reply.id)]
+      : [],
+  );
+  const statuses = useUserStatuses(data?.replies ?? []);
   const liked: boolean = data?.root ? own.liked.has(data.root.id) : false;
   const reposted: boolean = data?.root ? own.reposted.has(data.root.id) : false;
   const [liking, setLiking] = useState(false);
@@ -218,19 +246,25 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         ]);
         if (cancelled) return;
 
+        // Reached by a link or a notification, this screen bypasses the
+        // timeline's filter, so it applies the same one - and then dresses
+        // the replies the way the timeline dresses a post, so the same card
+        // draws them: face, name, status, actions, quotes.
+        const decorated = await decorateEvents(
+          relays,
+          replies.filter(
+            (reply: NostrEvent): boolean => !isMachineContent(reply.content),
+          ),
+          { profiles: 'cached-then-relays' },
+        );
+        if (cancelled) return;
         setData({
           root,
           deleted,
-          // Reached by a link or a notification, this screen bypasses the
-          // timeline's filter, so it applies the same one.
-          replies: replies
-            .filter(
-              (reply: NostrEvent): boolean => !isMachineContent(reply.content),
-            )
-            .sort(
-              (a: NostrEvent, b: NostrEvent): number =>
-                a.created_at - b.created_at,
-            ),
+          replies: [...decorated.posts].sort(
+            (a: TimelinePost, b: TimelinePost): number =>
+              a.createdAt - b.createdAt,
+          ),
         });
       } catch (e: any) {
         if (!cancelled) setError(String(e?.message ?? e));
@@ -269,6 +303,8 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   }
 
   const root: NostrEvent = data.root;
+  // What this note answers, when it answers something: the way up.
+  const parent = replyParentOf(root);
 
   /** One place to report what a write actually did, rather than three. */
   const attempt = async (
@@ -335,24 +371,32 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     <FlatList
       style={styles.screen}
       data={data.replies}
-      keyExtractor={(event: NostrEvent) => event.id}
+      keyExtractor={(post: TimelinePost) => post.key}
       ListHeaderComponent={
         <View>
-          <Pressable
-            onPress={() =>
-              navigation.navigate('Profile', {
-                pubkey: root.pubkey as PubkeyHex,
-              })
-            }
-            style={styles.rootPost}
-          >
+          <View style={styles.rootPost}>
             {/* Who wrote it. The screen showed a time and a body and nothing
-                else, so an event page was a paragraph from nobody. */}
+                else, so an event page was a paragraph from nobody. The face
+                and the name go to the person; the words are for reading. */}
             <Author
               pubkey={root.pubkey as PubkeyHex}
               at={root.created_at}
               client={readClientName(root.tags)}
+              large
             />
+            {parent ? (
+              <Pressable
+                onPress={(): void =>
+                  navigation.push('Thread', {
+                    eventId: parent.id,
+                    relays: parent.relays,
+                  })
+                }
+                hitSlop={6}
+              >
+                <Text style={styles.inReplyTo}>↩ In reply to another post</Text>
+              </Pressable>
+            ) : null}
             {data.deleted ? (
               <Text style={styles.deleted}>
                 The author asked for this to be deleted.
@@ -369,7 +413,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                 emoji={customEmojiOf(root.tags)}
               />
             )}
-          </Pressable>
+          </View>
           {getSessionPrivateKey() && !data.deleted ? (
             <View style={styles.actions}>
               <View style={styles.actionRow}>
@@ -472,27 +516,18 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         />
       }
       ItemSeparatorComponent={() => <View style={styles.sep} />}
-      renderItem={({ item }: { item: NostrEvent }) => (
-        <Pressable
-          onPress={() => navigation.push('Thread', { eventId: item.id })}
-          style={({ pressed }) => [
-            styles.reply,
-            pressed && styles.replyPressed,
-          ]}
-        >
-          <Author
-            pubkey={item.pubkey as PubkeyHex}
-            at={item.created_at}
-            client={readClientName(item.tags)}
-          />
-          <PostBody
-            content={item.content}
-            textStyle={styles.replyContent}
-            linkStyle={styles.link}
-            numberOfLines={12}
-            emoji={customEmojiOf(item.tags)}
-          />
-        </Pressable>
+      renderItem={({ item }: { item: TimelinePost }) => (
+        <PostRow
+          post={item}
+          status={statuses.get(item.pubkey) ?? null}
+          own={own}
+          onOpenThread={(): void =>
+            navigation.push('Thread', { eventId: item.id })
+          }
+          onOpenProfile={(): void =>
+            navigation.push('Profile', { pubkey: item.pubkey })
+          }
+        />
       )}
     />
   );
@@ -501,7 +536,8 @@ export default function Thread({ route }: { route: ThreadRoute }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0b1220' },
   rootPost: { padding: 16 },
-  rootContent: { color: '#e8eeff', fontSize: 16, lineHeight: 23, marginTop: 6 },
+  rootContent: { color: '#e8eeff', fontSize: 17, lineHeight: 25, marginTop: 6 },
+  inReplyTo: { color: '#89a8ff', fontSize: 12, marginBottom: 8 },
   deleted: {
     color: '#8ea0c0',
     fontSize: 14,
@@ -520,9 +556,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: '#25406e',
   },
+  authorAvatarLarge: { width: 44, height: 44, borderRadius: 22 },
   authorAvatarBlank: { opacity: 0.5 },
   authorText: { flex: 1 },
   authorName: { color: '#e8eeff', fontWeight: '700', fontSize: 14 },
+  authorNameLarge: { fontSize: 16 },
   authorNip05: { color: '#5b6b88', fontSize: 11, marginTop: 1 },
   meta: { color: '#5b6b88', fontSize: 11 },
   likeButton: {
@@ -534,21 +572,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
   },
-  actions: { paddingHorizontal: 16, paddingBottom: 14, gap: 8 },
-  actionRow: { flexDirection: 'row', gap: 8 },
-  action: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#25406e',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
+  actions: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
+  // No box. Four boxed buttons across the width read as a toolbar louder
+  // than the post; a card's row is bare marks, and this is a card's row.
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 28 },
+  action: { paddingVertical: 6 },
   actionOff: { opacity: 0.5 },
   link: { color: '#89a8ff' },
-  reportText: { color: '#8ea0c0', fontSize: 18 },
-  actionText: { color: '#89a8ff', fontSize: 20 },
-  actionDone: { color: '#73f0c1', fontSize: 20 },
+  reportText: { color: '#5b6b88', fontSize: 15 },
+  actionText: { color: '#5b6b88', fontSize: 17 },
+  actionDone: { color: '#73f0c1', fontSize: 17 },
   replyInput: {
     borderWidth: 1,
     borderColor: '#25406e',
