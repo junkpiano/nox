@@ -12,6 +12,7 @@
  * back.
  */
 
+import { readClientName } from '../../src/common/client-tag';
 import {
   type ContentWarning,
   getContentWarning,
@@ -75,6 +76,11 @@ export interface TimelinePost {
   nip05: string | null;
   /** NIP-36, as the author set it. Never inferred from the text. */
   warning: ContentWarning;
+  /**
+   * NIP-89: the client the author says they posted from, already cut to
+   * one short line by the shared reader. Null when the event does not say.
+   */
+  client: string | null;
   /**
    * The event as it arrived.
    *
@@ -494,6 +500,7 @@ export async function decorateEvents(
         picture: meta?.picture ?? null,
         nip05: meta?.nip05 ?? null,
         warning: getContentWarning(shown),
+        client: readClientName(shown.tags),
         event: shown,
         repostedBy: isRepost(event)
           ? {

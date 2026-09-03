@@ -87,7 +87,10 @@ export function PostRow({
               ⇄ {post.repostedBy.name}
             </Text>
           ) : null}
-          <Text style={styles.time}>{timeAgo(post.createdAt)}</Text>
+          <Text style={styles.time} numberOfLines={1}>
+            {timeAgo(post.createdAt)}
+            {post.client ? ` · ${post.client}` : ''}
+          </Text>
         </View>
         {post.nip05 ? (
           <Text style={styles.nip05} numberOfLines={1}>

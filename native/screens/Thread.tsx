@@ -25,6 +25,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { readClientName } from '../../src/common/client-tag';
 import {
   fetchRepliesForEvent,
   isEventDeleted,
@@ -71,7 +72,16 @@ function timeAgo(createdAt: number): string {
  * the profiles are a separate question - the same one the timeline asks, so
  * the same cache answers it.
  */
-function Author({ pubkey, at }: { pubkey: PubkeyHex; at: number }) {
+function Author({
+  pubkey,
+  at,
+  client,
+}: {
+  pubkey: PubkeyHex;
+  at: number;
+  /** NIP-89: what the event says it was posted with, if anything. */
+  client: string | null;
+}) {
   const navigation = useNavigation<Nav>();
   const [meta, setMeta] = useState<{
     name: string;
@@ -114,7 +124,10 @@ function Author({ pubkey, at }: { pubkey: PubkeyHex; at: number }) {
           </Text>
         ) : null}
       </View>
-      <Text style={styles.meta}>{timeAgo(at)}</Text>
+      <Text style={styles.meta} numberOfLines={1}>
+        {timeAgo(at)}
+        {client ? ` · ${client}` : ''}
+      </Text>
     </Pressable>
   );
 }
@@ -330,7 +343,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           >
             {/* Who wrote it. The screen showed a time and a body and nothing
                 else, so an event page was a paragraph from nobody. */}
-            <Author pubkey={root.pubkey as PubkeyHex} at={root.created_at} />
+            <Author
+              pubkey={root.pubkey as PubkeyHex}
+              at={root.created_at}
+              client={readClientName(root.tags)}
+            />
             {data.deleted ? (
               <Text style={styles.deleted}>
                 The author asked for this to be deleted.
@@ -457,7 +474,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
             pressed && styles.replyPressed,
           ]}
         >
-          <Author pubkey={item.pubkey as PubkeyHex} at={item.created_at} />
+          <Author
+            pubkey={item.pubkey as PubkeyHex}
+            at={item.created_at}
+            client={readClientName(item.tags)}
+          />
           <PostBody
             content={item.content}
             textStyle={styles.replyContent}
