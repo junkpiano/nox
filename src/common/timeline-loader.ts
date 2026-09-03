@@ -144,7 +144,7 @@ function updateRenderedProfile(
       const avatarEl: Element | null = el.querySelector('.event-avatar');
       if (nameEl) {
         const npubStr: Npub = nip19.npubEncode(event.pubkey);
-        nameEl.textContent = `👤 ${getDisplayName(npubStr, renderProfile)}`;
+        nameEl.textContent = getDisplayName(npubStr, renderProfile);
       }
       if (avatarEl) {
         setAvatar(avatarEl as HTMLImageElement, event.pubkey, renderProfile);

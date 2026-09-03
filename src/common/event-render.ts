@@ -1227,27 +1227,28 @@ export function renderEvent(
   const replyButtonTitle: string = isLoggedIn
     ? 'Reply'
     : 'Reply (sign-in required)';
-  const replyButtonClasses: string = `${actionBtnBase} reply-event-btn text-blue-600 hover:text-blue-800 hover:bg-blue-50`;
+  const actionIdle: string = 'text-slate-400';
+  const replyButtonClasses: string = `${actionBtnBase} reply-event-btn ${actionIdle} hover:text-blue-500 hover:bg-blue-50`;
 
   const repostButtonTitle: string = isLoggedIn
     ? 'Repost'
     : 'Repost (sign-in required)';
   const repostButtonClasses: string = isLoggedIn
-    ? `${actionBtnBase} repost-event-btn text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50`
+    ? `${actionBtnBase} repost-event-btn ${actionIdle} hover:text-emerald-500 hover:bg-emerald-50`
     : `${actionBtnBase} repost-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
   const reactButtonTitle: string = isLoggedIn
     ? 'React'
     : 'React (sign-in required)';
   const reactButtonClasses: string = isLoggedIn
-    ? `${actionBtnBase} react-event-btn text-rose-600 hover:text-rose-800 hover:bg-rose-50`
+    ? `${actionBtnBase} react-event-btn ${actionIdle} hover:text-rose-500 hover:bg-rose-50`
     : `${actionBtnBase} react-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
   const zapButtonTitle: string = canZapTarget
     ? 'Zap via Lightning'
     : 'Zap unavailable';
   const zapButtonClasses: string = canZapTarget
-    ? `${actionBtnBase} zap-event-btn text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50`
+    ? `${actionBtnBase} zap-event-btn ${actionIdle} hover:text-amber-500 hover:bg-amber-50`
     : `${actionBtnBase} zap-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
   const deleteButtonTitle: string = 'Delete post';
@@ -1276,7 +1277,9 @@ export function renderEvent(
             ${
               canZapTarget
                 ? `<button class="${zapButtonClasses}" aria-label="Zap post" title="${zapButtonTitle}">
-                    <span aria-hidden="true" class="text-sm leading-none">⚡</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M13 2L4 14h7l-1 8 10-12h-7l1-8z" />
+                    </svg>
                   </button>`
                 : ''
             }
@@ -1498,7 +1501,7 @@ export function renderEvent(
 				      </a>
 				      <div class="flex-1 overflow-x-hidden overflow-y-visible">
 			        <div class="flex items-center gap-2 min-w-0 mb-1">
-			          <a href="/${safeNpub}" class="event-username min-w-0 truncate font-semibold text-gray-800 text-sm hover:text-blue-600 transition-colors">👤 ${safeName}</a>
+			          <a href="/${safeNpub}" class="event-username min-w-0 truncate font-semibold text-gray-800 text-sm hover:text-blue-600 transition-colors">${safeName}</a>
 			          ${
                   eventPermalink
                     ? `<a href="${eventPermalink}" class="flex-none text-xs text-gray-500 hover:text-blue-600 transition-colors" title="${escapeHtmlAttribute(createdAt)}">${escapeHtmlAttribute(timeLabel)}</a>`
@@ -1855,6 +1858,18 @@ export function renderEvent(
   }
 }
 
+/** The event id an nevent/note reference names, or '' when it will not decode. */
+function referencedIdOf(eventRef: string): string {
+  try {
+    const decoded = nip19.decode(eventRef);
+    if (decoded.type === 'note') return decoded.data as string;
+    if (decoded.type === 'nevent') return (decoded.data as { id: string }).id;
+  } catch {
+    // Not a reference this reads.
+  }
+  return '';
+}
+
 function resolveRepostEventId(event: NostrEvent): string | null {
   if (event.kind !== 6 && event.kind !== 16) {
     return null;
@@ -2069,8 +2084,21 @@ async function renderReferencedEventCards(
 ): Promise<void> {
   const currentRelays: string[] = normalizeRelayList(getRelays());
   const maxCards: number = 3;
+  // Notes the page itself is showing, marked on the output by the event
+  // page. A quote of one of them is a pointer at something already here.
+  const shown: Set<string> = new Set(
+    (
+      container.closest<HTMLElement>('[data-thread-ids]')?.dataset.threadIds ??
+      ''
+    )
+      .split(',')
+      .filter(Boolean),
+  );
 
   for (const eventRef of eventRefs.slice(0, maxCards)) {
+    if (shown.has(referencedIdOf(eventRef))) {
+      continue;
+    }
     const card: HTMLDivElement = document.createElement('div');
     card.className = 'border border-indigo-200 bg-indigo-50 rounded-lg p-3';
     card.textContent = 'Loading referenced event...';

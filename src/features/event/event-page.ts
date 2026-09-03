@@ -97,7 +97,7 @@ export async function loadEventPage(
   const postsHeader: HTMLElement | null =
     document.getElementById('posts-header');
   if (postsHeader) {
-    postsHeader.textContent = 'Event';
+    postsHeader.textContent = 'Thread';
     postsHeader.style.display = '';
   }
 
@@ -169,8 +169,13 @@ export async function loadEventPage(
 
     if (!event) {
       if (!isRouteActive()) return; // Guard before DOM update
-      options.output.innerHTML =
-        "<p class='text-red-500'>Event not found on the configured relays.</p>";
+      options.output.innerHTML = `
+        <section class="nox-gate">
+          <p class="nox-gate-copy">None of your relays has this note.</p>
+          <p class="nox-gate-hint">Add the author's relay under Relays, or open the link where you found it.</p>
+          <a href="/relays" class="nox-secondary-button py-2 px-5">Relays</a>
+        </section>
+      `;
       return;
     }
 
@@ -194,6 +199,10 @@ export async function loadEventPage(
     const rootCard = options.output.querySelector(
       `[data-event-id="${event.id}"]`,
     ) as HTMLElement | null;
+    rootCard?.classList.add('event-root');
+    // The notes this page already shows in full. A reply quoting one of
+    // them gets no card for it - the full text is right above.
+    options.output.dataset.threadIds = event.id;
     const ancestorSection = document.createElement('div');
     ancestorSection.className = 'ancestor-chain mb-2';
     if (rootCard) {
@@ -243,7 +252,7 @@ export async function loadEventPage(
         '.event-avatar',
       ) as HTMLImageElement | null;
       if (nameEl) {
-        nameEl.textContent = `👤 ${getDisplayName(npubStr, renderProfile)}`;
+        nameEl.textContent = getDisplayName(npubStr, renderProfile);
       }
       if (avatarEl) {
         setAvatar(avatarEl, event.pubkey, renderProfile);
@@ -362,6 +371,13 @@ async function renderAncestorChain(
   isRouteActive: () => boolean,
 ): Promise<void> {
   if (ancestors.length === 0) return;
+  const output: HTMLElement | null = section.closest('#nostr-output');
+  if (output) {
+    output.dataset.threadIds = [
+      ...(output.dataset.threadIds ?? '').split(',').filter(Boolean),
+      ...ancestors.map((ancestor: NostrEvent): string => ancestor.id),
+    ].join(',');
+  }
 
   const profiles = new Map<PubkeyHex, NostrProfile | null>();
   await Promise.allSettled(
@@ -379,6 +395,8 @@ async function renderAncestorChain(
     const npub = nip19.npubEncode(ancestor.pubkey) as Npub;
 
     const temp = document.createElement('div');
+    if (output?.dataset.threadIds)
+      temp.dataset.threadIds = output.dataset.threadIds;
     renderEvent(ancestor, profile, npub, ancestor.pubkey as PubkeyHex, temp);
     const card = temp.firstElementChild as HTMLElement | null;
     if (!card) continue;
@@ -418,15 +436,16 @@ async function renderReplyTree(
   );
   if (!isRouteActive()) return; // Guard before DOM update
   const section: HTMLDivElement = document.createElement('div');
-  section.className = 'mt-6';
-  section.innerHTML = `<h3 class="text-lg font-semibold mb-3">Replies</h3>`;
+  section.className = 'thread-replies';
+  const count: number = replies.length;
+  section.innerHTML = `<p class="nox-kicker thread-replies-kicker">${
+    count === 0
+      ? 'No replies yet'
+      : `${count} ${count === 1 ? 'reply' : 'replies'}`
+  }</p>`;
   output.appendChild(section);
 
   if (replies.length === 0) {
-    const empty: HTMLDivElement = document.createElement('div');
-    empty.className = 'text-sm text-gray-500';
-    empty.textContent = 'No replies yet.';
-    section.appendChild(empty);
     return;
   }
 
@@ -485,11 +504,15 @@ async function renderReplyTree(
     const wrapper: HTMLDivElement = document.createElement('div');
     wrapper.className = 'mt-4';
     if (depth > 0) {
-      wrapper.classList.add('border-l', 'border-gray-200', 'pl-4');
-      wrapper.style.marginLeft = `${depth * 16}px`;
+      wrapper.classList.add('thread-branch');
+      wrapper.style.marginLeft = `${depth * 12}px`;
     }
 
     const temp: HTMLDivElement = document.createElement('div');
+    // Rendered detached, so the card cannot see the page's thread ids
+    // through the DOM; they travel on the scratch element instead.
+    if (output.dataset.threadIds)
+      temp.dataset.threadIds = output.dataset.threadIds;
     const npub: Npub = nip19.npubEncode(event.pubkey);
     const profile: NostrProfile | null = profiles.get(event.pubkey) || null;
     renderEvent(event, profile, npub, event.pubkey as PubkeyHex, temp);
