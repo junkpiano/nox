@@ -5,7 +5,7 @@ import { isMuted } from '../../common/mute-state.js';
 import { setActiveNav } from '../../common/navigation.js';
 import { filterDeletedReactionEvents } from '../../common/reaction-interactions.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
-import { signWithSession } from '../../common/signer.js';
+import { canWrite, signWithSession } from '../../common/signer.js';
 import { recordRelayFailure } from '../relays/relays.js';
 
 interface LoadReactionsPageOptions {
@@ -388,6 +388,9 @@ export async function loadReactionsPage(
     deleteBtn.type = 'button';
     deleteBtn.className =
       'inline-flex items-center justify-center p-1 rounded text-red-600 hover:text-red-800 hover:bg-red-50 transition-colors';
+    // Browsing as a key shows that key's likes; none of them can be taken
+    // back from here, so the bin is not offered.
+    deleteBtn.hidden = !canWrite();
     deleteBtn.title = 'Delete reaction';
     deleteBtn.setAttribute('aria-label', 'Delete reaction');
     deleteBtn.innerHTML = `
