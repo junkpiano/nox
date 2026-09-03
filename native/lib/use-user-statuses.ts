@@ -8,7 +8,10 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { createStatusBook } from '../../src/common/status-book';
+import {
+  createStatusBook,
+  STATUS_ANSWER_TTL_SECONDS,
+} from '../../src/common/status-book';
 import type { UserStatus } from '../../src/features/profile/user-status';
 import { getRelays } from '../../src/features/relays/relays';
 import type { PubkeyHex } from '../../types/nostr';
@@ -32,15 +35,27 @@ export function useUserStatuses(
 
   useEffect((): (() => void) => {
     let cancelled = false;
-    if (authors) {
+    if (!authors) {
+      return (): void => {
+        cancelled = true;
+      };
+    }
+    const ask = (): void => {
       void book
         .ask(authors.split(',') as PubkeyHex[], getRelays())
         .then((known): void => {
           if (!cancelled) setStatuses(known);
         });
-    }
+    };
+    ask();
+    // A screen left open outlives the book's belief in its answers, and a
+    // status can run out on its own. Asking again on the book's own
+    // schedule keeps both current; the book decides whether anyone is
+    // actually asked, so a quiet screen costs nothing.
+    const again = setInterval(ask, STATUS_ANSWER_TTL_SECONDS * 1000);
     return (): void => {
       cancelled = true;
+      clearInterval(again);
     };
   }, [authors]);
 
