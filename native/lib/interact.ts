@@ -1,3 +1,7 @@
+import {
+  isReadOnlySession,
+  ReadOnlySessionError,
+} from '../../src/common/session';
 /**
  * Reacting and following: the two writes that are not a note.
  *
@@ -18,7 +22,6 @@ import {
   fetchLatestFollowListEvent,
   lookupFollowList,
 } from '../../src/common/events-queries';
-import { kvGet } from '../../src/common/kv';
 import { replyTags, repostTags } from '../../src/common/reply-tags';
 import { getSessionPrivateKey } from '../../src/common/session';
 import {
@@ -37,6 +40,9 @@ import { NotSignedInError, type PublishResult, publishSigned } from './publish';
 const LIKE = '+';
 
 function requireKey(): Uint8Array {
+  if (isReadOnlySession()) {
+    throw new ReadOnlySessionError();
+  }
   const key: Uint8Array | null = getSessionPrivateKey();
   if (!key) {
     throw new NotSignedInError();

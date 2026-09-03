@@ -1,3 +1,7 @@
+import {
+  isReadOnlySession,
+  ReadOnlySessionError,
+} from '../../src/common/session';
 /**
  * Signing an event and getting it onto relays.
  *
@@ -103,6 +107,9 @@ export async function publishNote(
     tags?: string[][] | undefined;
   } = {},
 ): Promise<PublishResult> {
+  if (isReadOnlySession()) {
+    throw new ReadOnlySessionError();
+  }
   const key: Uint8Array | null = getSessionPrivateKey();
   if (!key) {
     throw new NotSignedInError();
@@ -138,6 +145,9 @@ export async function publishNote(
 export async function signEventWithSession(
   draft: Omit<NostrEvent, 'id' | 'sig'>,
 ): Promise<NostrEvent> {
+  if (isReadOnlySession()) {
+    throw new ReadOnlySessionError();
+  }
   const key: Uint8Array | null = getSessionPrivateKey();
   if (!key) {
     throw new NotSignedInError();

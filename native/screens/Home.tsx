@@ -1,3 +1,4 @@
+import BrowseAsKey from '../components/BrowseAsKey';
 /**
  * The home timeline: the people you follow.
  *
@@ -7,12 +8,11 @@
  * two differ only in which events they ask for.
  */
 
-import { nip19 } from 'nostr-tools';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { onAppEvent } from '../../src/common/app-events';
 import type { TimelineKey } from '../../src/common/db/types';
-import { kvGet, kvSet } from '../../src/common/kv';
+import { kvGet } from '../../src/common/kv';
 import type { PubkeyHex } from '../../types/nostr';
 import PostList from '../components/PostList';
 import {
@@ -33,59 +33,20 @@ function readStoredPubkey(): PubkeyHex | null {
     : null;
 }
 
-/** Accepts an npub, an nprofile or a bare hex key, as the web search does. */
-function decodeIdentity(input: string): PubkeyHex | null {
-  const trimmed = input.trim();
-  if (/^[0-9a-f]{64}$/i.test(trimmed))
-    return trimmed.toLowerCase() as PubkeyHex;
-  try {
-    const decoded = nip19.decode(trimmed.toLowerCase());
-    if (decoded.type === 'npub') return decoded.data as PubkeyHex;
-    if (decoded.type === 'nprofile') {
-      return (decoded.data as { pubkey: string }).pubkey as PubkeyHex;
-    }
-  } catch {
-    // Not a key.
-  }
-  return null;
-}
-
+/**
+ * Nobody is here yet. Two ways in: sign in on the You tab, or look around
+ * as a public key - the shared read-only session, so every screen agrees
+ * about whose timeline this is and that nothing can be posted.
+ */
 function IdentityPrompt({ onChosen }: { onChosen: (key: PubkeyHex) => void }) {
-  const [text, setText] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = (): void => {
-    const key = decodeIdentity(text);
-    if (!key) {
-      setError('That is not an npub, an nprofile or a 64-character key.');
-      return;
-    }
-    kvSet(PUBKEY_KEY, key);
-    setError(null);
-    onChosen(key);
-  };
-
   return (
     <View style={styles.prompt}>
       <Text style={styles.promptTitle}>Whose timeline?</Text>
       <Text style={styles.promptSub}>
-        Read-only for now: paste an npub and the follow list is fetched from
-        your relays. Signing comes with the key store. Until then the global tab
-        works without this.
+        Sign in on the You tab to read and write as yourself - or paste any
+        public key below to read as that person.
       </Text>
-      <TextInput
-        value={text}
-        onChangeText={setText}
-        placeholder="npub1..."
-        placeholderTextColor="#5b6b88"
-        autoCapitalize="none"
-        autoCorrect={false}
-        style={styles.input}
-      />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Pressable onPress={submit} style={styles.button}>
-        <Text style={styles.buttonText}>Load timeline</Text>
-      </Pressable>
+      <BrowseAsKey onStarted={onChosen} />
     </View>
   );
 }

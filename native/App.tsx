@@ -27,11 +27,11 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
 import { onAppEvent } from '../src/common/app-events';
 import { kvGet } from '../src/common/kv';
 import { resolveNostrLink } from '../src/common/nostr-link';
 import { hidesWallet } from '../src/common/platform';
+import { getSession } from '../src/common/session';
 import { hasAcceptedTerms } from '../src/common/terms';
 import type { PubkeyHex } from '../types/nostr';
 import { fetchProfilesForPubkeys } from './lib/home-timeline';
@@ -176,10 +176,12 @@ function AccountButton() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [picture, setPicture] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState<boolean>(false);
 
   useEffect((): (() => void) => {
     const load = (): void => {
       const stored = kvGet('nostr_pubkey');
+      setBrowsing(getSession().kind === 'read-only');
       if (!stored || !/^[0-9a-f]{64}$/i.test(stored)) {
         setPicture(null);
         return;
@@ -213,6 +215,24 @@ function AccountButton() {
       ) : (
         <Text style={{ fontSize: 20 }}>👤</Text>
       )}
+      {/* Browsing as a key: the eye says so on every screen, so a read-only
+          session is never mistaken for a sign-in. */}
+      {browsing ? (
+        <Text
+          accessibilityLabel="Read-only session"
+          style={{
+            position: 'absolute',
+            right: 8,
+            bottom: -4,
+            fontSize: 11,
+            backgroundColor: '#0b1220',
+            borderRadius: 8,
+            paddingHorizontal: 2,
+          }}
+        >
+          👁
+        </Text>
+      ) : null}
     </Pressable>
   );
 }

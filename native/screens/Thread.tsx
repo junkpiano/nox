@@ -1,3 +1,5 @@
+import { canWrite } from '../../src/common/signer';
+import { guardWrite, hasViewer } from '../lib/read-only';
 /**
  * One post and its replies.
  *
@@ -34,7 +36,6 @@ import { isMachineContent } from '../../src/common/machine-content';
 import { fetchReferencedEvent } from '../../src/common/referenced-event';
 import { replyParentOf } from '../../src/common/reply-target';
 import { unwrapRepost } from '../../src/common/repost';
-import { getSessionPrivateKey } from '../../src/common/session';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
@@ -414,11 +415,14 @@ export default function Thread({ route }: { route: ThreadRoute }) {
               />
             )}
           </View>
-          {getSessionPrivateKey() && !data.deleted ? (
-            <View style={styles.actions}>
+          {hasViewer() && !data.deleted ? (
+            <View style={[styles.actions, !canWrite() && styles.actionsOff]}>
               <View style={styles.actionRow}>
                 <Pressable
-                  onPress={(): void => setReplying((open) => !open)}
+                  onPress={(): void => {
+                    if (!guardWrite()) return;
+                    setReplying((open) => !open);
+                  }}
                   style={styles.action}
                 >
                   {/* The same button whether the box is open or shut. It
@@ -432,7 +436,9 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={repost}
+                  onPress={(): void => {
+                    if (guardWrite()) void repost();
+                  }}
                   disabled={reposting || reposted}
                   style={[
                     styles.action,
@@ -450,7 +456,9 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                     somebody who does not want to mute the author - so it sits
                     with the other post actions rather than on the profile. */}
                 <Pressable
-                  onPress={like}
+                  onPress={(): void => {
+                    if (guardWrite()) void like();
+                  }}
                   disabled={liking || liked}
                   style={[styles.action, (liking || liked) && styles.actionOff]}
                 >
@@ -462,7 +470,9 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={(): void => setReporting(true)}
+                  onPress={(): void => {
+                    if (guardWrite()) setReporting(true);
+                  }}
                   style={styles.action}
                 >
                   <Text accessibilityLabel="Report" style={styles.reportText}>
@@ -573,6 +583,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actions: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
+  actionsOff: { opacity: 0.45 },
   // No box. Four boxed buttons across the width read as a toolbar louder
   // than the post; a card's row is bare marks, and this is a card's row.
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 28 },

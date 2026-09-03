@@ -1,3 +1,5 @@
+import { canWrite } from '../../src/common/signer';
+import { guardWrite, hasViewer } from '../lib/read-only';
 /**
  * The list both timelines draw.
  *
@@ -29,7 +31,6 @@ import {
 } from 'react-native';
 import { contentWarningSummary } from '../../src/common/content-warning';
 import { newPostsLabel } from '../../src/common/new-posts';
-import { getSessionPrivateKey } from '../../src/common/session';
 import type { UserStatus } from '../../src/features/profile/user-status';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
@@ -164,15 +165,19 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
   const [busy, setBusy] = useState<'like' | 'repost' | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  if (!getSessionPrivateKey()) {
+  if (!hasViewer()) {
     return null;
   }
+  // Browsing as a key: the row is drawn dimmed rather than removed, so the
+  // person sees what signing in would let them do, and a tap says so.
+  const writable: boolean = canWrite();
 
   const run = (
     what: 'like' | 'repost',
     action: () => Promise<{ accepted: string[] }>,
     done: () => void,
   ): void => {
+    if (!guardWrite()) return;
     setBusy(what);
     void action()
       .then((result): void => {
@@ -196,7 +201,7 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
   };
 
   return (
-    <View style={styles.actions}>
+    <View style={[styles.actions, !writable && styles.actionsOff]}>
       <PostMenu
         post={post}
         visible={menuOpen}
@@ -204,9 +209,10 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
       />
       <Pressable
         hitSlop={8}
-        onPress={(): void =>
-          navigation.push('Thread', { eventId: post.id, reply: true })
-        }
+        onPress={(): void => {
+          if (!guardWrite()) return;
+          navigation.push('Thread', { eventId: post.id, reply: true });
+        }}
       >
         <Text accessibilityLabel="Reply" style={styles.action}>
           ↩
@@ -565,6 +571,7 @@ const styles = StyleSheet.create({
   content: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 5 },
   link: { color: '#89a8ff' },
   actions: { flexDirection: 'row', gap: 28, marginTop: 10 },
+  actionsOff: { opacity: 0.45 },
   action: { color: '#5b6b88', fontSize: 17 },
   actionOn: { color: '#73f0c1', fontSize: 17 },
   warning: {

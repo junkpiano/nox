@@ -1,3 +1,5 @@
+import { canWrite } from '../../src/common/signer';
+import { guardWrite } from '../lib/read-only';
 /**
  * One person's profile and recent posts.
  *
@@ -26,7 +28,6 @@ import {
 import type { TimelineKey } from '../../src/common/db/types';
 import { kvGet } from '../../src/common/kv';
 import { isMuted } from '../../src/common/mute-state';
-import { getSessionPrivateKey } from '../../src/common/session';
 import {
   muteUser,
   unmuteUser,
@@ -77,15 +78,31 @@ function FollowButton({ target }: { target: PubkeyHex }) {
   const [following, setFollowingState] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const writable: boolean = canWrite();
+
   useEffect(() => {
-    if (!viewer || !getSessionPrivateKey()) return;
+    if (!viewer || !writable) return;
     void readFollowing(viewer, target)
       .then(setFollowingState)
       .catch((): void => setFollowingState(null));
-  }, [viewer, target]);
+  }, [viewer, target, writable]);
 
-  if (!viewer || !getSessionPrivateKey() || viewer === target) {
+  if (!viewer || viewer === target) {
     return null;
+  }
+  if (!writable) {
+    // Disabled rather than gone: this is where the person learns what
+    // signing in would let them do here.
+    return (
+      <Pressable
+        onPress={(): void => {
+          guardWrite();
+        }}
+        style={[styles.follow, styles.followOff]}
+      >
+        <Text style={styles.followText}>Follow</Text>
+      </Pressable>
+    );
   }
 
   const toggle = async (): Promise<void> => {
@@ -145,7 +162,7 @@ function MuteButton({ target }: { target: PubkeyHex }) {
   const [muted, setMuted] = useState<boolean>(() => isMuted(target));
   const [busy, setBusy] = useState(false);
 
-  if (!viewer || viewer === target) {
+  if (!viewer || viewer === target || !canWrite()) {
     return null;
   }
 
@@ -224,7 +241,7 @@ function ZapLink({ target }: { target: PubkeyHex }) {
   const viewer = viewerPubkey();
   const [open, setOpen] = useState(false);
 
-  if (!viewer || viewer === target) {
+  if (!viewer || viewer === target || !canWrite()) {
     return null;
   }
 
@@ -247,7 +264,7 @@ function ReportLink({ target }: { target: PubkeyHex }) {
   const viewer = viewerPubkey();
   const [open, setOpen] = useState(false);
 
-  if (!viewer || viewer === target) {
+  if (!viewer || viewer === target || !canWrite()) {
     return null;
   }
 

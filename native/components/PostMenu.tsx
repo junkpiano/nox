@@ -1,3 +1,4 @@
+import { canWrite } from '../../src/common/signer';
 /**
  * The overflow menu on a post.
  *
@@ -45,6 +46,9 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
   const viewer: string | null = kvGet('nostr_pubkey');
   const mine: boolean =
     Boolean(viewer) && viewer?.toLowerCase() === post.pubkey.toLowerCase();
+  // Delete, zap and report all sign. Browsing as a key offers none of them,
+  // and says so once rather than failing three ways.
+  const writable: boolean = canWrite();
 
   const confirmDelete = (): void => {
     Alert.alert(
@@ -85,7 +89,14 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.sheet}>
-          {mine ? (
+          {!writable ? (
+            <View style={styles.row}>
+              <Text style={styles.muted}>
+                Read-only. Sign in on the You tab to zap, report or delete.
+              </Text>
+            </View>
+          ) : null}
+          {mine && writable ? (
             <Pressable
               onPress={confirmDelete}
               disabled={deleting || gone}
@@ -101,7 +112,7 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
             </Pressable>
           ) : null}
 
-          {viewer && !mine ? (
+          {viewer && !mine && writable ? (
             <Pressable
               onPress={(): void => setZapping(true)}
               style={styles.row}
@@ -163,4 +174,5 @@ const styles = StyleSheet.create({
   item: { color: '#e8eeff', fontSize: 16 },
   danger: { color: '#ff9a9a', fontSize: 16, fontWeight: '700' },
   cancel: { color: '#8ea0c0', fontSize: 16, textAlign: 'center' },
+  muted: { color: '#8ea0c0', fontSize: 13, lineHeight: 19 },
 });

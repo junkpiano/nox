@@ -1,3 +1,4 @@
+import BrowseAsKey from '../components/BrowseAsKey';
 /**
  * Signing in, and the fact that on a phone that means holding a key.
  *
@@ -25,15 +26,12 @@ import {
   View,
 } from 'react-native';
 import { emitAppEvent } from '../../src/common/app-events';
-import { kvRemove, kvSet } from '../../src/common/kv';
 import {
-  clearSessionPrivateKey,
+  endSession,
   getSessionNsec,
   setSessionPrivateKeyFromRaw,
 } from '../../src/common/session';
 import type { PubkeyHex } from '../../types/nostr';
-
-const PUBKEY_KEY = 'nostr_pubkey';
 
 export default function SignIn({
   signedInAs,
@@ -52,8 +50,8 @@ export default function SignIn({
 
   const adopt = (raw: string): void => {
     try {
+      // Loading the key records the sign-in itself, and ends any browsing.
       const next: PubkeyHex = setSessionPrivateKeyFromRaw(raw.trim());
-      kvSet(PUBKEY_KEY, next);
       setDraft('');
       setError(null);
       onChange(next);
@@ -85,14 +83,19 @@ export default function SignIn({
         text: 'Sign out',
         style: 'destructive',
         onPress: (): void => {
-          clearSessionPrivateKey();
-          kvRemove(PUBKEY_KEY);
+          endSession();
           setRevealed(null);
           onChange(null);
           emitAppEvent('session-changed');
         },
       },
     ]);
+  };
+
+  const stopBrowsing = (): void => {
+    endSession();
+    onChange(null);
+    emitAppEvent('session-changed');
   };
 
   if (signedInAs) {
@@ -136,10 +139,13 @@ export default function SignIn({
       {viewingAs ? (
         <View style={styles.notice}>
           <Text style={styles.noticeText}>
-            Reading {nip19.npubEncode(viewingAs).slice(0, 16)}...'s timeline
-            without their key, which is why there is nothing to post with. Sign
-            in below to write as yourself.
+            👁 Browsing as {nip19.npubEncode(viewingAs).slice(0, 16)}… without
+            their key, so nothing can be posted. Sign in below to write as
+            yourself.
           </Text>
+          <Pressable onPress={stopBrowsing} style={styles.noticeButton}>
+            <Text style={styles.noticeButtonText}>Stop browsing</Text>
+          </Pressable>
         </View>
       ) : null}
       <Text style={styles.body}>
@@ -177,6 +183,12 @@ export default function SignIn({
       <Pressable onPress={generate} style={styles.secondary}>
         <Text style={styles.secondaryText}>Create a new key</Text>
       </Pressable>
+
+      {viewingAs ? null : (
+        <BrowseAsKey
+          onStarted={(pubkey: PubkeyHex): void => onChange(pubkey)}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -217,8 +229,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#16233f',
     borderRadius: 10,
     padding: 12,
+    gap: 10,
   },
   noticeText: { color: '#8ea0c0', fontSize: 12, lineHeight: 18 },
+  noticeButton: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(207,216,234,0.45)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  noticeButtonText: { color: '#cfd8ea', fontSize: 12, fontWeight: '700' },
   button: {
     backgroundColor: '#89a8ff',
     borderRadius: 10,
