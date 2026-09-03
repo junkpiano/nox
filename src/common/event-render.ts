@@ -1228,7 +1228,9 @@ export function renderEvent(
     ? 'Reply'
     : 'Reply (sign-in required)';
   const actionIdle: string = 'text-slate-400';
-  const replyButtonClasses: string = `${actionBtnBase} reply-event-btn ${actionIdle} hover:text-blue-500 hover:bg-blue-50`;
+  const replyButtonClasses: string = isLoggedIn
+    ? `${actionBtnBase} reply-event-btn ${actionIdle} hover:text-blue-500 hover:bg-blue-50`
+    : `${actionBtnBase} reply-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
   const repostButtonTitle: string = isLoggedIn
     ? 'Repost'
@@ -1563,6 +1565,10 @@ export function renderEvent(
     replyButton.addEventListener('click', (e: MouseEvent): void => {
       e.preventDefault();
       e.stopPropagation();
+      if (!isLoggedIn) {
+        alert('Sign in to reply.');
+        return;
+      }
       // Trigger reply overlay via custom event
       const replyEvent = new CustomEvent('open-reply', {
         detail: {
