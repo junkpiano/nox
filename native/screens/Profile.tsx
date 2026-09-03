@@ -1,5 +1,5 @@
 import { canWrite } from '../../src/common/signer';
-import { guardWrite } from '../lib/read-only';
+import { guardWrite, signInPrompt } from '../lib/read-only';
 /**
  * One person's profile and recent posts.
  *
@@ -120,7 +120,7 @@ function FollowButton({ target }: { target: PubkeyHex }) {
         // The refusal that keeps a failed fetch from wiping the whole list.
         Alert.alert('Your follow list could not be read', String(e.message));
       } else if (e instanceof NotSignedInError) {
-        Alert.alert('Not signed in', 'Add a key on the You tab to follow.');
+        signInPrompt('Not signed in', 'Sign in to follow.');
       } else {
         Alert.alert('Could not change it', String(e?.message ?? e));
       }

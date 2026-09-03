@@ -35,6 +35,7 @@ import { getSession } from '../src/common/session';
 import { hasAcceptedTerms } from '../src/common/terms';
 import type { PubkeyHex } from '../types/nostr';
 import { fetchProfilesForPubkeys } from './lib/home-timeline';
+import { navigationRef } from './lib/navigation';
 import About from './screens/About';
 import Chat from './screens/Chat';
 import Compose from './screens/Compose';
@@ -313,7 +314,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <NavigationContainer theme={theme} linking={linking}>
+      <NavigationContainer ref={navigationRef} theme={theme} linking={linking}>
         <Stack.Navigator>
           <Stack.Screen
             name="Tabs"

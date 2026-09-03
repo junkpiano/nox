@@ -1,4 +1,5 @@
 import { canWrite } from '../../src/common/signer';
+import { openSignIn } from '../lib/navigation';
 /**
  * The overflow menu on a post.
  *
@@ -90,11 +91,18 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.sheet}>
           {!writable ? (
-            <View style={styles.row}>
+            <Pressable
+              onPress={(): void => {
+                onClose();
+                openSignIn();
+              }}
+              style={styles.row}
+            >
               <Text style={styles.muted}>
-                Read-only. Sign in on the You tab to zap, report or delete.
+                Read-only: zapping, reporting and deleting need a key.
               </Text>
-            </View>
+              <Text style={styles.item}>Sign in</Text>
+            </Pressable>
           ) : null}
           {mine && writable ? (
             <Pressable

@@ -1,5 +1,5 @@
 import { canWrite } from '../../src/common/signer';
-import { guardWrite, hasViewer } from '../lib/read-only';
+import { guardWrite, hasViewer, signInPrompt } from '../lib/read-only';
 /**
  * One post and its replies.
  *
@@ -322,7 +322,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
       onDone();
     } catch (e: any) {
       if (e instanceof NotSignedInError) {
-        Alert.alert('Not signed in', 'Add a key on the You tab to take part.');
+        signInPrompt('Not signed in', 'Sign in to take part.');
       } else {
         Alert.alert(`Could not ${what}`, String(e?.message ?? e));
       }

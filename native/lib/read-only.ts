@@ -3,20 +3,30 @@
  *
  * The control stays on screen and says why it does nothing: a button that
  * disappears teaches nothing, and the person browsing as a key is exactly
- * the one deciding whether to sign in. One sentence, one place.
+ * the one deciding whether to sign in. So the explanation carries the way
+ * in: one tap on "Sign in" opens the screen where that happens.
  */
 
 import { Alert } from 'react-native';
 import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
+import { openSignIn } from './navigation';
+
+/** Says why writing is off, and offers the way in. */
+export function signInPrompt(title: string, message: string): void {
+  Alert.alert(title, message, [
+    { text: 'Not now', style: 'cancel' },
+    { text: 'Sign in', onPress: openSignIn },
+  ]);
+}
 
 /** True when the session may publish; otherwise says why not and is false. */
 export function guardWrite(): boolean {
   if (canWrite()) return true;
   if (getSession().kind === 'read-only') {
-    Alert.alert('Read-only', 'Sign in on the You tab to post, like or follow.');
+    signInPrompt('Read-only', 'Sign in to post, like or follow.');
   } else {
-    Alert.alert('Not signed in', 'Add a key on the You tab to take part.');
+    signInPrompt('Not signed in', 'Sign in to take part.');
   }
   return false;
 }

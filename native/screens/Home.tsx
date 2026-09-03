@@ -1,4 +1,5 @@
 import BrowseAsKey from '../components/BrowseAsKey';
+import { openSignIn } from '../lib/navigation';
 /**
  * The home timeline: the people you follow.
  *
@@ -9,7 +10,7 @@ import BrowseAsKey from '../components/BrowseAsKey';
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { onAppEvent } from '../../src/common/app-events';
 import type { TimelineKey } from '../../src/common/db/types';
 import { kvGet } from '../../src/common/kv';
@@ -34,18 +35,21 @@ function readStoredPubkey(): PubkeyHex | null {
 }
 
 /**
- * Nobody is here yet. Two ways in: sign in on the You tab, or look around
- * as a public key - the shared read-only session, so every screen agrees
- * about whose timeline this is and that nothing can be posted.
+ * Nobody is here yet. Two ways in: sign in, or look around as a public key
+ * - the shared read-only session, so every screen agrees about whose
+ * timeline this is and that nothing can be posted.
  */
 function IdentityPrompt({ onChosen }: { onChosen: (key: PubkeyHex) => void }) {
   return (
     <View style={styles.prompt}>
       <Text style={styles.promptTitle}>Whose timeline?</Text>
       <Text style={styles.promptSub}>
-        Sign in on the You tab to read and write as yourself - or paste any
-        public key below to read as that person.
+        Sign in to read and write as yourself, or paste any public key below to
+        read as that person.
       </Text>
+      <Pressable onPress={openSignIn} style={styles.button}>
+        <Text style={styles.buttonText}>Sign in</Text>
+      </Pressable>
       <BrowseAsKey onStarted={onChosen} />
     </View>
   );
