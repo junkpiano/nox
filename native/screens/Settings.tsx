@@ -50,12 +50,17 @@ function Elsewhere() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  const rows: Array<{ label: string; to: 'Wallet' | 'Relays' | 'Checks' }> = [
+  const rows: Array<{
+    label: string;
+    to: 'Wallet' | 'Relays' | 'Checks' | 'Likes' | 'About';
+  }> = [
+    { label: '♡ Likes', to: 'Likes' },
     ...(hidesWallet()
       ? []
       : ([{ label: '⚡ Lightning wallet', to: 'Wallet' }] as const)),
     { label: '📡 Relays', to: 'Relays' },
     { label: '🧪 Shared code', to: 'Checks' },
+    { label: 'ℹ️ About nox', to: 'About' },
   ];
 
   return (

@@ -35,10 +35,12 @@ import { hidesWallet } from '../src/common/platform';
 import { hasAcceptedTerms } from '../src/common/terms';
 import type { PubkeyHex } from '../types/nostr';
 import { fetchProfilesForPubkeys } from './lib/home-timeline';
+import About from './screens/About';
 import Chat from './screens/Chat';
 import Compose from './screens/Compose';
 import Feed from './screens/Feed';
 import Hashtag from './screens/Hashtag';
+import Likes from './screens/Likes';
 import Messages from './screens/Messages';
 import Notifications from './screens/Notifications';
 import Profile from './screens/Profile';
@@ -67,6 +69,8 @@ export type RootStackParamList = {
   Chat: { peer: PubkeyHex; name: string };
   Wallet: undefined;
   Hashtag: { tag: string };
+  Likes: undefined;
+  About: undefined;
 };
 
 /**
@@ -340,6 +344,16 @@ export default function App() {
             name="Chat"
             component={Chat}
             options={({ route }) => ({ title: route.params.name })}
+          />
+          <Stack.Screen
+            name="Likes"
+            component={Likes}
+            options={{ title: 'Likes' }}
+          />
+          <Stack.Screen
+            name="About"
+            component={About}
+            options={{ title: 'About nox' }}
           />
           {/* Not registered at all on iOS. A route that exists but is not
               linked to is still a route, and this one must not be reachable
