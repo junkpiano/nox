@@ -6,6 +6,8 @@ import type {
   OGPResponse,
   PubkeyHex,
 } from '../../types/nostr';
+import { avatarUrlFor } from '../common/avatar.js';
+import { pageImagePolicy } from '../common/avatar-dom.js';
 import { crossOriginFetch, isNativeRuntime } from '../common/native-http.js';
 import { parseOgpDocument } from '../common/ogp-parse.js';
 
@@ -20,7 +22,7 @@ export function getAvatarURL(
   pubkey: PubkeyHex,
   profile: NostrProfile | null,
 ): string {
-  return profile?.picture || `https://robohash.org/${pubkey}.png`;
+  return avatarUrlFor(pubkey, profile, pageImagePolicy());
 }
 
 export function getDisplayName(

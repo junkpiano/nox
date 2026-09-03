@@ -18,6 +18,8 @@ import {
   isTwitterURL,
   replaceEmojiShortcodes,
 } from '../utils/utils.js';
+import { avatarErrorAttribute, fallbackAvatarUrl } from './avatar.js';
+import { loadableOnThisPage, setAvatar } from './avatar-dom.js';
 import { readClientName, withClientTag } from './client-tag.js';
 import { deleteEvents, removeEventFromTimeline } from './db/index.js';
 import { computeTimelineRemovalTargets } from './deletion-targets.js';
@@ -961,7 +963,6 @@ async function loadReactionDetails(
 
         const npub: Npub = nip19.npubEncode(event.pubkey);
         const name: string = getDisplayName(npub, renderProfile);
-        const avatar: string = getAvatarURL(event.pubkey, renderProfile);
 
         const row: HTMLAnchorElement = document.createElement('a');
         row.className =
@@ -969,12 +970,9 @@ async function loadReactionDetails(
         row.href = `/${npub}`;
 
         const img: HTMLImageElement = document.createElement('img');
-        img.src = avatar;
+        setAvatar(img, event.pubkey, renderProfile);
         img.alt = name;
         img.className = 'w-6 h-6 rounded-full object-cover';
-        img.onerror = (): void => {
-          img.src = 'https://placekitten.com/80/80';
-        };
 
         const nameEl: HTMLSpanElement = document.createElement('span');
         nameEl.textContent = name;
@@ -1494,11 +1492,11 @@ export function renderEvent(
   }
   // Avatar display based on energy saving mode
   const safeAvatar: string =
-    normalizeAvatarUrl(avatar) || 'https://placekitten.com/100/100';
+    loadableOnThisPage(avatar) ?? fallbackAvatarUrl(pubkey);
   const avatarHtml: string = isEnergySavingMode
     ? `<div class="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-xl">👤</div>`
     : `<img src="${escapeHtmlAttribute(safeAvatar)}" alt="Avatar" class="event-avatar w-12 h-12 rounded-full object-cover cursor-pointer"
-         onerror="this.src='https://placekitten.com/100/100';" />`;
+         onerror="${avatarErrorAttribute(pubkey)}" />`;
 
   div.innerHTML = `
 					    <div class="flex items-start space-x-4">
@@ -2197,14 +2195,15 @@ async function renderReferencedEventCards(
       const isEnergySavingMode: boolean =
         localStorage.getItem('energy_saving_mode') === 'true';
       const safeReferencedAvatar: string =
-        normalizeAvatarUrl(referencedAvatar) || 'https://placekitten.com/80/80';
+        loadableOnThisPage(referencedAvatar) ??
+        fallbackAvatarUrl(referencedEvent.pubkey);
       const referencedAvatarHtml: string = isEnergySavingMode
         ? `<div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-sm flex-shrink-0">👤</div>`
         : `<img
             src="${escapeHtmlAttribute(safeReferencedAvatar)}"
             alt="${safeReferencedName}"
             class="w-8 h-8 rounded-full object-cover flex-shrink-0"
-            onerror="this.src='https://placekitten.com/80/80';"
+            onerror="${avatarErrorAttribute(referencedEvent.pubkey)}"
           />`;
 
       const referencedPreviewHtml: string = referencedContentWarning.hasWarning

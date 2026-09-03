@@ -1,3 +1,4 @@
+import { setAvatar } from '../../common/avatar-dom.js';
 /**
  * Messages tab: conversation list and thread view.
  *
@@ -8,7 +9,7 @@
 import { nip19 } from 'nostr-tools';
 import type { NostrProfile, Npub, PubkeyHex } from '../../../types/nostr';
 import type { SetActiveNavFn } from '../../common/types.js';
-import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
+import { getDisplayName } from '../../utils/utils.js';
 import {
   fetchDmRelayList,
   fetchNip65ReadRelays,
@@ -232,10 +233,10 @@ function renderConversationList(
     avatar.className = 'h-10 w-10 flex-none rounded-full object-cover';
     avatar.loading = 'lazy';
     avatar.alt = '';
-    avatar.src = getAvatarURL(conversation.peer, null);
+    setAvatar(avatar, conversation.peer, null);
     void resolvePeerProfile(conversation.peer, options).then(
       (profile): void => {
-        avatar.src = getAvatarURL(conversation.peer, profile);
+        setAvatar(avatar, conversation.peer, profile);
       },
     );
 
