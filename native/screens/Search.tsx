@@ -33,6 +33,7 @@ import {
 } from '../../src/features/search/user-ranking';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import { pictureUrl } from '../lib/avatar';
 import { searchUsers } from '../lib/user-search';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -120,11 +121,7 @@ export default function Search() {
               `${nip19.npubEncode(item.pubkey).slice(0, 12)}...`;
             const nip05 = oneLine(item.profile.nip05, MAX_NIP05_LENGTH);
             const about = oneLine(item.profile.about, MAX_ABOUT_LENGTH);
-            const picture =
-              typeof item.profile.picture === 'string' &&
-              /^https?:\/\//i.test(item.profile.picture)
-                ? item.profile.picture
-                : null;
+            const picture = pictureUrl(item.profile.picture);
 
             return (
               <Pressable

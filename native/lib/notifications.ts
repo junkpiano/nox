@@ -12,6 +12,7 @@ import { openRelaySubscription } from '../../src/common/relay-socket';
 import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import { pictureUrl } from './avatar';
 
 const NOTIFICATION_KINDS: number[] = [1, 6, 7];
 const LIMIT: number = 200;
@@ -150,7 +151,7 @@ export async function loadNotifications(
       const meta = JSON.parse(event.content);
       names.set(event.pubkey, {
         name: meta.display_name || meta.name || '',
-        picture: typeof meta.picture === 'string' ? meta.picture : null,
+        picture: pictureUrl(meta.picture),
       });
       at.set(event.pubkey, event.created_at);
     } catch {

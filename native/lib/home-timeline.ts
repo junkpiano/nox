@@ -46,6 +46,7 @@ import { isRepost, readRepost, unwrapRepost } from '../../src/common/repost';
 import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
+import { pictureUrl } from './avatar';
 
 /** Kinds the home timeline shows. Mirrors `homeKinds` in the web app. */
 const HOME_KINDS: number[] = [1, 6];
@@ -369,7 +370,7 @@ function profileJson(event: NostrEvent): NostrProfile | null {
 function metaFrom(meta: NostrProfile): ProfileMeta | null {
   return {
     name: meta.display_name || meta.name || '',
-    picture: typeof meta.picture === 'string' ? meta.picture : null,
+    picture: pictureUrl(meta.picture),
     nip05: typeof meta.nip05 === 'string' ? meta.nip05 : null,
   };
 }

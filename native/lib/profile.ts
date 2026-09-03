@@ -15,6 +15,7 @@ import { queryRelays } from '../../src/common/relay-query';
 import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
+import { pictureUrl } from './avatar';
 
 const POST_LIMIT: number = PAGE_LIMIT;
 
@@ -65,8 +66,8 @@ function parseProfile(pubkey: PubkeyHex, meta: unknown): Profile {
       pubkey,
       name: str(fields.display_name) || str(fields.name) || fallback.name,
       about: str(fields.about) ?? '',
-      picture: str(fields.picture),
-      banner: str(fields.banner),
+      picture: pictureUrl(fields.picture),
+      banner: pictureUrl(fields.banner),
       nip05: str(fields.nip05),
       website: str(fields.website),
     };
