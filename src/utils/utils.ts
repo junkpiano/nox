@@ -1,5 +1,7 @@
 import emojiDictionary from 'emoji-dictionary';
 import type { NostrProfile, Npub, PubkeyHex } from '../../types/nostr';
+import { avatarUrlFor } from '../common/avatar.js';
+import { pageImagePolicy } from '../common/avatar-dom.js';
 import { crossOriginFetch } from '../common/native-http.js';
 
 // The fetch lives with the parser; re-exported for the callers that always
@@ -16,7 +18,7 @@ export function getAvatarURL(
   pubkey: PubkeyHex,
   profile: NostrProfile | null,
 ): string {
-  return profile?.picture || `https://robohash.org/${pubkey}.png`;
+  return avatarUrlFor(pubkey, profile, pageImagePolicy());
 }
 
 export function getDisplayName(

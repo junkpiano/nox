@@ -5,13 +5,14 @@ import type {
   Npub,
   PubkeyHex,
 } from '../../../types/nostr';
+import { setAvatar } from '../../common/avatar-dom.js';
 import { getProfile as getCachedDbProfile } from '../../common/db/index.js';
 import { createDeletionGate } from '../../common/deletion-gate.js';
 import { renderEvent } from '../../common/event-render.js';
 import { fetchFollowList } from '../../common/events-queries.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { fetchingProfiles, profileCache } from '../../common/timeline-cache.js';
-import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
+import { getDisplayName } from '../../utils/utils.js';
 import {
   fetchProfile,
   getAuthoritativeProfile,
@@ -113,10 +114,7 @@ function updateRenderedProfile(
         nameEl.textContent = `👤 ${getDisplayName(npubStr, renderProfile)}`;
       }
       if (avatarEl) {
-        (avatarEl as HTMLImageElement).src = getAvatarURL(
-          pubkey,
-          renderProfile,
-        );
+        setAvatar(avatarEl as HTMLImageElement, pubkey, renderProfile);
       }
     }
   });

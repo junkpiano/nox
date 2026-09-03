@@ -1,3 +1,4 @@
+import { avatarErrorAttribute } from '../../common/avatar.js';
 /**
  * Finding a person, rather than a post.
  *
@@ -21,7 +22,6 @@ import type {
   Npub,
   PubkeyHex,
 } from '../../../types/nostr';
-import { normalizeAvatarUrl } from '../../common/event-render.js';
 import { isMuted } from '../../common/mute-state.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getAvatarURL, shortenNpub } from '../../utils/utils.js';
@@ -225,16 +225,14 @@ function renderUserRow(result: UserSearchResult): string {
   const about: string = oneLine(profile.about, MAX_ABOUT_LENGTH);
   // The picture URL is whatever its owner put in their profile, so it is
   // reduced to a scheme an <img> may be pointed at before it becomes a src.
-  const avatar: string =
-    normalizeAvatarUrl(getAvatarURL(result.pubkey, profile)) ||
-    `https://robohash.org/${result.pubkey}.png`;
+  const avatar: string = getAvatarURL(result.pubkey, profile);
   const safeNpub: string = escapeHtml(result.npub);
   const safePubkey: string = escapeHtml(result.pubkey);
 
   return `
     <a href="/${safeNpub}" class="user-result flex items-start gap-3 py-3 rounded-lg hover:bg-gray-100 transition-colors" data-pubkey="${safePubkey}">
       <img src="${escapeHtml(avatar)}" alt="" class="w-10 h-10 rounded-full object-cover flex-shrink-0"
-           onerror="this.src='https://robohash.org/${safePubkey}.png';" />
+           onerror="${avatarErrorAttribute(result.pubkey)}" />
       <div class="min-w-0 flex-1">
         <div class="font-semibold text-gray-800 text-sm truncate">${escapeHtml(name)}</div>
         <div class="text-xs text-gray-500 truncate">${escapeHtml(nip05 || shortenNpub(result.npub))}</div>

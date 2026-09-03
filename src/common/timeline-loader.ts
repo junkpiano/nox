@@ -18,7 +18,8 @@ import {
   createBackwardReq,
   getRxNostr,
 } from '../features/relays/rx-nostr-client.js';
-import { getAvatarURL, getDisplayName } from '../utils/utils.js';
+import { getDisplayName } from '../utils/utils.js';
+import { setAvatar } from './avatar-dom.js';
 import type { CachedTimelineResult, TimelineType } from './db/index.js';
 import {
   appendEventsToTimeline,
@@ -146,10 +147,7 @@ function updateRenderedProfile(
         nameEl.textContent = `👤 ${getDisplayName(npubStr, renderProfile)}`;
       }
       if (avatarEl) {
-        (avatarEl as HTMLImageElement).src = getAvatarURL(
-          event.pubkey,
-          renderProfile,
-        );
+        setAvatar(avatarEl as HTMLImageElement, event.pubkey, renderProfile);
       }
     }
   });
