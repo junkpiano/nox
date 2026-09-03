@@ -52,6 +52,7 @@ import {
 } from '../lib/interact';
 import { loadProfile, type Profile as ProfileData } from '../lib/profile';
 import { useOlderPosts } from '../lib/use-older-posts';
+import { useOwnReactions } from '../lib/use-own-reactions';
 import { useUserStatus, useUserStatuses } from '../lib/use-user-statuses';
 
 type ProfileRoute = RouteProp<RootStackParamList, 'Profile'>;
@@ -385,6 +386,7 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const statuses = useUserStatuses(rows);
+  const own = useOwnReactions(rows.map((row: TimelinePost): string => row.id));
 
   useEffect(() => {
     let cancelled = false;
@@ -472,6 +474,7 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
         <PostRow
           post={item}
           status={statuses.get(item.pubkey) ?? null}
+          own={own}
           onOpenThread={() => navigation.push('Thread', { eventId: item.id })}
           onOpenProfile={() =>
             navigation.push('Profile', { pubkey: item.pubkey })

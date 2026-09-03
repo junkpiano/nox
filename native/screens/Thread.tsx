@@ -47,6 +47,7 @@ import {
   replyToEvent,
   repostEvent,
 } from '../lib/interact';
+import { useOwnReactions } from '../lib/use-own-reactions';
 import { useSessionVersion } from '../lib/use-session-version';
 
 type ThreadRoute = RouteProp<RootStackParamList, 'Thread'>;
@@ -137,9 +138,12 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const { eventId } = route.params;
   const [data, setData] = useState<ThreadData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [liked, setLiked] = useState(false);
+  // Whether you already liked or reposted this, from the shared book: the
+  // relays are asked once, and a like made on a card shows here too.
+  const own = useOwnReactions(data?.root ? [data.root.id] : []);
+  const liked: boolean = data?.root ? own.liked.has(data.root.id) : false;
+  const reposted: boolean = data?.root ? own.reposted.has(data.root.id) : false;
   const [liking, setLiking] = useState(false);
-  const [reposted, setReposted] = useState(false);
   const [reposting, setReposting] = useState(false);
   const [draft, setDraft] = useState('');
   const [reporting, setReporting] = useState(false);
@@ -295,7 +299,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     await attempt(
       'reaction',
       () => likeEvent(root),
-      () => setLiked(true),
+      () => own.mark(root.id, 'like'),
     );
     setLiking(false);
   };
@@ -305,7 +309,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     await attempt(
       'repost',
       () => repostEvent(root),
-      () => setReposted(true),
+      () => own.mark(root.id, 'repost'),
     );
     setReposting(false);
   };

@@ -36,6 +36,10 @@ import type { RootStackParamList } from '../App';
 import { customEmojiOf } from '../lib/avatar';
 import type { TimelinePost } from '../lib/home-timeline';
 import { likeEvent, NotSignedInError, repostEvent } from '../lib/interact';
+import {
+  type OwnReactionState,
+  useOwnReactions,
+} from '../lib/use-own-reactions';
 import { useSessionVersion } from '../lib/use-session-version';
 import { useUserStatuses } from '../lib/use-user-statuses';
 import PostBody from './PostBody';
@@ -47,12 +51,15 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export function PostRow({
   post,
   status = null,
+  own,
   onOpenThread,
   onOpenProfile,
 }: {
   post: TimelinePost;
   /** NIP-38: what the author says they are up to, when they said. */
   status?: UserStatus | null;
+  /** What you already did to the posts on this screen. */
+  own: OwnReactionState;
   onOpenThread: () => void;
   onOpenProfile: () => void;
 }) {
@@ -131,7 +138,7 @@ export function PostRow({
         {post.repostTargetId ? (
           <QuoteCard eventId={post.repostTargetId} />
         ) : null}
-        <Actions post={post} />
+        <Actions post={post} own={own} />
       </View>
     </View>
   );
@@ -146,11 +153,14 @@ export function PostRow({
  * box already up rather than making you find it.
  *
  * Marked done only once a relay has it. A like nobody stored is not a like.
+ * And a like the relays already had is shown as done from the start - the
+ * ♡ used to begin empty on every card, offering to like again what was
+ * liked yesterday.
  */
-function Actions({ post }: { post: TimelinePost }) {
+function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
   const navigation = useNavigation<Nav>();
-  const [liked, setLiked] = useState(false);
-  const [reposted, setReposted] = useState(false);
+  const liked: boolean = own.liked.has(post.id);
+  const reposted: boolean = own.reposted.has(post.id);
   const [busy, setBusy] = useState<'like' | 'repost' | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -209,7 +219,7 @@ function Actions({ post }: { post: TimelinePost }) {
           run(
             'repost',
             () => repostEvent(post.event),
-            () => setReposted(true),
+            () => own.mark(post.id, 'repost'),
           )
         }
       >
@@ -227,7 +237,7 @@ function Actions({ post }: { post: TimelinePost }) {
           run(
             'like',
             () => likeEvent(post.event),
-            () => setLiked(true),
+            () => own.mark(post.id, 'like'),
           )
         }
       >
@@ -435,6 +445,9 @@ export default function PostList({
   // FlatList only re-renders rows when the data or this changes.
   const sessionVersion = useSessionVersion();
   const statuses = useUserStatuses(posts);
+  const own = useOwnReactions(
+    posts.map((post: TimelinePost): string => post.id),
+  );
   const list = useRef<FlatList<TimelinePost>>(null);
 
   const showNew = (): void => {
@@ -465,7 +478,7 @@ export default function PostList({
           ref={list}
           data={posts}
           keyExtractor={(p: TimelinePost) => p.key}
-          extraData={{ sessionVersion, statuses }}
+          extraData={{ sessionVersion, statuses, own }}
           ListHeaderComponent={
             pendingCount > 0 ? (
               <NewPostsRow count={pendingCount} onPress={showNew} />
@@ -475,6 +488,7 @@ export default function PostList({
             <PostRow
               post={item}
               status={statuses.get(item.pubkey) ?? null}
+              own={own}
               onOpenThread={() =>
                 navigation.push('Thread', { eventId: item.id })
               }
