@@ -1,3 +1,4 @@
+import { signWithSession } from './signer.js';
 /**
  * NIP-09: asking the relays to forget a post.
  *
@@ -13,12 +14,10 @@
  * anywhere else.
  */
 
-import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
 import { kvGet } from './kv.js';
 import { publishEventToRelays } from './publish-event.js';
-import { getSessionPrivateKey } from './session.js';
 
 interface Nip07 {
   signEvent?: (event: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent>;
@@ -52,17 +51,9 @@ export async function requestDeletion(
     content: '',
   });
 
-  const nip07: Nip07 | null = extension();
-  let signedEvent: NostrEvent;
-  if (nip07?.signEvent) {
-    signedEvent = await nip07.signEvent(unsignedEvent);
-  } else {
-    const privateKey: Uint8Array | null = getSessionPrivateKey();
-    if (!privateKey) {
-      throw new Error('No signing method available');
-    }
-    signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
-  }
+  const _nip07: Nip07 | null = extension();
+  // Through the one signer, which refuses a read-only session first.
+  const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
 
   await publishEventToRelays(signedEvent, relays);
 }
