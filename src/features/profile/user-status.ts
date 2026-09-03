@@ -13,9 +13,13 @@
  * make both wrong.
  */
 
-import { finalizeEvent } from 'nostr-tools';
+import { finalizeEvent, verifyEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
-import { createRelayWebSocket } from '../../common/relay-socket.js';
+import {
+  NoRelayAnsweredError,
+  queryRelaysDetailed,
+  type SubscriptionOpener,
+} from '../../common/relay-query.js';
 import { getSessionPrivateKey } from '../../common/session.js';
 
 export const USER_STATUS_KIND: number = 30315;
@@ -70,6 +74,12 @@ export interface UserStatus {
   text: string;
   /** A link the author attached, when they attached one worth following. */
   url: string | null;
+  /**
+   * When to stop believing it, as a unix time: the `expiration` the author
+   * set, or the age limit counted from when they published. A reader that
+   * keeps statuses around needs this, or it would keep them past that.
+   */
+  until: number;
 }
 
 function firstTagValue(event: NostrEvent, name: string): string | null {
@@ -130,14 +140,18 @@ export function parseUserStatus(
   }
 
   const expiration: string | null = firstTagValue(event, 'expiration');
+  let until: number;
   if (expiration !== null) {
-    const expiresAt: number = Number.parseInt(expiration, 10);
+    until = Number.parseInt(expiration, 10);
     // An unreadable expiration is treated as expired: the author meant this to
     // stop being shown at some point, and we cannot tell when.
-    if (!Number.isFinite(expiresAt) || expiresAt <= now) {
+    if (!Number.isFinite(until)) {
       return null;
     }
-  } else if (now - event.created_at > STALE_AFTER_SECONDS) {
+  } else {
+    until = event.created_at + STALE_AFTER_SECONDS;
+  }
+  if (until <= now) {
     return null;
   }
 
@@ -148,31 +162,77 @@ export function parseUserStatus(
     return null;
   }
 
-  return { text, url: readLink(event) };
+  return { text, url: readLink(event), until };
 }
 
 /**
  * Reads someone's current status off the relays.
  *
  * Returns null when they have none, when theirs has expired, and when the
- * lookup fails - all of which render the same way, which is not at all. A
- * status is decoration on a profile; a failure to fetch one is not worth
+ * lookup fails - all of which render the same way on a profile, which is not
+ * at all. A status is decoration there; a failure to fetch one is not worth
  * telling anyone about.
- *
- * The `#d` filter asks relays for the general status only. Relays that ignore
- * it send both, and `parseUserStatus` drops the music one.
  */
 export async function fetchUserStatus(params: {
   pubkeyHex: PubkeyHex;
   relays: string[];
-  timeoutMs?: number;
 }): Promise<UserStatus | null> {
-  const statuses = await fetchUserStatuses({
-    pubkeys: [params.pubkeyHex],
-    relays: params.relays,
-    ...(params.timeoutMs === undefined ? {} : { timeoutMs: params.timeoutMs }),
-  });
-  return statuses.get(params.pubkeyHex) ?? null;
+  try {
+    const statuses = await fetchUserStatuses({
+      pubkeys: [params.pubkeyHex],
+      relays: params.relays,
+    });
+    return statuses.get(params.pubkeyHex) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The statuses worth believing among what the relays sent.
+ *
+ * A relay is asked for these people's statuses, but what it sends is
+ * whatever it chooses to. Each event is held to its own signature, and to
+ * being from one of the people asked about - a status that says it is
+ * someone's must be one they signed, or anybody could put words under
+ * anybody's name. The newest per person wins, and only the general one is
+ * read; a relay that ignores the `#d` filter sends the music one too.
+ */
+export function collectUserStatuses(
+  authors: PubkeyHex[],
+  events: NostrEvent[],
+  now: number,
+): Map<PubkeyHex, UserStatus> {
+  const wanted: Set<PubkeyHex> = new Set(authors);
+  const newest: Map<PubkeyHex, NostrEvent> = new Map();
+  for (const event of events) {
+    if (event?.kind !== USER_STATUS_KIND) continue;
+    const author = event.pubkey as PubkeyHex;
+    if (!wanted.has(author)) continue;
+    if (firstTagValue(event, 'd') !== GENERAL) continue;
+    if (!genuine(event)) continue;
+    const held: NostrEvent | undefined = newest.get(author);
+    if (!held || event.created_at >= held.created_at) {
+      newest.set(author, event);
+    }
+  }
+
+  const result: Map<PubkeyHex, UserStatus> = new Map();
+  for (const [author, event] of newest) {
+    const status: UserStatus | null = parseUserStatus(event, now);
+    if (status) {
+      result.set(author, status);
+    }
+  }
+  return result;
+}
+
+function genuine(event: NostrEvent): boolean {
+  try {
+    return verifyEvent(event);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -184,98 +244,41 @@ export async function fetchUserStatus(params: {
  * these on before.
  *
  * Authors with no status, an expired one, or one this refuses to read are
- * simply absent from the map.
+ * simply absent from the map. That is an answer, and a caller may remember
+ * it. Silence from every relay is not: this throws `NoRelayAnsweredError`
+ * then, so "nobody has a status" cannot be learned from a dead connection
+ * and remembered after it comes back.
  */
-export async function fetchUserStatuses(params: {
-  pubkeys: PubkeyHex[];
-  relays: string[];
-  timeoutMs?: number;
-}): Promise<Map<PubkeyHex, UserStatus>> {
+export async function fetchUserStatuses(
+  params: {
+    pubkeys: PubkeyHex[];
+    relays: string[];
+  },
+  open?: SubscriptionOpener,
+): Promise<Map<PubkeyHex, UserStatus>> {
   const authors: PubkeyHex[] = Array.from(new Set(params.pubkeys));
-  const result: Map<PubkeyHex, UserStatus> = new Map();
-  if (authors.length === 0 || params.relays.length === 0) {
-    return result;
+  if (authors.length === 0) {
+    return new Map();
+  }
+  if (params.relays.length === 0) {
+    throw new NoRelayAnsweredError(params.relays);
   }
 
-  const timeoutMs: number = Number.isFinite(params.timeoutMs)
-    ? Math.max(500, Math.floor(params.timeoutMs as number))
-    : 4000;
-
-  const newest: Map<PubkeyHex, NostrEvent> = new Map();
-
-  await Promise.allSettled(
-    params.relays.map(async (relayUrl: string): Promise<void> => {
-      try {
-        const socket: WebSocket = createRelayWebSocket(relayUrl);
-        await new Promise<void>((resolve) => {
-          let settled: boolean = false;
-          const finish = (): void => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            try {
-              socket.close();
-            } catch {
-              // Already closing.
-            }
-            resolve();
-          };
-          const timeout = setTimeout(finish, timeoutMs);
-
-          socket.onopen = (): void => {
-            socket.send(
-              JSON.stringify([
-                'REQ',
-                `status-${Math.random().toString(36).slice(2)}`,
-                {
-                  kinds: [USER_STATUS_KIND],
-                  authors,
-                  '#d': [GENERAL],
-                  limit: authors.length,
-                },
-              ]),
-            );
-          };
-
-          socket.onmessage = (msg: MessageEvent): void => {
-            try {
-              const frame: unknown[] = JSON.parse(msg.data);
-              if (frame[0] === 'EVENT') {
-                const event = frame[2] as NostrEvent;
-                if (event?.kind !== USER_STATUS_KIND) {
-                  return;
-                }
-                const author = event.pubkey as PubkeyHex;
-                const held = newest.get(author);
-                if (!held || event.created_at >= held.created_at) {
-                  newest.set(author, event);
-                }
-                return;
-              }
-              if (frame[0] === 'EOSE') {
-                finish();
-              }
-            } catch {
-              finish();
-            }
-          };
-
-          socket.onerror = finish;
-        });
-      } catch {
-        // One unreachable relay must not fail the lookup.
-      }
-    }),
+  const { events, answered } = await queryRelaysDetailed(
+    params.relays,
+    {
+      kinds: [USER_STATUS_KIND],
+      authors,
+      '#d': [GENERAL],
+      limit: authors.length,
+    },
+    open,
   );
-
-  const now: number = Math.floor(Date.now() / 1000);
-  for (const [author, event] of newest) {
-    const status: UserStatus | null = parseUserStatus(event, now);
-    if (status) {
-      result.set(author, status);
-    }
+  if (answered === 0) {
+    throw new NoRelayAnsweredError(params.relays);
   }
-  return result;
+
+  return collectUserStatuses(authors, events, Math.floor(Date.now() / 1000));
 }
 
 /**
