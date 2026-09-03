@@ -89,6 +89,22 @@ test('status trust: the newest genuine one per person wins', () => {
   assert.equal(found.get(ALICE)?.text, 'new');
 });
 
+test('status trust: two revisions in the same second resolve by id, whichever arrived first', () => {
+  // NIP-01: for an addressable event, the same second is broken by the
+  // lexically smaller id. So every client reading these two agrees, and
+  // the answer does not depend on which relay was quicker.
+  const first = status(alice, 'first', NOW - 30);
+  const second = status(alice, 'second', NOW - 30);
+  const [smaller, larger] = [first, second].sort((a, b) =>
+    a.id < b.id ? -1 : 1,
+  );
+  const oneWay = collectUserStatuses([ALICE], [first, second], NOW);
+  const otherWay = collectUserStatuses([ALICE], [second, first], NOW);
+  assert.equal(oneWay.get(ALICE)?.text, smaller?.content);
+  assert.equal(otherWay.get(ALICE)?.text, smaller?.content);
+  assert.notEqual(oneWay.get(ALICE)?.text, larger?.content);
+});
+
 /** Relays that behave as scripted. */
 function scripted(
   behaviour: Record<string, 'answer' | 'refuse' | 'silent'>,
