@@ -285,7 +285,12 @@ function Header({ profile }: { profile: ProfileData }) {
           <View style={[styles.avatar, styles.avatarBlank]} />
         )}
 
-        <Text style={styles.name}>{profile.name}</Text>
+        <RichText
+          content={profile.name}
+          style={styles.name}
+          linkStyle={styles.link}
+          emoji={profile.emoji}
+        />
         {profile.nip05 ? (
           <Text style={styles.nip05}>{profile.nip05}</Text>
         ) : (
@@ -313,6 +318,7 @@ function Header({ profile }: { profile: ProfileData }) {
             content={profile.about}
             style={styles.about}
             linkStyle={styles.link}
+            emoji={profile.emoji}
           />
         ) : null}
 

@@ -33,6 +33,7 @@ import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import { customEmojiOf } from '../lib/avatar';
 import {
   fetchProfilesForPubkeys,
   type ProfileMeta,
@@ -170,6 +171,7 @@ export default function QuoteCard({ eventId, relays }: QuoteCardProps) {
         style={styles.content}
         linkStyle={styles.link}
         numberOfLines={6}
+        emoji={customEmojiOf(quoted.tags)}
       />
     </Pressable>
   );

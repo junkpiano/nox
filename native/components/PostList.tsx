@@ -33,6 +33,7 @@ import { getSessionPrivateKey } from '../../src/common/session';
 import type { UserStatus } from '../../src/features/profile/user-status';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import { customEmojiOf } from '../lib/avatar';
 import type { TimelinePost } from '../lib/home-timeline';
 import { likeEvent, NotSignedInError, repostEvent } from '../lib/interact';
 import { useSessionVersion } from '../lib/use-session-version';
@@ -124,6 +125,7 @@ export function PostRow({
             linkStyle={styles.link}
             numberOfLines={12}
             onPressText={onOpenThread}
+            emoji={customEmojiOf(post.event.tags)}
           />
         )}
         {post.repostTargetId ? (

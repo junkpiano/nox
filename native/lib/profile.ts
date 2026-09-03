@@ -6,6 +6,7 @@
  * it is not the thing to reuse - but everything underneath it is.
  */
 
+import type { EmojiMap } from '../../src/common/content-segments';
 import { storeEvents } from '../../src/common/db/events-store';
 import { getProfile, storeProfile } from '../../src/common/db/profiles-store';
 import { getCachedTimeline } from '../../src/common/db/timeline-queries';
@@ -15,7 +16,7 @@ import { queryRelays } from '../../src/common/relay-query';
 import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
-import { pictureUrl } from './avatar';
+import { customEmojiOf, pictureUrl } from './avatar';
 
 const POST_LIMIT: number = PAGE_LIMIT;
 
@@ -27,6 +28,12 @@ export interface Profile {
   banner: string | null;
   nip05: string | null;
   website: string | null;
+  /**
+   * NIP-30: the emoji the kind 0 carries for its own name and bio. Empty
+   * for a profile drawn from the cache, which keeps the content and not
+   * the tags - the web app shows them the same way, only when fresh.
+   */
+  emoji: EmojiMap;
 }
 
 export interface ProfileResult {
@@ -46,7 +53,11 @@ export interface ProfileResult {
  * Reads a kind 0. The content is a JSON object its owner wrote, so every
  * field is checked for being a string rather than trusted to be one.
  */
-function parseProfile(pubkey: PubkeyHex, meta: unknown): Profile {
+function parseProfile(
+  pubkey: PubkeyHex,
+  meta: unknown,
+  tags: string[][] = [],
+): Profile {
   const fallback: Profile = {
     pubkey,
     name: `${pubkey.slice(0, 8)}...`,
@@ -55,6 +66,7 @@ function parseProfile(pubkey: PubkeyHex, meta: unknown): Profile {
     banner: null,
     nip05: null,
     website: null,
+    emoji: new Map(),
   };
   if (!meta || typeof meta !== 'object') return fallback;
 
@@ -70,6 +82,7 @@ function parseProfile(pubkey: PubkeyHex, meta: unknown): Profile {
       banner: pictureUrl(fields.banner),
       nip05: str(fields.nip05),
       website: str(fields.website),
+      emoji: customEmojiOf(tags),
     };
   } catch {
     return fallback;
@@ -174,7 +187,9 @@ export async function loadProfile(
   return {
     // A relay that has nothing for this person is not a reason to forget
     // the name the cache knew.
-    profile: parseProfile(pubkey, meta ?? (await getProfile(pubkey))),
+    profile: meta
+      ? parseProfile(pubkey, meta, newest?.tags ?? [])
+      : parseProfile(pubkey, await getProfile(pubkey)),
     posts,
     filter,
     oldestCreatedAt: oldestOf(posts),

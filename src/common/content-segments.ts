@@ -18,6 +18,7 @@
 
 import { nip19 } from 'nostr-tools';
 import type { PubkeyHex } from '../../types/nostr';
+import { SHORTCODE_IN_TEXT } from './custom-emoji.js';
 import { classifyMediaUrl, type MediaKind } from './media-type.js';
 
 export type ContentSegment =
@@ -39,7 +40,15 @@ export type ContentSegment =
    */
   | { kind: 'event'; text: string; eventId: string | null; relays: string[] }
   /** A hashtag. `tag` is the word without the `#`, lowercased, as NIP-12 `t`. */
-  | { kind: 'hashtag'; text: string; tag: string };
+  | { kind: 'hashtag'; text: string; tag: string }
+  /**
+   * A custom emoji (NIP-30): `:shortcode:` that one of the event's `emoji`
+   * tags gives a picture for. A shortcode with no tag stays text.
+   */
+  | { kind: 'emoji'; text: string; shortcode: string; url: string };
+
+/** Shortcodes to pictures, as `readEmojiTags` reads them off an event. */
+export type EmojiMap = ReadonlyMap<string, string>;
 
 /**
  * One pass, so the parts cannot overlap or be found twice.
@@ -117,7 +126,59 @@ function decodeEvent(
  * worth relying on: it means a renderer cannot silently drop part of what
  * somebody wrote by failing to handle a kind.
  */
-export function parseContentSegments(content: string): ContentSegment[] {
+export function parseContentSegments(
+  content: string,
+  emoji?: EmojiMap,
+): ContentSegment[] {
+  return withCustomEmoji(parseReferences(content), emoji);
+}
+
+/**
+ * The `:shortcode:` runs in the text segments, where the event gave them a
+ * picture. Done after the references are found, so a shortcode inside a URL
+ * is left to the URL.
+ */
+function withCustomEmoji(
+  segments: ContentSegment[],
+  emoji: EmojiMap | undefined,
+): ContentSegment[] {
+  if (!emoji || emoji.size === 0) {
+    return segments;
+  }
+  const out: ContentSegment[] = [];
+  for (const segment of segments) {
+    if (segment.kind !== 'text') {
+      out.push(segment);
+      continue;
+    }
+    const text: string = segment.text;
+    let cursor: number = 0;
+    SHORTCODE_IN_TEXT.lastIndex = 0;
+    let match: RegExpExecArray | null = SHORTCODE_IN_TEXT.exec(text);
+    while (match !== null) {
+      const shortcode: string = match[1] ?? '';
+      const url: string | undefined = emoji.get(shortcode.toLowerCase());
+      if (url === undefined) {
+        // ":a:b:" with only b known: the closing colon of the unknown one
+        // is the opening colon of the next, so look again from there.
+        SHORTCODE_IN_TEXT.lastIndex = match.index + 1;
+      } else {
+        if (match.index > cursor) {
+          out.push({ kind: 'text', text: text.slice(cursor, match.index) });
+        }
+        out.push({ kind: 'emoji', text: match[0], shortcode, url });
+        cursor = match.index + match[0].length;
+      }
+      match = SHORTCODE_IN_TEXT.exec(text);
+    }
+    if (cursor < text.length) {
+      out.push({ kind: 'text', text: text.slice(cursor) });
+    }
+  }
+  return out;
+}
+
+function parseReferences(content: string): ContentSegment[] {
   if (!content) {
     return [];
   }
@@ -230,8 +291,11 @@ export interface PartitionedContent {
  * behind by a removed link is collapsed so the text does not end in a gap
  * where a URL used to be.
  */
-export function partitionContent(content: string): PartitionedContent {
-  const all: ContentSegment[] = parseContentSegments(content);
+export function partitionContent(
+  content: string,
+  emoji?: EmojiMap,
+): PartitionedContent {
+  const all: ContentSegment[] = parseContentSegments(content, emoji);
   const media: Array<{ url: string; kind: MediaKind }> = [];
   const quotes: Array<{ id: string; relays: string[] }> = [];
   const segments: ContentSegment[] = [];

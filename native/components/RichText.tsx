@@ -15,9 +15,19 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
-import { Linking, type StyleProp, Text, type TextStyle } from 'react-native';
+import {
+  Image,
+  Linking,
+  type StyleProp,
+  StyleSheet,
+  Text,
+  type TextStyle,
+} from 'react-native';
 
-import type { ContentSegment } from '../../src/common/content-segments';
+import type {
+  ContentSegment,
+  EmojiMap,
+} from '../../src/common/content-segments';
 import {
   parseContentSegments,
   shortIdentifier,
@@ -80,6 +90,14 @@ export interface RichTextProps {
   style?: StyleProp<TextStyle>;
   linkStyle?: StyleProp<TextStyle>;
   numberOfLines?: number;
+  /** NIP-30: the event's own emoji, drawn inline where their shortcodes are. */
+  emoji?: EmojiMap;
+}
+
+/** An inline picture the height of the line, give or take. */
+function emojiSize(style: StyleProp<TextStyle>): number {
+  const fontSize: number = StyleSheet.flatten(style)?.fontSize ?? 14;
+  return Math.round(fontSize * 1.3);
 }
 
 export default function RichText({
@@ -87,9 +105,11 @@ export default function RichText({
   style,
   linkStyle,
   numberOfLines,
+  emoji,
 }: RichTextProps) {
   const navigation = useNavigation<Nav>();
-  const segments: ContentSegment[] = parseContentSegments(content);
+  const segments: ContentSegment[] = parseContentSegments(content, emoji);
+  const size: number = emojiSize(style);
   const [, bump] = useState(0);
 
   const mentioned: PubkeyHex[] = segments.flatMap(
@@ -161,6 +181,19 @@ export default function RichText({
             >
               {segment.text}
             </Text>
+          );
+        }
+
+        if (segment.kind === 'emoji') {
+          // An Image inside a Text is the one inline element this platform
+          // allows, which is exactly what an emoji is.
+          return (
+            <Image
+              key={key}
+              source={{ uri: segment.url }}
+              style={{ width: size, height: size }}
+              accessibilityLabel={segment.text}
+            />
           );
         }
 

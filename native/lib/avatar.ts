@@ -10,10 +10,17 @@
  */
 
 import { type ImagePolicy, loadableImageUrl } from '../../src/common/avatar';
+import type { EmojiMap } from '../../src/common/content-segments';
+import { readEmojiTags } from '../../src/common/custom-emoji';
 
 const PHONE: ImagePolicy = { secureOnly: true };
 
 /** The picture URL if the phone could show it, else null. */
 export function pictureUrl(raw: unknown): string | null {
   return typeof raw === 'string' ? loadableImageUrl(raw, PHONE) : null;
+}
+
+/** NIP-30: the custom emoji on an event the phone could show. */
+export function customEmojiOf(tags: string[][]): EmojiMap {
+  return readEmojiTags(tags, PHONE);
 }

@@ -20,7 +20,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import type { PartitionedContent } from '../../src/common/content-segments';
+import type {
+  EmojiMap,
+  PartitionedContent,
+} from '../../src/common/content-segments';
 import { partitionContent } from '../../src/common/content-segments';
 import { cardWorthyUrls } from '../../src/common/link-card';
 
@@ -39,6 +42,8 @@ export interface PostBodyProps {
    * links inside the words open themselves, so this is what is left over.
    */
   onPressText?: () => void;
+  /** NIP-30: the event's own emoji, from its tags. */
+  emoji?: EmojiMap;
 }
 
 export default function PostBody({
@@ -47,9 +52,12 @@ export default function PostBody({
   linkStyle,
   numberOfLines,
   onPressText,
+  emoji,
 }: PostBodyProps) {
-  const { segments, media, quotes }: PartitionedContent =
-    partitionContent(content);
+  const { segments, media, quotes }: PartitionedContent = partitionContent(
+    content,
+    emoji,
+  );
   const [opened, setOpened] = useState<number | null>(null);
   const pictures: string[] = media
     .filter((item) => item.kind === 'image')
@@ -68,6 +76,7 @@ export default function PostBody({
             style={textStyle}
             linkStyle={linkStyle}
             numberOfLines={numberOfLines}
+            {...(emoji ? { emoji } : {})}
           />
         </Pressable>
       ) : null}

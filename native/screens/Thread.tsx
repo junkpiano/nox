@@ -39,6 +39,7 @@ import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import PostBody from '../components/PostBody';
 import ReportSheet from '../components/ReportSheet';
+import { customEmojiOf } from '../lib/avatar';
 import { fetchProfilesForPubkeys } from '../lib/home-timeline';
 import {
   likeEvent,
@@ -361,6 +362,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                 content={root.content}
                 textStyle={styles.rootContent}
                 linkStyle={styles.link}
+                emoji={customEmojiOf(root.tags)}
               />
             )}
           </Pressable>
@@ -484,6 +486,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
             textStyle={styles.replyContent}
             linkStyle={styles.link}
             numberOfLines={12}
+            emoji={customEmojiOf(item.tags)}
           />
         </Pressable>
       )}
