@@ -36,12 +36,18 @@ function statusEvent(options: {
   } as NostrEvent;
 }
 
-test('a recent general status is shown', () => {
+test('a recent general status is shown, and says how long it is good for', () => {
   const status = parseUserStatus(statusEvent({}), NOW);
-  assert.deepEqual(status, { text: 'walking the dog', url: null });
+  // Without an expiration, the age limit counted from publication: a reader
+  // keeping this around knows when to let go of it.
+  assert.deepEqual(status, {
+    text: 'walking the dog',
+    url: null,
+    until: NOW - 60 + 7 * DAY,
+  });
 });
 
-test('an expiration in the future keeps it', () => {
+test('an expiration in the future keeps it, and is when it ends', () => {
   const status = parseUserStatus(
     statusEvent({
       tags: [
@@ -52,6 +58,7 @@ test('an expiration in the future keeps it', () => {
     NOW,
   );
   assert.equal(status?.text, 'walking the dog');
+  assert.equal(status?.until, NOW + 3600);
 });
 
 test('an expiration in the past drops it', () => {
