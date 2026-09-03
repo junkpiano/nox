@@ -1,5 +1,10 @@
 import type { PubkeyHex } from '../../../types/nostr';
 import { showKeyBackupNotice } from '../../common/key-backup.js';
+import {
+  beginSignedInSession,
+  InvalidPublicKeyError,
+  startReadOnlySession,
+} from '../../common/session.js';
 
 interface ShowInputFormOptions {
   output: HTMLElement | null;
@@ -67,6 +72,20 @@ export async function showInputForm(
             </div>
             <p class="nox-auth-note">Private keys are stored locally so you remain signed in after closing the app. Use an extension when possible for better isolation.</p>
           </div>
+
+          <div class="nox-browse space-y-2">
+            <p class="nox-kicker">Just looking?</p>
+            <label for="public-key-input" class="sr-only">Public key to browse as</label>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input id="public-key-input" type="text" autocomplete="off" spellcheck="false" placeholder="npub1… or 64-character hex"
+                class="nox-input px-4 py-3 text-sm" />
+              <button id="public-key-browse" class="nox-secondary-button py-3 px-5 whitespace-nowrap">
+                Browse
+              </button>
+            </div>
+            <p id="public-key-error" class="nox-auth-error" hidden></p>
+            <p class="nox-auth-note">Shows the timeline, profile and likes that key sees. Nothing can be posted, and no secret is asked for: to post, sign in.</p>
+          </div>
         </div>
       </section>
     `;
@@ -80,6 +99,13 @@ export async function showInputForm(
   const privateKeyInput: HTMLInputElement | null = document.getElementById(
     'private-key-input',
   ) as HTMLInputElement;
+  const publicKeyInput: HTMLInputElement | null = document.getElementById(
+    'public-key-input',
+  ) as HTMLInputElement;
+  const publicKeyBrowseBtn: HTMLElement | null =
+    document.getElementById('public-key-browse');
+  const publicKeyError: HTMLElement | null =
+    document.getElementById('public-key-error');
 
   if (welcomeLoginBtn) {
     welcomeLoginBtn.addEventListener('click', async (): Promise<void> => {
@@ -98,8 +124,8 @@ export async function showInputForm(
           return;
         }
 
-        localStorage.setItem('nostr_pubkey', pubkeyHex);
         options.clearSessionPrivateKey();
+        beginSignedInSession(pubkeyHex as PubkeyHex);
         options.updateLogoutButton(options.composeButton);
         window.history.pushState(null, '', '/home');
         options.handleRoute();
@@ -132,9 +158,8 @@ export async function showInputForm(
           alert('Please enter your private key.');
           return;
         }
-        const pubkeyHex: PubkeyHex =
-          options.setSessionPrivateKeyFromRaw(rawKey);
-        localStorage.setItem('nostr_pubkey', pubkeyHex);
+        // Loading the key records the sign-in itself.
+        options.setSessionPrivateKeyFromRaw(rawKey);
         privateKeyInput.value = '';
         options.updateLogoutButton(options.composeButton);
         window.history.pushState(null, '', '/home');
@@ -160,5 +185,45 @@ export async function showInputForm(
         privateKeyLoginBtn.click();
       }
     });
+  }
+
+  // Browsing as a public key: a way to see what the app is before trusting
+  // it with a secret. The mistake it guards against is told inline, under
+  // the box, rather than in an alert - it is a typo, not an event.
+  const showPublicKeyError = (message: string | null): void => {
+    if (!publicKeyError) return;
+    publicKeyError.textContent = message ?? '';
+    publicKeyError.hidden = message === null;
+  };
+
+  if (publicKeyBrowseBtn) {
+    publicKeyBrowseBtn.addEventListener('click', (): void => {
+      if (!publicKeyInput) return;
+      try {
+        startReadOnlySession(publicKeyInput.value);
+        showPublicKeyError(null);
+        publicKeyInput.value = '';
+        options.updateLogoutButton(options.composeButton);
+        window.history.pushState(null, '', '/home');
+        options.handleRoute();
+      } catch (error: unknown) {
+        showPublicKeyError(
+          error instanceof InvalidPublicKeyError
+            ? error.message
+            : 'Could not start browsing with that key.',
+        );
+      }
+    });
+  }
+
+  if (publicKeyInput) {
+    publicKeyInput.addEventListener('keypress', (e: KeyboardEvent): void => {
+      if (e.key === 'Enter' && publicKeyBrowseBtn) {
+        publicKeyBrowseBtn.click();
+      }
+    });
+    publicKeyInput.addEventListener('input', (): void =>
+      showPublicKeyError(null),
+    );
   }
 }

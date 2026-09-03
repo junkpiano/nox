@@ -1,4 +1,4 @@
-import { finalizeEvent, nip19 } from 'nostr-tools';
+import { nip19 } from 'nostr-tools';
 import type {
   NostrEvent,
   NostrProfile,
@@ -41,11 +41,10 @@ import {
   getReactionAggregate,
   isReactionClickOnly,
   mergeReactionEvents,
-  normalizeReaction,
 } from './reaction-interactions.js';
 import { createRelayWebSocket } from './relay-socket.js';
 import { repostTags } from './reply-tags.js';
-import { getSessionPrivateKey } from './session.js';
+import { canWrite, signWithSession } from './signer.js';
 import { openZapComposer } from './zap.js';
 
 const REFERENCED_EVENT_CACHE_LIMIT: number = 1000;
@@ -1015,15 +1014,11 @@ async function publishReaction(
   }
 
   let signedEvent: NostrEvent;
-  if ((window as any).nostr?.signEvent) {
-    signedEvent = await (window as any).nostr.signEvent(unsignedEvent);
-  } else {
-    const privateKey: Uint8Array | null = getSessionPrivateKey();
-    if (!privateKey) {
-      alert('Sign in to react.');
-      return null;
-    }
-    signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
+  try {
+    signedEvent = await signWithSession(unsignedEvent);
+  } catch (error: unknown) {
+    alert(error instanceof Error ? error.message : 'Sign in to react.');
+    return null;
   }
 
   const relays: string[] = getRelays();
@@ -1080,15 +1075,11 @@ async function publishRepost(targetEvent: NostrEvent): Promise<void> {
   });
 
   let signedEvent: NostrEvent;
-  if ((window as any).nostr?.signEvent) {
-    signedEvent = await (window as any).nostr.signEvent(unsignedEvent);
-  } else {
-    const privateKey: Uint8Array | null = getSessionPrivateKey();
-    if (!privateKey) {
-      alert('Sign in to repost.');
-      return;
-    }
-    signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
+  try {
+    signedEvent = await signWithSession(unsignedEvent);
+  } catch (error: unknown) {
+    alert(error instanceof Error ? error.message : 'Sign in to repost.');
+    return;
   }
 
   const relays: string[] = getRelays();
@@ -1215,17 +1206,19 @@ export function renderEvent(
     eventPermalink = null;
   }
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
+  // A pubkey alone is not permission: browsing as a key draws the row too,
+  // with every write in it disabled and saying why.
+  const isLoggedIn: boolean = Boolean(storedPubkey) && canWrite();
   const canDeletePost: boolean = Boolean(
-    storedPubkey && storedPubkey === event.pubkey,
+    isLoggedIn && storedPubkey === event.pubkey,
   );
-  const isLoggedIn: boolean = Boolean(storedPubkey);
   // Moderation applies to other people's posts; muting yourself is meaningless
   // and reporting yourself is noise for relay operators.
   const canModerate: boolean = Boolean(
-    storedPubkey && storedPubkey !== event.pubkey,
+    isLoggedIn && storedPubkey !== event.pubkey,
   );
   const canZapTarget: boolean = Boolean(
-    renderProfile?.lud16 || renderProfile?.lud06,
+    isLoggedIn && (renderProfile?.lud16 || renderProfile?.lud06),
   );
   const actionBtnBase: string =
     'event-action-btn inline-flex items-center justify-center rounded transition-colors';
@@ -1234,7 +1227,9 @@ export function renderEvent(
   const replyButtonTitle: string = isLoggedIn
     ? 'Reply'
     : 'Reply (sign-in required)';
-  const replyButtonClasses: string = `${actionBtnBase} reply-event-btn text-blue-600 hover:text-blue-800 hover:bg-blue-50`;
+  const replyButtonClasses: string = isLoggedIn
+    ? `${actionBtnBase} reply-event-btn text-blue-600 hover:text-blue-800 hover:bg-blue-50`
+    : `${actionBtnBase} reply-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
   const repostButtonTitle: string = isLoggedIn
     ? 'Repost'
@@ -1567,6 +1562,10 @@ export function renderEvent(
     replyButton.addEventListener('click', (e: MouseEvent): void => {
       e.preventDefault();
       e.stopPropagation();
+      if (!isLoggedIn) {
+        alert('Sign in to reply.');
+        return;
+      }
       // Trigger reply overlay via custom event
       const replyEvent = new CustomEvent('open-reply', {
         detail: {
@@ -2025,16 +2024,7 @@ async function deleteEventOnRelays(targetEvent: NostrEvent): Promise<void> {
     content: '',
   });
 
-  let signedEvent: NostrEvent;
-  if ((window as any).nostr?.signEvent) {
-    signedEvent = await (window as any).nostr.signEvent(unsignedEvent);
-  } else {
-    const privateKey: Uint8Array | null = getSessionPrivateKey();
-    if (!privateKey) {
-      throw new Error('No signing method available');
-    }
-    signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
-  }
+  const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
 
   const relays: string[] = getRelays();
   const publishPromises = relays.map(

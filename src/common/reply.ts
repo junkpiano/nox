@@ -1,8 +1,9 @@
-import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
 import { storeEvent } from './db/index.js';
 import { replyTags } from './reply-tags.js';
+import { isReadOnlySession } from './session.js';
+import { canWrite, extensionSigner, signWithSession } from './signer.js';
 
 interface ReplyOverlayOptions {
   getSessionPrivateKey: () => Uint8Array | null;
@@ -87,10 +88,13 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
   };
 
   const refreshStatus = (): void => {
-    const hasExtension: boolean = Boolean((window as any).nostr?.signEvent);
+    const allowed: boolean = canWrite();
+    const hasExtension: boolean = extensionSigner() !== null;
     const hasPrivateKey: boolean = Boolean(options.getSessionPrivateKey());
 
-    if (hasExtension) {
+    if (isReadOnlySession()) {
+      statusEl.textContent = 'Read-only session. Sign in to reply.';
+    } else if (hasExtension) {
       statusEl.textContent = 'Signing with extension';
     } else if (hasPrivateKey) {
       statusEl.textContent = 'Signing with private key';
@@ -98,13 +102,9 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
       statusEl.textContent = 'Sign-in required to reply';
     }
 
-    if (!hasExtension && !hasPrivateKey) {
-      submitBtn.disabled = true;
-      submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
-    } else {
-      submitBtn.disabled = false;
-      submitBtn.classList.remove('opacity-60', 'cursor-not-allowed');
-    }
+    submitBtn.disabled = !allowed;
+    submitBtn.classList.toggle('opacity-60', !allowed);
+    submitBtn.classList.toggle('cursor-not-allowed', !allowed);
   };
 
   // Listen for open-reply events
@@ -148,15 +148,7 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
         content,
       });
 
-      let signedEvent: NostrEvent;
-
-      if (hasExtension) {
-        signedEvent = await (window as any).nostr.signEvent(unsignedEvent);
-      } else if (sessionPrivateKey) {
-        signedEvent = finalizeEvent(unsignedEvent, sessionPrivateKey);
-      } else {
-        throw new Error('No signing method available');
-      }
+      const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
 
       const relays: string[] = options.getRelays();
       await options.publishEvent(signedEvent, relays);

@@ -10,7 +10,7 @@ import { createRelayWebSocket } from '../common/relay-socket.js';
 import { setupReplyOverlay } from '../common/reply.js';
 import { setupSearchBar } from '../common/search.js';
 import {
-  clearSessionPrivateKey,
+  endSession,
   getSessionPrivateKey,
   restoreSessionPrivateKey,
   updateLogoutButton,
@@ -238,8 +238,8 @@ function showNewEventsNotification(_timelineType: string, count: number): void {
 }
 
 function handleLogout(): void {
-  localStorage.removeItem('nostr_pubkey');
-  clearSessionPrivateKey();
+  // Whichever kind of session this is: signed in, or browsing as a key.
+  endSession();
   clearNotifications();
   // Otherwise the next account inherits this one's mute list.
   clearMuteList();

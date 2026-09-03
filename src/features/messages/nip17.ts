@@ -1,3 +1,7 @@
+import {
+  isReadOnlySession,
+  ReadOnlySessionError,
+} from '../../common/session.js';
 /**
  * NIP-17 private direct messages.
  *
@@ -97,6 +101,9 @@ async function decryptFrom(
 async function signAsUser(
   event: Omit<NostrEvent, 'id' | 'sig'>,
 ): Promise<NostrEvent> {
+  if (isReadOnlySession()) {
+    throw new ReadOnlySessionError();
+  }
   const privateKey: Uint8Array | null = getSessionPrivateKey();
   if (privateKey) {
     return finalizeEvent(event, privateKey) as NostrEvent;

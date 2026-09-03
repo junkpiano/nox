@@ -1,4 +1,4 @@
-import { finalizeEvent, nip19 } from 'nostr-tools';
+import { nip19 } from 'nostr-tools';
 import type {
   NostrEvent,
   NostrProfile,
@@ -13,6 +13,7 @@ import { loadableOnThisPage } from '../../common/avatar-dom.js';
 import { storeProfile } from '../../common/db/index.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
 import { openRelaySubscription } from '../../common/relay-socket.js';
+import { signWithSession } from '../../common/signer.js';
 import { openZapComposer } from '../../common/zap.js';
 import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
 import { getRelays, recordRelayFailure } from '../relays/relays.js';
@@ -312,16 +313,7 @@ async function signProfileMetadataEvent(
     content: JSON.stringify(stripTransientProfileFields(profile)),
   };
 
-  const nostr: WindowWithNostr['nostr'] = (window as WindowWithNostr).nostr;
-  if (nostr?.signEvent) {
-    return await nostr.signEvent(unsignedEvent);
-  }
-
-  const privateKey: Uint8Array | null = getSessionPrivateKey();
-  if (!privateKey) {
-    throw new Error('No signing method available');
-  }
-  return finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
+  return signWithSession(unsignedEvent);
 }
 
 export async function fetchProfile(

@@ -1,4 +1,5 @@
 import { setAvatar } from '../../common/avatar-dom.js';
+import { isReadOnlySession } from '../../common/session.js';
 /**
  * Messages tab: conversation list and thread view.
  *
@@ -495,6 +496,11 @@ function renderThread(
 }
 
 function getViewerPubkey(): PubkeyHex | null {
+  // Browsing as a key: there is a pubkey, but nothing here can be decrypted
+  // or signed for it, so for this feature there is nobody.
+  if (isReadOnlySession()) {
+    return null;
+  }
   try {
     const stored: string | null = localStorage.getItem('nostr_pubkey');
     return stored ? (stored as PubkeyHex) : null;

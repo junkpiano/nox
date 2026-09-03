@@ -1,5 +1,5 @@
-import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import { signWithSession } from './signer.js';
 
 const UPLOAD_URL = 'https://nostrcheck.me/api/v2/media';
 
@@ -25,19 +25,11 @@ async function buildNip98AuthToken(
   };
 
   let signedEvent: NostrEvent;
-  const hasExtension: boolean = Boolean(
+  const _hasExtension: boolean = Boolean(
     (window as unknown as { nostr?: { signEvent?: unknown } }).nostr?.signEvent,
   );
 
-  if (hasExtension) {
-    signedEvent = await (window as unknown as { nostr: { signEvent: (e: unknown) => Promise<NostrEvent> } }).nostr.signEvent(unsignedEvent);
-  } else {
-    const privateKey: Uint8Array | null = getPrivateKey();
-    if (!privateKey) {
-      throw new Error('No signing method available');
-    }
-    signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
-  }
+  signedEvent = await signWithSession(unsignedEvent);
 
   return btoa(JSON.stringify(signedEvent));
 }
@@ -79,7 +71,8 @@ export async function uploadImage(
     typeof result === 'object' &&
     'nip94_event' in result
   ) {
-    const nip94 = (result as { nip94_event: { tags?: string[][] } }).nip94_event;
+    const nip94 = (result as { nip94_event: { tags?: string[][] } })
+      .nip94_event;
     if (Array.isArray(nip94.tags)) {
       const urlTag: string[] | undefined = nip94.tags.find(
         (t: string[]) => t[0] === 'url',

@@ -1,9 +1,9 @@
-import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
 import { storeEvent } from './db/index.js';
 import type { ImageUploadResult } from './image-upload.js';
 import { uploadImage } from './image-upload.js';
+import { signWithSession } from './signer.js';
 
 interface ComposeOverlayOptions {
   composeButton: HTMLElement | null;
@@ -75,10 +75,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
       contentWarningReason.value = '';
       contentWarningReason.classList.add('opacity-60', 'cursor-not-allowed');
     } else {
-      contentWarningReason.classList.remove(
-        'opacity-60',
-        'cursor-not-allowed',
-      );
+      contentWarningReason.classList.remove('opacity-60', 'cursor-not-allowed');
     }
   };
 
@@ -295,15 +292,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
         content,
       });
 
-      let signedEvent: NostrEvent;
-      if (hasExtension) {
-        signedEvent = await (window as any).nostr.signEvent(unsignedEvent);
-      } else {
-        if (!privateKey) {
-          throw new Error('No signing method available');
-        }
-        signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
-      }
+      const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
 
       await options.publishEvent(signedEvent, options.getRelays());
       await storeEvent(signedEvent, { isHomeTimeline: false });

@@ -1,4 +1,3 @@
-import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
 import {
   getRelays,
@@ -7,6 +6,7 @@ import {
   recordRelaySuccess,
 } from '../features/relays/relays.js';
 import { getSessionPrivateKey } from './session.js';
+import { signWithSession } from './signer.js';
 
 const RELAY_AUTH_PERMISSIONS_KEY: string = 'nostr_relay_auth_permissions_v1';
 
@@ -143,18 +143,13 @@ async function signRelayAuthEvent(
     content: '',
   };
 
-  if (typeof window !== 'undefined') {
-    const nostr: WindowWithNostr['nostr'] = (window as WindowWithNostr).nostr;
-    if (nostr?.signEvent) {
-      return await nostr.signEvent(unsignedEvent);
-    }
-  }
-
-  const privateKey: Uint8Array | null = getSessionPrivateKey();
-  if (!privateKey) {
+  try {
+    return await signWithSession(unsignedEvent);
+  } catch {
+    // Nothing here can sign - no key, or a read-only session that must
+    // not. The relay gets no AUTH, which is what an anonymous reader sends.
     return null;
   }
-  return finalizeEvent(unsignedEvent, privateKey);
 }
 
 function canSignRelayAuthEvent(): boolean {
@@ -437,9 +432,8 @@ export async function openRelaySubscription(
   filter: Record<string, unknown>,
   subscription: SharedRelaySubscription,
 ): Promise<() => void> {
-  const connection: SharedRelayConnection = await ensureSharedRelaySocket(
-    relayUrl,
-  );
+  const connection: SharedRelayConnection =
+    await ensureSharedRelaySocket(relayUrl);
   const subId: string = `sub-${Math.random().toString(36).slice(2)}`;
   connection.subscriptions.set(subId, subscription);
   connection.socket?.send(JSON.stringify(['REQ', subId, filter]));

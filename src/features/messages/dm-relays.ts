@@ -1,3 +1,4 @@
+import { signWithSession } from '../../common/signer.js';
 /**
  * NIP-17 kind 10050 DM relay lists.
  *
@@ -12,10 +13,8 @@
  * scatter private messages across every relay someone happens to post to.
  */
 
-import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
-import { getSessionPrivateKey } from '../../common/session.js';
 
 export const DM_RELAY_LIST_KIND: number = 10050;
 const NIP65_RELAY_LIST_KIND: number = 10002;
@@ -155,24 +154,7 @@ export async function signDmRelayListEvent(params: {
     content: '',
   };
 
-  const extension = (
-    window as unknown as {
-      nostr?: {
-        signEvent?: (e: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent>;
-      };
-    }
-  ).nostr;
-  if (extension?.signEvent) {
-    return extension.signEvent(unsignedEvent);
-  }
-
-  const privateKey: Uint8Array | null = getSessionPrivateKey();
-  if (!privateKey) {
-    throw new Error(
-      'No signing method available (extension or private key required).',
-    );
-  }
-  return finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
+  return signWithSession(unsignedEvent);
 }
 
 /**
