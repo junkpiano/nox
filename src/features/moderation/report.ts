@@ -1,3 +1,4 @@
+import { signWithSession } from '../../common/signer.js';
 /**
  * NIP-56 kind:1984 reports.
  *
@@ -5,9 +6,7 @@
  * them, unlike the mute list, which is private to the viewer.
  */
 
-import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
-import { getSessionPrivateKey } from '../../common/session.js';
 
 export const REPORT_KIND: number = 1984;
 
@@ -58,23 +57,5 @@ export async function signReportEvent(params: {
     content: params.comment ?? '',
   };
 
-  const extension = (
-    window as unknown as {
-      nostr?: {
-        signEvent?: (e: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent>;
-      };
-    }
-  ).nostr;
-
-  if (extension?.signEvent) {
-    return extension.signEvent(unsignedEvent);
-  }
-
-  const privateKey: Uint8Array | null = getSessionPrivateKey();
-  if (!privateKey) {
-    throw new Error(
-      'No signing method available (extension or private key required).',
-    );
-  }
-  return finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
+  return signWithSession(unsignedEvent);
 }

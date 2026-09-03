@@ -1,3 +1,4 @@
+import { signWithSession } from '../../common/signer.js';
 /**
  * NIP-38 user status: the line someone puts under their name about right now.
  *
@@ -13,14 +14,13 @@
  * make both wrong.
  */
 
-import { finalizeEvent, verifyEvent } from 'nostr-tools';
+import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import {
   NoRelayAnsweredError,
   queryRelaysDetailed,
   type SubscriptionOpener,
 } from '../../common/relay-query.js';
-import { getSessionPrivateKey } from '../../common/session.js';
 
 export const USER_STATUS_KIND: number = 30315;
 
@@ -313,23 +313,5 @@ export async function signUserStatusEvent(params: {
     now: Math.floor(Date.now() / 1000),
   });
 
-  const extension = (
-    window as unknown as {
-      nostr?: {
-        signEvent?: (e: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent>;
-      };
-    }
-  ).nostr;
-
-  if (extension?.signEvent) {
-    return extension.signEvent(unsignedEvent);
-  }
-
-  const privateKey: Uint8Array | null = getSessionPrivateKey();
-  if (!privateKey) {
-    throw new Error(
-      'No signing method available (extension or private key required).',
-    );
-  }
-  return finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
+  return signWithSession(unsignedEvent);
 }

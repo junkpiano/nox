@@ -1,3 +1,4 @@
+import { isReadOnlySession } from '../../common/session.js';
 /**
  * User-facing mute and report actions.
  *
@@ -29,6 +30,11 @@ import type { ReportType } from './report.js';
 import { signReportEvent } from './report.js';
 
 function getViewerPubkey(): PubkeyHex | null {
+  // Browsing as a key: there is a pubkey, but nothing here can be decrypted
+  // or signed for it, so for this feature there is nobody.
+  if (isReadOnlySession()) {
+    return null;
+  }
   // Through the kv seam: on the web this is still localStorage, and on the
   // phone it is the same key in SQLite. Reading the global directly here was
   // the last thing keeping the mute list from working natively.

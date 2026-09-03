@@ -1,4 +1,3 @@
-import { finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import {
   fetchFollowList,
@@ -8,6 +7,7 @@ import {
 import { isMuted } from '../../common/mute-state.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getSessionPrivateKey } from '../../common/session.js';
+import { canWrite, signWithSession } from '../../common/signer.js';
 import { recordRelayFailure } from '../relays/relays.js';
 import { nextFollowListTags } from './follow-list.js';
 
@@ -28,6 +28,24 @@ export async function setupFollowToggle(
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
   if (!storedPubkey || storedPubkey === targetPubkey) {
     container.innerHTML = '';
+    return;
+  }
+  if (!canWrite()) {
+    // Disabled rather than gone: the button is where the person learns
+    // what signing in would let them do here.
+    container.innerHTML = `
+      <div class="flex justify-center">
+        <button id="follow-toggle" type="button" aria-disabled="true" title="Sign in to follow"
+          class="nox-secondary-button py-2 px-4 rounded-lg opacity-60 cursor-not-allowed">
+          Follow
+        </button>
+      </div>
+    `;
+    document
+      .getElementById('follow-toggle')
+      ?.addEventListener('click', (): void => {
+        alert('Sign in to follow.');
+      });
     return;
   }
 
@@ -181,16 +199,7 @@ export async function setupFollowToggle(
         content: currentEvent?.content ?? '',
       };
 
-      let signedEvent: NostrEvent;
-      if ((window as any).nostr?.signEvent) {
-        signedEvent = await (window as any).nostr.signEvent(unsignedEvent);
-      } else {
-        const privateKey: Uint8Array | null = getSessionPrivateKey();
-        if (!privateKey) {
-          throw new Error('No signing method available');
-        }
-        signedEvent = finalizeEvent(unsignedEvent, privateKey) as NostrEvent;
-      }
+      const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
       await options.publishEvent(signedEvent, options.getRelays());
 
       isFollowing = !isFollowing;
