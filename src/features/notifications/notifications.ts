@@ -7,11 +7,15 @@ import type {
 } from '../../../types/nostr';
 import { setAvatar } from '../../common/avatar-dom.js';
 import { isMuted } from '../../common/mute-state.js';
-import { createRelayWebSocket } from '../../common/relay-socket.js';
 import {
-  getDisplayName,
-  replaceEmojiShortcodes,
-} from '../../utils/utils.js';
+  type NotificationScope,
+  readNotificationScope,
+  type ScopedNotifications,
+  saveNotificationScope,
+  scopeNotifications,
+} from '../../common/notification-filter.js';
+import { createRelayWebSocket } from '../../common/relay-socket.js';
+import { getDisplayName, replaceEmojiShortcodes } from '../../utils/utils.js';
 import { fetchProfile, getAuthoritativeProfile } from '../profile/profile.js';
 import { recordRelayFailure } from '../relays/relays.js';
 
@@ -28,9 +32,12 @@ let cachedEvents: NostrEvent[] = [];
 function classifyNotification(
   event: NostrEvent,
   targetPubkey: PubkeyHex,
-): 'mention' | 'reply' | 'reaction' | null {
+): 'mention' | 'reply' | 'reaction' | 'repost' | null {
   if (event.kind === 7) {
     return 'reaction';
+  }
+  if (event.kind === 6) {
+    return 'repost';
   }
   if (event.kind !== 1) {
     return null;
@@ -59,11 +66,13 @@ function renderNotifications(
   targetPubkey: PubkeyHex,
   container: HTMLElement,
   displayNames: Map<PubkeyHex, NostrProfile | null>,
+  emptyText: string = 'No notifications yet.',
 ): void {
   container.innerHTML = '';
 
   // A muted account should not be able to reach the viewer by replying to or
-  // reacting to their posts.
+  // reacting to their posts. Applied whatever the scope: a muted account you
+  // still follow is muted.
   events = events.filter(
     (event: NostrEvent): boolean => !isMuted(event.pubkey),
   );
@@ -71,7 +80,7 @@ function renderNotifications(
   if (events.length === 0) {
     const empty: HTMLDivElement = document.createElement('div');
     empty.className = 'text-sm text-gray-500';
-    empty.textContent = 'No notifications yet.';
+    empty.textContent = emptyText;
     container.appendChild(empty);
     return;
   }
@@ -95,6 +104,9 @@ function renderNotifications(
     if (type === 'reaction') {
       label = 'reacted';
       content = event.content ? event.content : '❤';
+    } else if (type === 'repost') {
+      label = 'reposted';
+      content = '';
     } else if (type === 'reply') {
       label = 'replied';
       content = event.content || '';
@@ -179,7 +191,7 @@ async function fetchNotifications(
             string,
             string,
             { kinds: number[]; '#p': string[]; limit: number },
-          ] = ['REQ', subId, { kinds: [1, 7], '#p': [targetPubkey], limit }];
+          ] = ['REQ', subId, { kinds: [1, 6, 7], '#p': [targetPubkey], limit }];
           socket.send(JSON.stringify(req));
         };
 
@@ -296,11 +308,70 @@ export async function loadNotificationsPage(
   }
 
   output.innerHTML = '';
+  const viewer: PubkeyHex = storedPubkey as PubkeyHex;
+
+  // All, or only the people you follow. The switch sits above the list and
+  // says what the list is; the choice is kept on this device.
+  const switcher: HTMLDivElement = document.createElement('div');
+  switcher.className = 'nox-segment';
+  switcher.setAttribute('role', 'group');
+  switcher.setAttribute('aria-label', 'Show notifications from');
+  const notice: HTMLParagraphElement = document.createElement('p');
+  notice.className = 'nox-status-line notifications-notice';
+  notice.hidden = true;
   const list: HTMLDivElement = document.createElement('div');
   list.id = 'notifications-list';
-  list.className = '';
-  output.appendChild(list);
-  renderNotifications(events, storedPubkey as PubkeyHex, list, displayNames);
+  output.append(switcher, notice, list);
+
+  const draw = async (scope: NotificationScope): Promise<void> => {
+    saveNotificationScope(scope);
+    for (const button of switcher.querySelectorAll<HTMLButtonElement>(
+      'button',
+    )) {
+      const on: boolean = button.dataset.scope === scope;
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    // The follow list is a relay round trip; the list says so rather than
+    // going blank for it. Everything else was fetched already.
+    if (scope === 'following') {
+      list.innerHTML =
+        '<div class="text-sm text-gray-500">Reading your follow list...</div>';
+    }
+    const scoped: ScopedNotifications = await scopeNotifications(
+      scope,
+      viewer,
+      events,
+      options.relays,
+    );
+    if (!isRouteActive()) return;
+    notice.hidden = scoped.scope !== 'following-unavailable';
+    notice.textContent =
+      'Your follow list could not be read, so everything is shown.';
+    const emptyText: string =
+      scoped.scope === 'following'
+        ? scoped.followCount === 0
+          ? 'You do not follow anyone yet.'
+          : 'No notifications from people you follow.'
+        : 'No notifications yet.';
+    renderNotifications(scoped.events, viewer, list, displayNames, emptyText);
+  };
+
+  for (const [scope, label] of [
+    ['all', 'All'],
+    ['following', 'Following'],
+  ] as const) {
+    const button: HTMLButtonElement = document.createElement('button');
+    button.type = 'button';
+    button.className = 'nox-segment-option';
+    button.dataset.scope = scope;
+    button.textContent = label;
+    button.addEventListener('click', (): void => {
+      void draw(scope);
+    });
+    switcher.appendChild(button);
+  }
+
+  await draw(readNotificationScope());
 }
 
 async function loadDisplayNames(
