@@ -187,6 +187,10 @@ export async function loadEventPage(
       event.pubkey,
     );
     if (!isRouteActive()) return; // Guard before render
+    // The notes this page shows in full, marked before anything is drawn:
+    // a card decides its quote cards while it renders, so the mark has to
+    // be there first. Ancestors join the list as they arrive.
+    options.output.dataset.threadIds = event.id;
     renderEvent(
       event,
       getAuthoritativeProfile(event.pubkey as PubkeyHex, cachedProfile),
@@ -200,9 +204,6 @@ export async function loadEventPage(
       `[data-event-id="${event.id}"]`,
     ) as HTMLElement | null;
     rootCard?.classList.add('event-root');
-    // The notes this page already shows in full. A reply quoting one of
-    // them gets no card for it - the full text is right above.
-    options.output.dataset.threadIds = event.id;
     const ancestorSection = document.createElement('div');
     ancestorSection.className = 'ancestor-chain mb-2';
     if (rootCard) {
@@ -373,10 +374,23 @@ async function renderAncestorChain(
   if (ancestors.length === 0) return;
   const output: HTMLElement | null = section.closest('#nostr-output');
   if (output) {
+    const ancestorIds: string[] = ancestors.map(
+      (ancestor: NostrEvent): string => ancestor.id,
+    );
     output.dataset.threadIds = [
       ...(output.dataset.threadIds ?? '').split(',').filter(Boolean),
-      ...ancestors.map((ancestor: NostrEvent): string => ancestor.id),
+      ...ancestorIds,
     ].join(',');
+    // The root was drawn before its ancestors were known, so a quote card
+    // it made for one of them is on screen already. Now that the ancestor
+    // itself is about to be, that card is a second copy.
+    for (const id of ancestorIds) {
+      for (const card of output.querySelectorAll(
+        `.referenced-events-container [data-referenced-id="${id}"]`,
+      )) {
+        card.remove();
+      }
+    }
   }
 
   const profiles = new Map<PubkeyHex, NostrProfile | null>();

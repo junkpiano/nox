@@ -2101,12 +2101,18 @@ async function renderReferencedEventCards(
       .filter(Boolean),
   );
 
-  for (const eventRef of eventRefs.slice(0, maxCards)) {
-    if (shown.has(referencedIdOf(eventRef))) {
-      continue;
-    }
+  // Excluded before the cap, not after: a note quoting three things on
+  // this page and one elsewhere should still show the one elsewhere.
+  const worthACard: string[] = eventRefs.filter(
+    (eventRef: string): boolean => !shown.has(referencedIdOf(eventRef)),
+  );
+
+  for (const eventRef of worthACard.slice(0, maxCards)) {
     const card: HTMLDivElement = document.createElement('div');
     card.className = 'border border-indigo-200 bg-indigo-50 rounded-lg p-3';
+    // Named, so a page that later shows this note in full can take the
+    // card back.
+    card.dataset.referencedId = referencedIdOf(eventRef);
     card.textContent = 'Loading referenced event...';
     container.appendChild(card);
 
