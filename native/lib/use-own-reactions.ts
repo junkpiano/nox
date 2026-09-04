@@ -7,14 +7,14 @@
  * and tells every screen when a like made on one of them lands.
  */
 
-import { getPublicKey } from 'nostr-tools';
 import { useEffect, useState } from 'react';
 import {
   createReactionBook,
   type OwnReactions,
   type Reaction,
 } from '../../src/common/own-reactions';
-import { getSessionPrivateKey } from '../../src/common/session';
+import { getSession } from '../../src/common/session';
+import { canWrite } from '../../src/common/signer';
 import { getRelays } from '../../src/features/relays/relays';
 import type { PubkeyHex } from '../../types/nostr';
 import { useSessionVersion } from './use-session-version';
@@ -28,10 +28,14 @@ function announce(): void {
 
 const NOTHING: OwnReactions = { liked: new Set(), reposted: new Set() };
 
-/** The key in this session, as a pubkey, or null when there is none. */
+/**
+ * Whose reactions to ask about: the session's pubkey, whichever kind of
+ * session. Browsing as a key shows that key's likes filled in too - the
+ * relays hold them, and reading them signs nothing. Only marking a new
+ * one needs the key, and that path is behind `canWrite()`.
+ */
 function viewer(): PubkeyHex | null {
-  const key: Uint8Array | null = getSessionPrivateKey();
-  return key ? (getPublicKey(key) as PubkeyHex) : null;
+  return getSession().pubkey;
 }
 
 export interface OwnReactionState extends OwnReactions {
@@ -76,7 +80,7 @@ export function useOwnReactions(ids: ReadonlyArray<string>): OwnReactionState {
     reposted: state.reposted,
     mark: (id: string, reaction: Reaction): void => {
       const me: PubkeyHex | null = viewer();
-      if (!me) return;
+      if (!me || !canWrite()) return;
       book.mark(me, id, reaction);
       announce();
     },

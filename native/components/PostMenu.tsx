@@ -129,12 +129,14 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
             </Pressable>
           ) : null}
 
-          <Pressable
-            onPress={(): void => setReporting(true)}
-            style={styles.row}
-          >
-            <Text style={styles.item}>Report this post</Text>
-          </Pressable>
+          {writable ? (
+            <Pressable
+              onPress={(): void => setReporting(true)}
+              style={styles.row}
+            >
+              <Text style={styles.item}>Report this post</Text>
+            </Pressable>
+          ) : null}
 
           <Pressable onPress={onClose} style={styles.row}>
             <Text style={styles.cancel}>Cancel</Text>
