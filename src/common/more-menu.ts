@@ -32,18 +32,30 @@ export interface MoreMenuOptions {
 
 let openMenu: (() => void) | null = null;
 
-/** The bottom edge of the nearest ancestor that scrolls, or the viewport. */
-function scrollBottom(element: HTMLElement): number {
+/**
+ * The part of the screen a menu can be seen in: the nearest scrolling
+ * ancestor's box, cut to the viewport. A menu placed outside it is clipped
+ * or only reachable by scrolling the list.
+ */
+function visibleBounds(element: HTMLElement): { top: number; bottom: number } {
+  let top: number = 0;
+  let bottom: number = window.innerHeight;
   let node: HTMLElement | null = element.parentElement;
   while (node) {
     const { overflowY } = getComputedStyle(node);
     if (overflowY === 'auto' || overflowY === 'scroll') {
-      return node.getBoundingClientRect().bottom;
+      const rect: DOMRect = node.getBoundingClientRect();
+      top = Math.max(top, rect.top);
+      bottom = Math.min(bottom, rect.bottom);
+      break;
     }
     node = node.parentElement;
   }
-  return window.innerHeight;
+  return { top, bottom };
 }
+
+/** The gap between the trigger and the menu, matching `.nox-menu`'s offset. */
+const MENU_GAP_PX: number = 6.4;
 
 /** Builds the trigger and its menu. Append the returned element where the mark belongs. */
 export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
@@ -111,13 +123,15 @@ export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
     trigger.setAttribute('aria-expanded', 'true');
     // A row near the bottom of a scrolling panel would open its menu into
     // the panel's overflow, where it can only be reached by scrolling the
-    // list. If there is no room below and there is room above, open upward.
-    const rect: DOMRect = menu.getBoundingClientRect();
-    const limit: number = Math.min(window.innerHeight, scrollBottom(wrap));
-    if (
-      rect.bottom > limit &&
-      rect.height < trigger.getBoundingClientRect().top
-    ) {
+    // list. If it does not fit below but fits above, open upward. If it fits
+    // in neither direction it stays below, where the panel's own scrolling
+    // still reaches it.
+    const bounds = visibleBounds(wrap);
+    const triggerRect: DOMRect = trigger.getBoundingClientRect();
+    const height: number = menu.getBoundingClientRect().height + MENU_GAP_PX;
+    const below: number = bounds.bottom - triggerRect.bottom;
+    const above: number = triggerRect.top - bounds.top;
+    if (height > below && height <= above) {
       menu.classList.add('nox-menu-up');
     }
     listeners = new AbortController();
