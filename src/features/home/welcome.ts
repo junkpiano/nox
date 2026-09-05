@@ -1,5 +1,6 @@
 import type { PubkeyHex } from '../../../types/nostr';
 import { showKeyBackupNotice } from '../../common/key-backup.js';
+import { isNativeRuntime } from '../../common/native-http.js';
 import {
   beginSignedInSession,
   InvalidPublicKeyError,
@@ -40,6 +41,13 @@ export async function showInputForm(
     return;
   }
 
+  // The same page is drawn in a browser and in the desktop app, and the key
+  // lands somewhere different in each: localStorage on the web, the OS
+  // credential store under Tauri. The note says which.
+  const storageNote: string = isNativeRuntime()
+    ? "Stored in this device's credential store. Signing out deletes it."
+    : 'Stored in this browser only, which is less secure than an extension. Signing out deletes it.';
+
   options.output.innerHTML = `
       <section class="nox-welcome py-4 sm:py-8">
         <div class="nox-auth-card space-y-5">
@@ -47,7 +55,7 @@ export async function showInputForm(
             <p class="nox-kicker">Welcome</p>
             <h3 class="nox-panel-title">Sign in to nox</h3>
             <p class="nox-panel-copy">No account is needed. Your key is your identity.</p>
-            <p class="nox-panel-copy mt-2">A browser extension is the recommended way in: your secret key stays in it, and nox receives only signed events.</p>
+            <p class="nox-panel-copy mt-2">A browser extension is the recommended way in. Your secret key stays in the extension.</p>
           </div>
 
           <div class="nox-auth-actions">
@@ -88,7 +96,7 @@ export async function showInputForm(
                   Use this key
                 </button>
               </div>
-              <p class="nox-auth-note">Stored in this browser only, which is less secure than an extension. Signing out deletes it.</p>
+              <p class="nox-auth-note">${storageNote}</p>
             </div>
           </details>
         </div>

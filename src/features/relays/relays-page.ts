@@ -64,9 +64,6 @@ export function loadRelaysPage(options: RelaysPageOptions): void {
         <div class="text-gray-600">
           Servers used to send and receive posts.
         </div>
-        <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs">
-          A new relay may not have your recent posts yet. Broadcast sends them.
-        </div>
         <div class="bg-slate-50 border border-slate-200 text-slate-900 rounded-lg p-3 text-xs space-y-2">
           <div class="font-semibold">Advanced · NIP-65</div>
           <div class="text-slate-700">
@@ -99,7 +96,7 @@ export function loadRelaysPage(options: RelaysPageOptions): void {
             class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
             Broadcast posts
           </button>
-          <span class="text-xs text-gray-500 self-center">Re-send your recent posts to all relays.</span>
+          <span class="text-xs text-gray-500 self-center">Re-send your recent posts to all relays, so a new one has them too.</span>
         </div>
         <p id="broadcast-status" class="text-xs text-gray-600"></p>
         <div id="relay-list" class="space-y-2"></div>
