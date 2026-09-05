@@ -1630,6 +1630,8 @@ main {
   font-size: 0.85rem;
   line-height: 1.6;
   text-align: center;
+}
+
 /* A two-way switch above a list, saying what the list is. Quiet: a pill of
    two words, the chosen one lit, no icon - the words are the whole message.
    Pressed state on the button itself, so a screen reader hears it. */
