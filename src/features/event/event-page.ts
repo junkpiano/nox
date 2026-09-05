@@ -449,6 +449,13 @@ async function renderReplyTree(
     [rootEvent, ...replies].map((event: NostrEvent) => setCachedEvent(event)),
   );
   if (!isRouteActive()) return; // Guard before DOM update
+  // Every reply is about to be on this page in full, so a reply quoting
+  // another reply gets no card for it either. Added before any of them
+  // is drawn: a card decides its quotes while it renders.
+  output.dataset.threadIds = [
+    ...(output.dataset.threadIds ?? '').split(',').filter(Boolean),
+    ...replies.map((reply: NostrEvent): string => reply.id),
+  ].join(',');
   const section: HTMLDivElement = document.createElement('div');
   section.className = 'thread-replies';
   const count: number = replies.length;
