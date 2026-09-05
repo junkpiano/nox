@@ -21,11 +21,26 @@ export function getAvatarURL(
   return avatarUrlFor(pubkey, profile, pageImagePolicy());
 }
 
+/**
+ * What to call someone: the name they chose, or a short form of their key.
+ *
+ * The NIP-05 address used to come first, so a card said "jordan@nostr.land"
+ * where the person had written "Jordan The Nostr Miner". An address is
+ * where someone can be reached, not what they are called; it is shown
+ * beside the name, dimmer, by `getNip05Label`.
+ */
 export function getDisplayName(
   npub: Npub,
   profile: NostrProfile | null,
 ): string {
-  return profile?.nip05 || profile?.name || shortenNpub(npub);
+  const chosen: string | undefined =
+    profile?.display_name?.trim() || profile?.name?.trim();
+  return chosen || profile?.nip05?.trim() || shortenNpub(npub);
+}
+
+/** The address beside a name, or nothing when there is none. */
+export function getNip05Label(profile: NostrProfile | null): string {
+  return profile?.nip05?.trim() ?? '';
 }
 
 export function replaceEmojiShortcodes(content: string): string {

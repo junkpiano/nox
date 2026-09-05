@@ -157,7 +157,7 @@ export function loadAboutPage(options: AboutPageOptions): void {
 	          <code class="px-2 py-1 bg-white border border-emerald-200 rounded font-mono text-emerald-900 text-xs">
 	            ${ZAP_ADDRESS}
 	          </code>
-	          <button id="copy-zap-address" type="button" class="inline-flex items-center justify-center p-1 rounded text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-400/60" aria-label="Copy Lightning Address" title="Copy">
+	          <button id="copy-zap-address" type="button" class="inline-flex items-center justify-center p-1 rounded text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100/60" aria-label="Copy Lightning Address" title="Copy">
 	            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
 	              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5h9a2 2 0 012 2v11a2 2 0 01-2 2H9a2 2 0 01-2-2V7a2 2 0 012-2z" />
 	              <path stroke-linecap="round" stroke-linejoin="round" d="M7 19H6a2 2 0 01-2-2V6a2 2 0 012-2h11" />

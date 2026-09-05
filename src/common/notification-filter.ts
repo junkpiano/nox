@@ -63,24 +63,24 @@ function genuine(event: NostrEvent): boolean {
  *
  * Only the viewer's own, genuinely signed kind 3 counts, and the newest
  * one wins; a relay may answer an `authors` filter with anything. No kind
- * 3 at all is an empty set - the person follows nobody, which is an
- * answer, and a different one from "nobody answered".
+ * 3 at all is `null`: these relays do not have the list, which is not the
+ * same as a list that names nobody. Only a signed list with no `p` tags
+ * means the person follows nobody.
  */
 export function collectFollowSet(
   viewer: PubkeyHex,
   events: NostrEvent[],
-): Set<PubkeyHex> {
+): Set<PubkeyHex> | null {
   let newest: NostrEvent | null = null;
   for (const event of events) {
     if (event.kind !== 3 || event.pubkey !== viewer) continue;
     if (!genuine(event)) continue;
     if (!newest || event.created_at > newest.created_at) newest = event;
   }
+  if (!newest) return null;
   const following: Set<PubkeyHex> = new Set();
-  if (newest) {
-    for (const tag of newest.tags) {
-      if (tag[0] === 'p' && tag[1]) following.add(tag[1] as PubkeyHex);
-    }
+  for (const tag of newest.tags) {
+    if (tag[0] === 'p' && tag[1]) following.add(tag[1] as PubkeyHex);
   }
   return following;
 }
@@ -88,15 +88,15 @@ export function collectFollowSet(
 /**
  * Asks the relays for the viewer's follow list.
  *
- * Throws `NoRelayAnsweredError` when no relay answered: an empty set
- * learned from a dead connection would hide every notification behind a
- * filter nobody chose.
+ * Throws `NoRelayAnsweredError` when no relay answered, and resolves to
+ * `null` when they answered without the list: either way an empty set
+ * would hide every notification behind a filter nobody chose.
  */
 export async function fetchFollowSet(
   viewer: PubkeyHex,
   relays: string[],
   open?: SubscriptionOpener,
-): Promise<Set<PubkeyHex>> {
+): Promise<Set<PubkeyHex> | null> {
   if (relays.length === 0) {
     throw new NoRelayAnsweredError(relays);
   }
@@ -142,10 +142,13 @@ export async function scopeNotifications<T extends Authored = NostrEvent>(
   if (scope === 'all') {
     return { scope: 'all', events };
   }
-  let following: Set<PubkeyHex>;
+  let following: Set<PubkeyHex> | null;
   try {
     following = await fetchFollowSet(viewer, relays, open);
   } catch {
+    return { scope: 'following-unavailable', events };
+  }
+  if (!following) {
     return { scope: 'following-unavailable', events };
   }
   return {
