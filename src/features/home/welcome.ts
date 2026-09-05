@@ -44,9 +44,9 @@ export async function showInputForm(
       <section class="nox-welcome py-4 sm:py-8">
         <div class="nox-auth-card space-y-5">
           <div>
-            <p class="nox-kicker">Authentication</p>
-            <h3 class="nox-panel-title">Choose an entry point</h3>
-            <p class="nox-panel-copy">Extension sign-in is recommended. Local key mode stays on this device until logout.</p>
+            <p class="nox-kicker">Welcome</p>
+            <h3 class="nox-panel-title">Sign in to nox</h3>
+            <p class="nox-panel-copy">A browser extension keeps your key out of this page, so it is the way in we recommend. Your secret key stays in the extension; nox receives only the signed event.</p>
           </div>
 
           <div class="nox-auth-actions">
@@ -58,19 +58,6 @@ export async function showInputForm(
               <span aria-hidden="true">🌍</span>
               <span>View Global Timeline</span>
             </button>
-          </div>
-
-          <div class="space-y-2">
-            <label for="private-key-input" class="nox-field-label">Private key access</label>
-            <div class="flex flex-col sm:flex-row gap-2">
-              <input id="private-key-input" type="password" autocomplete="off" placeholder="nsec1... or 64-char hex"
-                class="nox-input px-4 py-3 text-sm" />
-              <button id="private-key-login"
-                class="nox-secondary-button py-3 px-5 whitespace-nowrap">
-                Use Private Key
-              </button>
-            </div>
-            <p class="nox-auth-note">Private keys are stored locally so you remain signed in after closing the app. Use an extension when possible for better isolation.</p>
           </div>
 
           <div class="nox-browse space-y-2">
@@ -86,6 +73,22 @@ export async function showInputForm(
             <p id="public-key-error" class="nox-auth-error" hidden></p>
             <p class="nox-auth-note">Shows the timeline, profile and likes that key sees. Nothing can be posted, and no secret is asked for: to post, sign in.</p>
           </div>
+
+          <details class="nox-reveal">
+            <summary class="nox-reveal-summary">I have a secret key</summary>
+            <div class="nox-reveal-body space-y-2">
+              <label for="private-key-input" class="sr-only">Secret key</label>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <input id="private-key-input" type="password" autocomplete="off" placeholder="nsec1… or 64-character hex"
+                  class="nox-input px-4 py-3 text-sm" />
+                <button id="private-key-login"
+                  class="nox-secondary-button py-3 px-5 whitespace-nowrap">
+                  Use this key
+                </button>
+              </div>
+              <p class="nox-auth-note">Stored in this browser. It never leaves this browser, and browser storage is less secure than an extension. Signing out deletes it.</p>
+            </div>
+          </details>
         </div>
       </section>
     `;
