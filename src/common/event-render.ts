@@ -15,7 +15,6 @@ import {
   fetchOGP,
   getAvatarURL,
   getDisplayName,
-  getNip05Label,
   isTwitterURL,
   replaceEmojiShortcodes,
 } from '../utils/utils.js';
@@ -33,6 +32,7 @@ import {
 } from './events-queries.js';
 import { classifyMediaUrl, withPosterFrame } from './media-type.js';
 import { isMuted } from './mute-state.js';
+import { verifiedNip05 } from './nip05.js';
 import type { ReactionAggregate } from './reaction-interactions.js';
 import {
   applyOptimisticReactionState,
@@ -1188,10 +1188,6 @@ export function renderEvent(
   const avatar: string = getAvatarURL(pubkey, renderProfile);
   const name: string = getDisplayName(npub, renderProfile);
   const safeName: string = escapeHtmlAttribute(name);
-  // Empty is drawn too, so a profile arriving after the card can fill it.
-  const safeNip05: string = escapeHtmlAttribute(
-    getNip05Label(renderProfile) === name ? '' : getNip05Label(renderProfile),
-  );
   const safeNpub: string = escapeHtmlAttribute(npub);
   const createdAt: string = new Date(event.created_at * 1000).toLocaleString();
   const timeLabel: string = formatEventTimeLabel(event.created_at);
@@ -1491,6 +1487,10 @@ export function renderEvent(
   div.dataset.pubkey = pubkey;
   div.dataset.timestamp = event.created_at.toString();
   div.dataset.reply = parentEventId ? 'true' : 'false';
+  // The address beside the name is drawn empty and filled in only once the
+  // domain has confirmed it is this person's: a claimed address is the one
+  // string on a card that must not be taken on trust.
+  void showVerifiedNip05(div, pubkey as PubkeyHex, renderProfile);
   if (imageUrls.length > 0) {
     div.dataset.images = JSON.stringify(imageUrls);
   }
@@ -1510,7 +1510,7 @@ export function renderEvent(
 				      <div class="flex-1 overflow-x-hidden overflow-y-visible">
 			        <div class="flex items-center gap-2 min-w-0 mb-1">
 			          <a href="/${safeNpub}" class="event-username min-w-0 truncate font-semibold text-gray-800 text-sm hover:text-blue-600 transition-colors">${safeName}</a>
-				          <span class="event-nip05 min-w-0 truncate text-xs text-gray-500">${safeNip05}</span>
+				          <span class="event-nip05 min-w-0 truncate text-xs text-gray-500"></span>
 			          ${
                   eventPermalink
                     ? `<a href="${eventPermalink}" class="flex-none text-xs text-gray-500 hover:text-blue-600 transition-colors" title="${escapeHtmlAttribute(createdAt)}">${escapeHtmlAttribute(timeLabel)}</a>`
@@ -1881,6 +1881,28 @@ function referencedIdOf(eventRef: string): string {
     // Not a reference this reads.
   }
   return '';
+}
+
+/**
+ * Fills a card's address slot with the profile's NIP-05, once verified.
+ *
+ * Safe to call again when a fuller profile arrives: the slot is cleared
+ * first, and a stale answer for a card that has since been re-rendered
+ * lands on nothing.
+ */
+export async function showVerifiedNip05(
+  card: HTMLElement,
+  pubkey: PubkeyHex,
+  profile: NostrProfile | null,
+): Promise<void> {
+  const slot: HTMLElement | null = card.querySelector('.event-nip05');
+  if (!slot) return;
+  slot.textContent = '';
+  const address: string | null = await verifiedNip05(pubkey, profile?.nip05);
+  if (!address) return;
+  const name: string =
+    card.querySelector('.event-username')?.textContent?.trim() ?? '';
+  slot.textContent = address === name ? '' : address;
 }
 
 function resolveRepostEventId(event: NostrEvent): string | null {

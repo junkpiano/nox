@@ -536,6 +536,9 @@ export function renderProfile(
     `<span id="profile-following" class="nox-profile-following" hidden></span>`,
   );
 
+  // Whose header this is. The follow count below arrives after a relay
+  // round trip, by which time this section may be showing somebody else.
+  profileSection.dataset.pubkey = pubkey;
   profileSection.innerHTML = `
     <div class="nox-profile">
       ${bannerHtml}
@@ -593,6 +596,7 @@ export function renderProfile(
   void (async (): Promise<void> => {
     try {
       const following = await fetchFollowSet(pubkey, getRelays());
+      if (profileSection.dataset.pubkey !== pubkey) return;
       const element: HTMLElement | null =
         profileSection.querySelector('#profile-following');
       if (!element) return;

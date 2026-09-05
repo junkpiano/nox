@@ -8,11 +8,11 @@ import type {
 import { setAvatar } from '../../common/avatar-dom.js';
 import { getProfile as getCachedDbProfile } from '../../common/db/index.js';
 import { createDeletionGate } from '../../common/deletion-gate.js';
-import { renderEvent } from '../../common/event-render.js';
+import { renderEvent, showVerifiedNip05 } from '../../common/event-render.js';
 import { fetchFollowList } from '../../common/events-queries.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { fetchingProfiles, profileCache } from '../../common/timeline-cache.js';
-import { getDisplayName, getNip05Label } from '../../utils/utils.js';
+import { getDisplayName } from '../../utils/utils.js';
 import {
   fetchProfile,
   getAuthoritativeProfile,
@@ -112,13 +112,7 @@ function updateRenderedProfile(
       if (nameEl) {
         const npubStr: Npub = nip19.npubEncode(pubkey);
         nameEl.textContent = getDisplayName(npubStr, renderProfile);
-        const nip05El: Element | null | undefined =
-          nameEl.parentElement?.querySelector('.event-nip05');
-        if (nip05El) {
-          const address: string = getNip05Label(renderProfile);
-          nip05El.textContent =
-            address === nameEl.textContent ? '' : address;
-        }
+        void showVerifiedNip05(el as HTMLElement, pubkey, renderProfile);
       }
       if (avatarEl) {
         setAvatar(avatarEl as HTMLImageElement, pubkey, renderProfile);

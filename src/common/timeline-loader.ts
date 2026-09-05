@@ -18,7 +18,7 @@ import {
   createBackwardReq,
   getRxNostr,
 } from '../features/relays/rx-nostr-client.js';
-import { getDisplayName, getNip05Label } from '../utils/utils.js';
+import { getDisplayName } from '../utils/utils.js';
 import { setAvatar } from './avatar-dom.js';
 import type { CachedTimelineResult, TimelineType } from './db/index.js';
 import {
@@ -31,7 +31,7 @@ import {
   storeEvents,
 } from './db/index.js';
 import { createDeletionGate, findDeletedIds } from './deletion-gate.js';
-import { renderEvent } from './event-render.js';
+import { renderEvent, showVerifiedNip05 } from './event-render.js';
 import { fetchingProfiles, profileCache } from './timeline-cache.js';
 import { applyStatusesToTimeline } from './timeline-status.js';
 
@@ -145,13 +145,11 @@ function updateRenderedProfile(
       if (nameEl) {
         const npubStr: Npub = nip19.npubEncode(event.pubkey);
         nameEl.textContent = getDisplayName(npubStr, renderProfile);
-        const nip05El: Element | null | undefined =
-          nameEl.parentElement?.querySelector('.event-nip05');
-        if (nip05El) {
-          const address: string = getNip05Label(renderProfile);
-          nip05El.textContent =
-            address === nameEl.textContent ? '' : address;
-        }
+        void showVerifiedNip05(
+          el as HTMLElement,
+          event.pubkey as PubkeyHex,
+          renderProfile,
+        );
       }
       if (avatarEl) {
         setAvatar(avatarEl as HTMLImageElement, event.pubkey, renderProfile);

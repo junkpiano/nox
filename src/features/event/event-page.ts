@@ -14,6 +14,7 @@ import {
   getTagMarker,
   loadReactionsForEvent,
   renderEvent,
+  showVerifiedNip05,
 } from '../../common/event-render.js';
 import {
   fetchEventById,
@@ -22,9 +23,9 @@ import {
 } from '../../common/events-queries.js';
 import { setEventMeta } from '../../common/meta.js';
 import { setActiveNav } from '../../common/navigation.js';
-import { getDisplayName, getNip05Label } from '../../utils/utils.js';
+import { getDisplayName } from '../../utils/utils.js';
 import { fetchProfile, getAuthoritativeProfile } from '../profile/profile.js';
-import { getRelays, normalizeRelayUrl } from '../relays/relays.js';
+import { normalizeRelayUrl } from '../relays/relays.js';
 
 interface LoadEventPageOptions {
   eventRef: string;
@@ -254,12 +255,12 @@ export async function loadEventPage(
       ) as HTMLImageElement | null;
       if (nameEl) {
         nameEl.textContent = getDisplayName(npubStr, renderProfile);
-        const nip05El: Element | null | undefined =
-          nameEl.parentElement?.querySelector('.event-nip05');
-        if (nip05El) {
-          const address: string = getNip05Label(renderProfile);
-          nip05El.textContent =
-            address === nameEl.textContent ? '' : address;
+        if (eventCard) {
+          void showVerifiedNip05(
+            eventCard,
+            event.pubkey as PubkeyHex,
+            renderProfile,
+          );
         }
       }
       if (avatarEl) {
