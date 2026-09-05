@@ -181,6 +181,13 @@ export interface ReactionBook {
    * screen should not have to ask them to find out.
    */
   mark(viewer: PubkeyHex, id: string, reaction: Reaction): void;
+  /** Takes back a reaction the app just deleted. */
+  unmark(viewer: PubkeyHex, id: string, reaction: Reaction): void;
+  /**
+   * Drops what is held about a post, so the next ask goes to the relays.
+   * For when the app changed something and cannot say what remains.
+   */
+  forget(viewer: PubkeyHex, id: string): void;
 }
 
 /**
@@ -197,6 +204,20 @@ export function createReactionBook(
   const liked: Set<string> = new Set();
   const reposted: Set<string> = new Set();
   const pending: Map<string, Promise<void>> = new Map();
+  // Every mark or unmark is numbered, per post and per kind of reaction.
+  // A lookup remembers the number it started at and leaves alone what was
+  // edited since: the relays were asked before the like was made, so their
+  // answer is older than it. A like made meanwhile does not discard what
+  // they found out about a repost.
+  let edits: number = 0;
+  const editedAt: Map<string, number> = new Map();
+  const editKey = (reaction: Reaction, id: string): string =>
+    `${reaction}:${id}`;
+  const editedSince = (
+    reaction: Reaction,
+    id: string,
+    since: number,
+  ): boolean => (editedAt.get(editKey(reaction, id)) ?? 0) > since;
 
   const belongsTo = (viewer: PubkeyHex): void => {
     if (owner === viewer) return;
@@ -205,6 +226,7 @@ export function createReactionBook(
     liked.clear();
     reposted.clear();
     pending.clear();
+    editedAt.clear();
   };
 
   const snapshot = (): OwnReactions => ({
@@ -212,27 +234,45 @@ export function createReactionBook(
     reposted: new Set(reposted),
   });
 
+  // A lookup speaks only for the questions still its own. A post forgotten
+  // while its question was out gets a new question; so does a viewer who
+  // left and came back. The old question finishing must neither write its
+  // answer over the new one's nor remove the new one's entry.
   const lookUp = async (
     viewer: PubkeyHex,
     fresh: string[],
     relays: string[],
+    self: { flight?: Promise<void> },
   ): Promise<void> => {
+    const startedAt: number = edits;
+    const mine = (id: string): boolean => pending.get(id) === self.flight;
     try {
       const found: OwnReactions = await lookup(viewer, fresh, relays);
       if (owner !== viewer) return;
       // An answer replaces what was held for these posts, including with
-      // nothing: a like withdrawn elsewhere is not a like now.
+      // nothing: a like withdrawn elsewhere is not a like now. A post the
+      // app itself edited while the question was out keeps the app's
+      // answer, and a post asked about again since is the newer question's.
       for (const id of fresh) {
-        if (found.liked.has(id)) liked.add(id);
-        else liked.delete(id);
-        if (found.reposted.has(id)) reposted.add(id);
-        else reposted.delete(id);
+        if (!mine(id)) continue;
+        if (!editedSince('like', id, startedAt)) {
+          if (found.liked.has(id)) liked.add(id);
+          else liked.delete(id);
+        }
+        if (!editedSince('repost', id, startedAt)) {
+          if (found.reposted.has(id)) reposted.add(id);
+          else reposted.delete(id);
+        }
       }
     } catch {
       // Nobody answered. That is not knowledge about any of these.
-      if (owner === viewer) for (const id of fresh) askedAt.delete(id);
+      if (owner === viewer) {
+        for (const id of fresh) if (mine(id)) askedAt.delete(id);
+      }
     } finally {
-      if (owner === viewer) for (const id of fresh) pending.delete(id);
+      if (owner === viewer) {
+        for (const id of fresh) if (mine(id)) pending.delete(id);
+      }
     }
   };
 
@@ -248,8 +288,9 @@ export function createReactionBook(
       });
       if (fresh.length > 0) {
         for (const id of fresh) askedAt.set(id, now);
-        const flight: Promise<void> = lookUp(viewer, fresh, relays);
-        for (const id of fresh) pending.set(id, flight);
+        const self: { flight?: Promise<void> } = {};
+        self.flight = lookUp(viewer, fresh, relays, self);
+        for (const id of fresh) pending.set(id, self.flight);
       }
       await Promise.all(
         Array.from(
@@ -273,6 +314,24 @@ export function createReactionBook(
       (reaction === 'like' ? liked : reposted).add(id);
       // Fresh knowledge; no need to ask about this post for a while.
       askedAt.set(id, clock());
+      editedAt.set(editKey(reaction, id), ++edits);
+    },
+    unmark(viewer, id, reaction) {
+      belongsTo(viewer);
+      (reaction === 'like' ? liked : reposted).delete(id);
+      askedAt.set(id, clock());
+      editedAt.set(editKey(reaction, id), ++edits);
+    },
+    forget(viewer, id) {
+      belongsTo(viewer);
+      askedAt.delete(id);
+      // A question already out is not the answer wanted now; the next ask
+      // sends a new one rather than waiting on it.
+      pending.delete(id);
+      // Counted as an edit, so a lookup that was already out does not
+      // write its now-stale answer back over the forgetting.
+      editedAt.set(editKey('like', id), ++edits);
+      editedAt.set(editKey('repost', id), ++edits);
     },
   };
 }

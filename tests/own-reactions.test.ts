@@ -13,6 +13,7 @@ import {
   collectOwnReactions,
   createReactionBook,
   fetchOwnReactions,
+  type OwnReactionLookup,
   type OwnReactions,
   REACTION_ANSWER_TTL_SECONDS,
 } from '../src/common/own-reactions.js';
@@ -182,9 +183,94 @@ test('reaction book: a like made here shows at once, without asking', async () =
   const book = createReactionBook(lookup, clock().now);
   await book.ask(ME, [POST_A], RELAYS);
   book.mark(ME, POST_A, 'like');
+  assert.ok(book.known(ME).liked.has(POST_A));
+  book.unmark(ME, POST_A, 'like');
+  assert.ok(!book.known(ME).liked.has(POST_A));
+  book.mark(ME, POST_A, 'like');
   assert.deepEqual([...book.known(ME).liked], [POST_A]);
   await book.ask(ME, [POST_A], RELAYS);
   assert.equal(asked.length, 1);
+});
+
+test('reaction book: a like made while the relays were being asked is not undone by their answer', async () => {
+  let release: (answer: OwnReactions) => void = () => {};
+  const lookup: OwnReactionLookup = () =>
+    new Promise<OwnReactions>((resolve) => {
+      release = resolve;
+    });
+  const book = createReactionBook(lookup, clock().now);
+  const asking = book.ask(ME, [POST_A, POST_B], RELAYS);
+  book.mark(ME, POST_A, 'like');
+  // The relays answer "no likes, but a repost of A" - true when asked.
+  release({ liked: new Set(), reposted: new Set([POST_A]) });
+  const known = await asking;
+  assert.deepEqual([...known.liked], [POST_A]);
+  assert.ok(!known.liked.has(POST_B));
+  // The like made meanwhile did not throw away what they found out.
+  assert.deepEqual([...known.reposted], [POST_A]);
+});
+
+test('reaction book: a forgotten post is asked about again', async () => {
+  const { asked, lookup } = lookupThatAnswers(() => ({
+    liked: new Set([POST_A]),
+    reposted: new Set(),
+  }));
+  const book = createReactionBook(lookup, clock().now);
+  await book.ask(ME, [POST_A], RELAYS);
+  await book.ask(ME, [POST_A], RELAYS);
+  assert.equal(asked.length, 1, 'believed');
+  book.forget(ME, POST_A);
+  await book.ask(ME, [POST_A], RELAYS);
+  assert.equal(asked.length, 2, 'asked again after forgetting');
+});
+
+test('reaction book: an old question finishing does not cancel the new one', async () => {
+  const releases: Array<(answer: OwnReactions) => void> = [];
+  const lookup: OwnReactionLookup = () =>
+    new Promise<OwnReactions>((resolve) => {
+      releases.push(resolve);
+    });
+  const book = createReactionBook(lookup, clock().now);
+  const first = book.ask(ME, [POST_A], RELAYS);
+  book.forget(ME, POST_A);
+  const second = book.ask(ME, [POST_A], RELAYS);
+  assert.equal(releases.length, 2, 'forgetting sent a new question');
+  // The old question comes back first, and says nothing.
+  releases[0]?.({ liked: new Set(), reposted: new Set() });
+  await first;
+  // A card rendered now waits for the new question, not the old answer.
+  let third: OwnReactions | null = null;
+  void book.ask(ME, [POST_A], RELAYS).then((known): void => {
+    third = known;
+  });
+  await Promise.resolve();
+  assert.equal(third, null, 'still waiting on the new question');
+  releases[1]?.({ liked: new Set([POST_A]), reposted: new Set() });
+  const known = await second;
+  assert.ok(known.liked.has(POST_A));
+});
+
+test('reaction book: a viewer who left and came back is not answered by the old question', async () => {
+  const OTHER: PubkeyHex = '9'.repeat(64) as PubkeyHex;
+  const releases: Array<(answer: OwnReactions) => void> = [];
+  const lookup: OwnReactionLookup = () =>
+    new Promise<OwnReactions>((resolve) => {
+      releases.push(resolve);
+    });
+  const book = createReactionBook(lookup, clock().now);
+  const stale = book.ask(ME, [POST_A], RELAYS);
+  // Somebody else looks, then the first viewer is back and asks again.
+  const other = book.ask(OTHER, [POST_A], RELAYS);
+  releases[1]?.({ liked: new Set(), reposted: new Set() });
+  await other;
+  const fresh = book.ask(ME, [POST_A], RELAYS);
+  assert.equal(releases.length, 3);
+  releases[2]?.({ liked: new Set([POST_A]), reposted: new Set() });
+  await fresh;
+  // The first question comes back last, and says nothing.
+  releases[0]?.({ liked: new Set(), reposted: new Set() });
+  await stale;
+  assert.ok(book.known(ME).liked.has(POST_A), 'the newer answer stands');
 });
 
 test('reaction book: an answer is believed for a while, then asked again', async () => {
