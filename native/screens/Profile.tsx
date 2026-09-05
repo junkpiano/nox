@@ -283,12 +283,8 @@ function ReportLink({ target }: { target: PubkeyHex }) {
   );
 }
 
-/** Roughly six lines of bio; past that the rest is behind "Show more". */
+/** Six lines of bio; past that the rest is behind "Show more". */
 const BIO_FOLD_LINES: number = 6;
-
-function bioIsLong(about: string): boolean {
-  return about.length > 280 || about.split('\n').length > BIO_FOLD_LINES;
-}
 
 function Header({ profile }: { profile: ProfileData }) {
   const npub: string = nip19.npubEncode(profile.pubkey);
@@ -296,6 +292,17 @@ function Header({ profile }: { profile: ProfileData }) {
   // is decoration on a profile, and not finding one is not an error.
   const status: UserStatus | null = useUserStatus(profile.pubkey);
   const [bioOpen, setBioOpen] = useState(false);
+  // Whether the bio runs past the fold is measured, not guessed: the first
+  // layout is unbounded and reports its line count, and only a bio that
+  // rendered longer than the fold gets one. Counting characters would fold
+  // a short bio on a narrow screen and offer "Show more" on a long one that
+  // already fit.
+  const [longBio, setLongBio] = useState<boolean | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new person or a new bio is measured afresh
+  useEffect((): void => {
+    setLongBio(null);
+    setBioOpen(false);
+  }, [profile.pubkey, profile.about]);
   // How many people they follow, from their own kind 3, through the same
   // function the web app and Notifications use. No answer, or no list on
   // these relays, leaves the number out rather than showing a zero.
@@ -312,7 +319,6 @@ function Header({ profile }: { profile: ProfileData }) {
       cancelled = true;
     };
   }, [profile.pubkey]);
-  const longBio: boolean = Boolean(profile.about && bioIsLong(profile.about));
 
   return (
     <View>
@@ -395,6 +401,10 @@ function Header({ profile }: { profile: ProfileData }) {
               linkStyle={styles.link}
               emoji={profile.emoji}
               numberOfLines={longBio && !bioOpen ? BIO_FOLD_LINES : undefined}
+              onTextLayout={(event): void => {
+                if (longBio !== null) return;
+                setLongBio(event.nativeEvent.lines.length > BIO_FOLD_LINES);
+              }}
             />
             {longBio ? (
               <Pressable

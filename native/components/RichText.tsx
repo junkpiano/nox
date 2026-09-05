@@ -18,9 +18,11 @@ import { useEffect, useState } from 'react';
 import {
   Image,
   Linking,
+  type NativeSyntheticEvent,
   type StyleProp,
   StyleSheet,
   Text,
+  type TextLayoutEventData,
   type TextStyle,
 } from 'react-native';
 
@@ -90,6 +92,8 @@ export interface RichTextProps {
   style?: StyleProp<TextStyle>;
   linkStyle?: StyleProp<TextStyle>;
   numberOfLines?: number;
+  /** The rendered lines, for a caller deciding whether to fold. */
+  onTextLayout?: (event: NativeSyntheticEvent<TextLayoutEventData>) => void;
   /** NIP-30: the event's own emoji, drawn inline where their shortcodes are. */
   emoji?: EmojiMap;
 }
@@ -105,6 +109,7 @@ export default function RichText({
   style,
   linkStyle,
   numberOfLines,
+  onTextLayout,
   emoji,
 }: RichTextProps) {
   const navigation = useNavigation<Nav>();
@@ -130,7 +135,11 @@ export default function RichText({
   }, [mentioned.join(',')]);
 
   return (
-    <Text style={style} numberOfLines={numberOfLines}>
+    <Text
+      style={style}
+      numberOfLines={numberOfLines}
+      onTextLayout={onTextLayout}
+    >
       {segments.map((segment: ContentSegment, index: number) => {
         const key = `${index}-${segment.kind}`;
 
