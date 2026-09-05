@@ -15,6 +15,7 @@ import {
   fetchOGP,
   getAvatarURL,
   getDisplayName,
+  getNip05Label,
   isTwitterURL,
   replaceEmojiShortcodes,
 } from '../utils/utils.js';
@@ -1187,6 +1188,10 @@ export function renderEvent(
   const avatar: string = getAvatarURL(pubkey, renderProfile);
   const name: string = getDisplayName(npub, renderProfile);
   const safeName: string = escapeHtmlAttribute(name);
+  // Empty is drawn too, so a profile arriving after the card can fill it.
+  const safeNip05: string = escapeHtmlAttribute(
+    getNip05Label(renderProfile) === name ? '' : getNip05Label(renderProfile),
+  );
   const safeNpub: string = escapeHtmlAttribute(npub);
   const createdAt: string = new Date(event.created_at * 1000).toLocaleString();
   const timeLabel: string = formatEventTimeLabel(event.created_at);
@@ -1485,6 +1490,7 @@ export function renderEvent(
   div.dataset.createdAt = String(event.created_at);
   div.dataset.pubkey = pubkey;
   div.dataset.timestamp = event.created_at.toString();
+  div.dataset.reply = parentEventId ? 'true' : 'false';
   if (imageUrls.length > 0) {
     div.dataset.images = JSON.stringify(imageUrls);
   }
@@ -1504,6 +1510,7 @@ export function renderEvent(
 				      <div class="flex-1 overflow-x-hidden overflow-y-visible">
 			        <div class="flex items-center gap-2 min-w-0 mb-1">
 			          <a href="/${safeNpub}" class="event-username min-w-0 truncate font-semibold text-gray-800 text-sm hover:text-blue-600 transition-colors">${safeName}</a>
+				          <span class="event-nip05 min-w-0 truncate text-xs text-gray-500">${safeNip05}</span>
 			          ${
                   eventPermalink
                     ? `<a href="${eventPermalink}" class="flex-none text-xs text-gray-500 hover:text-blue-600 transition-colors" title="${escapeHtmlAttribute(createdAt)}">${escapeHtmlAttribute(timeLabel)}</a>`

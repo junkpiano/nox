@@ -32,9 +32,9 @@ export async function setupFollowToggle(
     // Disabled rather than gone: the button is where the person learns
     // what signing in would let them do here.
     container.innerHTML = `
-      <div class="flex justify-center">
+      <div class="nox-profile-action-row">
         <button id="follow-toggle" type="button" aria-disabled="true" title="Sign in to follow"
-          class="nox-secondary-button py-2 px-4 rounded-lg opacity-60 cursor-not-allowed">
+          class="nox-secondary-button py-2 px-5 text-sm opacity-60 cursor-not-allowed">
           Follow
         </button>
       </div>
@@ -47,27 +47,52 @@ export async function setupFollowToggle(
     return;
   }
 
-  // Follow keeps its label: it is the primary action and its state matters.
-  // Message is a destination, not a decision, so an icon carries it.
+  // Follow is the one decision on the page and the one filled button. The
+  // rest - a message, a mute, a report - are rare, and live behind one
+  // quiet mark rather than sharing the row as equals.
   container.innerHTML = `
-    <div class="flex flex-wrap items-center justify-center gap-2">
-      <button id="follow-toggle" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
+    <div class="nox-profile-action-row">
+      <button id="follow-toggle" class="nox-primary-button py-2 px-5 text-sm">
         Follow
       </button>
-      <button id="profile-message" type="button" class="nox-muted-button rounded-lg p-2 transition-colors" aria-label="Message" title="Message">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-5 h-5 block" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3 7l9 6 9-6" />
-          <rect x="3" y="5" width="18" height="14" rx="2" />
-        </svg>
-      </button>
-      <button id="profile-mute-toggle" type="button" class="nox-muted-button font-semibold py-2 px-4 rounded-lg transition-colors">
-        ${isMuted(targetPubkey) ? 'Unmute' : 'Mute'}
-      </button>
-      <button id="profile-report" type="button" class="nox-muted-button font-semibold py-2 px-4 rounded-lg transition-colors">
-        Report
-      </button>
+      <div class="nox-more">
+        <button id="profile-more" type="button" class="nox-more-trigger" aria-label="More actions" aria-haspopup="menu" aria-expanded="false" title="More">···</button>
+        <div id="profile-more-menu" class="nox-menu" role="menu" hidden>
+          <button id="profile-message" type="button" role="menuitem" class="nox-menu-item">Message</button>
+          <button id="profile-mute-toggle" type="button" role="menuitem" class="nox-menu-item">${isMuted(targetPubkey) ? 'Unmute' : 'Mute'}</button>
+          <button id="profile-report" type="button" role="menuitem" class="nox-menu-item nox-menu-item-danger">Report</button>
+        </div>
+      </div>
     </div>
   `;
+
+  const moreTrigger: HTMLButtonElement | null = document.getElementById(
+    'profile-more',
+  ) as HTMLButtonElement | null;
+  const moreMenu: HTMLElement | null =
+    document.getElementById('profile-more-menu');
+  if (moreTrigger && moreMenu) {
+    const close = (): void => {
+      moreMenu.hidden = true;
+      moreTrigger.setAttribute('aria-expanded', 'false');
+    };
+    moreTrigger.addEventListener('click', (event: MouseEvent): void => {
+      event.stopPropagation();
+      const open: boolean = moreMenu.hidden;
+      moreMenu.hidden = !open;
+      moreTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    // A choice closes the menu; so does a tap anywhere else, or Escape.
+    moreMenu.addEventListener('click', close);
+    document.addEventListener('click', (event: MouseEvent): void => {
+      if (!moreMenu.hidden && !moreMenu.contains(event.target as Node)) {
+        close();
+      }
+    });
+    document.addEventListener('keydown', (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') close();
+    });
+  }
 
   document
     .getElementById('profile-message')
