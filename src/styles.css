@@ -1614,3 +1614,46 @@ main {
   color: #ffb4b4;
   font-size: 0.8rem;
 }
+
+/* A two-way switch above a list, saying what the list is. Quiet: a pill of
+   two words, the chosen one lit, no icon - the words are the whole message.
+   Pressed state on the button itself, so a screen reader hears it. */
+.nox-segment {
+  display: inline-flex;
+  margin-bottom: 0.75rem;
+  padding: 0.2rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.nox-segment-option {
+  padding: 0.4rem 0.95rem;
+  border-radius: 999px;
+  color: var(--nox-text-dim);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.nox-segment-option:hover {
+  color: #e8eeff;
+}
+
+.nox-segment-option[aria-pressed="true"] {
+  background: rgba(137, 168, 255, 0.18);
+  color: #f5f8ff;
+}
+
+.nox-segment-option:focus-visible {
+  outline: 2px solid var(--nox-cyan);
+  outline-offset: 2px;
+}
+
+.notifications-notice {
+  margin: 0 0 0.75rem;
+  text-align: left;
+}
