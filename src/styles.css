@@ -2100,3 +2100,17 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   top: auto;
   bottom: calc(100% + 0.4rem);
 }
+
+/* A ♡ or ⇄ you already gave: filled, in the colour its hover promised.
+   The state is an attribute, so nothing else about the button changes. */
+.event-actions .react-event-btn[aria-pressed="true"] {
+  color: #f472b6;
+}
+
+.event-actions .react-event-btn[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+
+.event-actions .repost-event-btn[aria-pressed="true"] {
+  color: #34d399;
+}
