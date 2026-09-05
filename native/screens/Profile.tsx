@@ -28,6 +28,7 @@ import {
 import type { TimelineKey } from '../../src/common/db/types';
 import { kvGet } from '../../src/common/kv';
 import { isMuted } from '../../src/common/mute-state';
+import { fetchFollowSet } from '../../src/common/notification-filter';
 import {
   muteUser,
   unmuteUser,
@@ -282,11 +283,36 @@ function ReportLink({ target }: { target: PubkeyHex }) {
   );
 }
 
+/** Roughly six lines of bio; past that the rest is behind "Show more". */
+const BIO_FOLD_LINES: number = 6;
+
+function bioIsLong(about: string): boolean {
+  return about.length > 280 || about.split('\n').length > BIO_FOLD_LINES;
+}
+
 function Header({ profile }: { profile: ProfileData }) {
   const npub: string = nip19.npubEncode(profile.pubkey);
   // NIP-38: filled in after the fact, like the web app does it. A status
   // is decoration on a profile, and not finding one is not an error.
   const status: UserStatus | null = useUserStatus(profile.pubkey);
+  const [bioOpen, setBioOpen] = useState(false);
+  // How many people they follow, from their own kind 3, through the same
+  // function the web app and Notifications use. No answer, or no list on
+  // these relays, leaves the number out rather than showing a zero.
+  const [followingCount, setFollowingCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setFollowingCount(null);
+    fetchFollowSet(profile.pubkey, getRelays())
+      .then((set): void => {
+        if (!cancelled && set) setFollowingCount(set.size);
+      })
+      .catch((): void => {});
+    return (): void => {
+      cancelled = true;
+    };
+  }, [profile.pubkey]);
+  const longBio: boolean = Boolean(profile.about && bioIsLong(profile.about));
 
   return (
     <View>
@@ -309,11 +335,41 @@ function Header({ profile }: { profile: ProfileData }) {
           linkStyle={styles.link}
           emoji={profile.emoji}
         />
-        {profile.nip05 ? (
-          <Text style={styles.nip05}>{profile.nip05}</Text>
-        ) : (
-          <Text style={styles.npub}>{`${npub.slice(0, 20)}...`}</Text>
-        )}
+        {/* Where they can be reached and how many they follow: one line
+            under the name, so the facts about the person sit together. */}
+        <View style={styles.identity}>
+          {profile.nip05 ? (
+            <Text style={styles.nip05}>{profile.nip05}</Text>
+          ) : (
+            <Text style={styles.npub}>{`${npub.slice(0, 20)}...`}</Text>
+          )}
+          {profile.website ? (
+            <Pressable
+              onPress={() => {
+                // Only http(s): a profile field is a string a stranger chose,
+                // and Linking will happily open schemes that are not links.
+                if (/^https?:\/\//i.test(profile.website ?? '')) {
+                  void Linking.openURL(profile.website as string);
+                }
+              }}
+              hitSlop={6}
+            >
+              <Text style={styles.website} numberOfLines={1}>
+                {profile.website
+                  .replace(/^https?:\/\//i, '')
+                  .replace(/\/$/, '')}
+              </Text>
+            </Pressable>
+          ) : null}
+          {followingCount !== null ? (
+            <Text style={styles.following}>
+              following{' '}
+              <Text style={styles.followingCount}>
+                {followingCount.toLocaleString()}
+              </Text>
+            </Text>
+          ) : null}
+        </View>
         {status ? (
           <Pressable
             disabled={!status.url}
@@ -332,12 +388,27 @@ function Header({ profile }: { profile: ProfileData }) {
         ) : null}
 
         {profile.about ? (
-          <RichText
-            content={profile.about}
-            style={styles.about}
-            linkStyle={styles.link}
-            emoji={profile.emoji}
-          />
+          <>
+            <RichText
+              content={profile.about}
+              style={styles.about}
+              linkStyle={styles.link}
+              emoji={profile.emoji}
+              numberOfLines={longBio && !bioOpen ? BIO_FOLD_LINES : undefined}
+            />
+            {longBio ? (
+              <Pressable
+                onPress={(): void => setBioOpen(!bioOpen)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: bioOpen }}
+              >
+                <Text style={styles.more}>
+                  {bioOpen ? 'Show less' : 'Show more'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </>
         ) : null}
 
         <FollowButton target={profile.pubkey} />
@@ -346,20 +417,6 @@ function Header({ profile }: { profile: ProfileData }) {
           <MuteButton target={profile.pubkey} />
           <ReportLink target={profile.pubkey} />
         </View>
-
-        {profile.website ? (
-          <Pressable
-            onPress={() => {
-              // Only http(s): a profile field is a string a stranger chose,
-              // and Linking will happily open schemes that are not links.
-              if (/^https?:\/\//i.test(profile.website ?? '')) {
-                void Linking.openURL(profile.website as string);
-              }
-            }}
-          >
-            <Text style={styles.website}>{profile.website}</Text>
-          </Pressable>
-        ) : null}
       </View>
 
       <View style={styles.divider} />
@@ -402,6 +459,12 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   });
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // The screen is titled with the person, not with the word "Profile".
+  useEffect(() => {
+    if (data?.profile.name) {
+      navigation.setOptions({ title: data.profile.name });
+    }
+  }, [data?.profile.name, navigation]);
   const statuses = useUserStatuses(rows);
   const own = useOwnReactions(rows.map((row: TimelinePost): string => row.id));
 
@@ -517,8 +580,19 @@ const styles = StyleSheet.create({
   },
   avatarBlank: { opacity: 0.6 },
   name: { color: '#f5f8ff', fontSize: 20, fontWeight: '700', marginTop: 8 },
-  nip05: { color: '#89a8ff', fontSize: 13, marginTop: 2 },
-  npub: { color: '#5b6b88', fontSize: 12, marginTop: 2 },
+  identity: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 10,
+    rowGap: 2,
+    marginTop: 2,
+  },
+  nip05: { color: '#89a8ff', fontSize: 13 },
+  npub: { color: '#5b6b88', fontSize: 12 },
+  following: { color: '#8ea0c0', fontSize: 13 },
+  followingCount: { color: '#e8eeff', fontWeight: '700' },
+  more: { color: '#89a8ff', fontSize: 13, fontWeight: '700', marginTop: 4 },
   status: {
     color: '#8fa3c7',
     fontSize: 13,
@@ -526,7 +600,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   about: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 10 },
-  website: { color: '#89a8ff', fontSize: 13, marginTop: 8 },
+  website: { color: '#89a8ff', fontSize: 13, maxWidth: 220 },
   follow: {
     marginTop: 14,
     borderWidth: 1,
