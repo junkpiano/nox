@@ -246,10 +246,11 @@ export function loadRelaysPage(options: RelaysPageOptions): void {
             danger: true,
             onSelect: (): void => {
               clearError();
-              // Losing a relay is losing what it held: the posts and profiles
-              // this app reads from it stop arriving. Said once, before.
+              // Said once, before, and only what is certain: this app stops
+              // talking to the relay. What is cached stays; other relays may
+              // carry the same posts.
               const sure: boolean = window.confirm(
-                `Remove ${relayUrl}?\n\nPosts and profiles it was providing stop loading here.`,
+                `Remove ${relayUrl}?\n\nnox stops sending to it and reading from it.`,
               );
               if (!sure) return;
               currentRelays = currentRelays.filter(
