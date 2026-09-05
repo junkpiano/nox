@@ -4,11 +4,16 @@
  * A reaction's content is whatever the sender put there - usually "+" or an
  * emoji, occasionally a paragraph. NIP-25 says "+" means a like, so it is
  * shown as one rather than as a plus sign.
+ *
+ * All, or only the people you follow. The switch is the same one Home has,
+ * the judgement is the shared filter's: a follow list nobody could read
+ * shows everything and says so, and following nobody is its own empty
+ * page, not a broken one.
  */
 
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -20,6 +25,14 @@ import {
   View,
 } from 'react-native';
 import { kvGet } from '../../src/common/kv';
+import {
+  type NotificationScope,
+  readNotificationScope,
+  type ScopedNotifications,
+  saveNotificationScope,
+  scopeNotifications,
+} from '../../src/common/notification-filter';
+import { getRelays } from '../../src/features/relays/relays';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import { loadNotifications, type Notification } from '../lib/notifications';
@@ -46,14 +59,31 @@ function summarise(item: Notification): string {
   return `reacted ${Array.from(body).slice(0, MAX_REACTION_GLYPHS).join('')}`;
 }
 
+/** What the empty list should say, which depends on what was asked for. */
+function emptyText(scoped: ScopedNotifications<Notification>): string {
+  if (scoped.scope === 'following') {
+    return scoped.followCount === 0
+      ? 'You do not follow anyone yet.'
+      : 'No notifications from people you follow.';
+  }
+  return 'No notifications yet.';
+}
+
 export default function Notifications() {
   const [viewer] = useState<PubkeyHex | null>(readViewer);
-  const [items, setItems] = useState<Notification[]>([]);
+  const [items, setItems] = useState<Notification[] | null>(null);
+  const [scope, setScope] = useState<NotificationScope>(readNotificationScope);
+  const [scoped, setScoped] =
+    useState<ScopedNotifications<Notification> | null>(null);
+  const [scoping, setScoping] = useState(false);
   const [stage, setStage] = useState('');
   const [stats, setStats] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation<Nav>();
+  // Only the newest ask may draw: Following waits on a relay round trip,
+  // and a tap back to All in that time must not be overwritten by it.
+  const generation = useRef(0);
 
   const load = useCallback(async (): Promise<void> => {
     if (!viewer) return;
@@ -74,6 +104,31 @@ export default function Notifications() {
     void load();
   }, [load]);
 
+  // The scope is applied to what was loaded, and again whenever either
+  // changes. The choice is kept on this device.
+  useEffect((): (() => void) => {
+    let cancelled = false;
+    if (!viewer || !items) {
+      return (): void => {
+        cancelled = true;
+      };
+    }
+    generation.current += 1;
+    const mine: number = generation.current;
+    saveNotificationScope(scope);
+    setScoping(scope === 'following');
+    void scopeNotifications(scope, viewer, items, getRelays()).then(
+      (next): void => {
+        if (cancelled || mine !== generation.current) return;
+        setScoped(next);
+        setScoping(false);
+      },
+    );
+    return (): void => {
+      cancelled = true;
+    };
+  }, [viewer, items, scope]);
+
   const onRefresh = useCallback(async (): Promise<void> => {
     setRefreshing(true);
     await load();
@@ -84,7 +139,7 @@ export default function Notifications() {
     return (
       <View style={styles.centre}>
         <Text style={styles.empty}>
-          Set an npub on the Home tab and this fills in.
+          Sign in, or browse as a public key, and this fills in.
         </Text>
       </View>
     );
@@ -98,22 +153,64 @@ export default function Notifications() {
     );
   }
 
-  if (items.length === 0) {
+  const switcher = (
+    <View style={styles.switcher}>
+      {(['all', 'following'] as NotificationScope[]).map(
+        (option: NotificationScope) => {
+          const on: boolean = option === scope;
+          return (
+            <Pressable
+              key={option}
+              onPress={(): void => setScope(option)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+              style={[styles.segment, on && styles.segmentOn]}
+            >
+              <Text style={on ? styles.segmentTextOn : styles.segmentText}>
+                {option === 'all' ? 'All' : 'Following'}
+              </Text>
+            </Pressable>
+          );
+        },
+      )}
+    </View>
+  );
+
+  if (!items || !scoped) {
     return (
-      <View style={styles.centre}>
-        <ActivityIndicator color="#89a8ff" />
-        <Text style={styles.empty}>{stage || 'loading...'}</Text>
+      <View style={styles.screen}>
+        {switcher}
+        <View style={styles.centre}>
+          <ActivityIndicator color="#89a8ff" />
+          <Text style={styles.empty}>
+            {!items ? stage || 'loading...' : 'Reading your follow list...'}
+          </Text>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.screen}>
+      {switcher}
+      {scoped.scope === 'following-unavailable' ? (
+        <Text style={styles.notice}>
+          Your follow list could not be read, so everything is shown.
+        </Text>
+      ) : null}
       {stats ? <Text style={styles.stats}>{stats}</Text> : null}
       <FlatList
-        data={items}
+        data={scoped.events}
         keyExtractor={(item: Notification) => item.id}
+        extraData={scoping}
+        style={scoping && styles.dim}
         ItemSeparatorComponent={() => <View style={styles.sep} />}
+        ListEmptyComponent={
+          <View style={styles.centre}>
+            <Text style={styles.empty}>{emptyText(scoped)}</Text>
+          </View>
+        }
+        contentContainerStyle={scoped.events.length === 0 && styles.grow}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -166,6 +263,36 @@ export default function Notifications() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0b1220' },
+  // The same switch Home has, so the two say "this list is filtered" the
+  // same way.
+  switcher: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#25406e',
+  },
+  segment: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 999,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  segmentOn: { borderColor: '#89a8ff', backgroundColor: '#16233f' },
+  segmentText: { color: '#8ea0c0', fontSize: 13, fontWeight: '600' },
+  segmentTextOn: { color: '#e8eeff', fontSize: 13, fontWeight: '700' },
+  notice: {
+    color: '#8ea0c0',
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  dim: { opacity: 0.5 },
+  grow: { flexGrow: 1 },
   stats: {
     color: '#5b6b88',
     fontSize: 10,

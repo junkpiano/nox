@@ -35,12 +35,17 @@ export function saveNotificationScope(scope: NotificationScope): void {
   kvSet(SCOPE_KEY, scope);
 }
 
+/** Anything with an author: a raw event, or a row the phone made of one. */
+export interface Authored {
+  pubkey: string;
+}
+
 /** The notifications whose authors are on the list. Pure; order kept. */
-export function fromFollowedAuthors(
-  events: NostrEvent[],
+export function fromFollowedAuthors<T extends Authored>(
+  events: T[],
   following: ReadonlySet<PubkeyHex>,
-): NostrEvent[] {
-  return events.filter((event: NostrEvent): boolean =>
+): T[] {
+  return events.filter((event: T): boolean =>
     following.has(event.pubkey as PubkeyHex),
   );
 }
@@ -107,18 +112,18 @@ export async function fetchFollowSet(
 }
 
 /** What a screen shows once it has asked. */
-export type ScopedNotifications =
-  | { scope: 'all'; events: NostrEvent[] }
+export type ScopedNotifications<T extends Authored = NostrEvent> =
+  | { scope: 'all'; events: T[] }
   | {
       scope: 'following';
-      events: NostrEvent[];
+      events: T[];
       /** How many people the list names; zero is its own empty state. */
       followCount: number;
     }
   | {
       /** The filter was asked for but could not be applied: everything is shown. */
       scope: 'following-unavailable';
-      events: NostrEvent[];
+      events: T[];
     };
 
 /**
@@ -127,13 +132,13 @@ export type ScopedNotifications =
  * One function for both apps, so "could not fetch" and "follows nobody"
  * come out the same way on each and the screens only have to say them.
  */
-export async function scopeNotifications(
+export async function scopeNotifications<T extends Authored = NostrEvent>(
   scope: NotificationScope,
   viewer: PubkeyHex,
-  events: NostrEvent[],
+  events: T[],
   relays: string[],
   open?: SubscriptionOpener,
-): Promise<ScopedNotifications> {
+): Promise<ScopedNotifications<T>> {
   if (scope === 'all') {
     return { scope: 'all', events };
   }
