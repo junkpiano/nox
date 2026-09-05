@@ -1487,10 +1487,6 @@ export function renderEvent(
   div.dataset.pubkey = pubkey;
   div.dataset.timestamp = event.created_at.toString();
   div.dataset.reply = parentEventId ? 'true' : 'false';
-  // The address beside the name is drawn empty and filled in only once the
-  // domain has confirmed it is this person's: a claimed address is the one
-  // string on a card that must not be taken on trust.
-  void showVerifiedNip05(div, pubkey as PubkeyHex, renderProfile);
   if (imageUrls.length > 0) {
     div.dataset.images = JSON.stringify(imageUrls);
   }
@@ -1531,6 +1527,12 @@ export function renderEvent(
 				      </div>
 				    </div>
 				  `;
+
+  // The address beside the name is drawn empty and filled in only once the
+  // domain has confirmed it is this person's: a claimed address is the one
+  // string on a card that must not be taken on trust. After the markup, so
+  // the slot exists to fill.
+  void showVerifiedNip05(div, pubkey as PubkeyHex, renderProfile);
 
   // Insert event in sorted order by timestamp (newest first)
   const existingEvents: HTMLElement[] = Array.from(
