@@ -172,7 +172,7 @@ export async function loadEventPage(
       if (!isRouteActive()) return; // Guard before DOM update
       options.output.innerHTML = `
         <section class="nox-gate">
-          <p class="nox-gate-copy">None of your relays has this note.</p>
+          <p class="nox-gate-copy">Could not load this note from your relays.</p>
           <p class="nox-gate-hint">Add the author's relay under Relays, or open the link where you found it.</p>
           <a href="/relays" class="nox-secondary-button py-2 px-5">Relays</a>
         </section>

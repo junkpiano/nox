@@ -1081,6 +1081,8 @@ async function startAppCore(
       publishEvent: publishEventToRelays,
       onProfileUpdated: (profile: NostrProfile): void => {
         appState.profile = profile;
+        // Saving redraws the section; the tabs live on it and go with it.
+        if (profileSection) mountProfileTabs(profileSection);
       },
     });
 
@@ -1201,5 +1203,7 @@ function mountProfileTabs(profileSection: HTMLElement): void {
     tabs.appendChild(button);
   }
   profileSection.appendChild(tabs);
-  draw(false);
+  // Keeps whichever tab was showing: the route reset the class on arrival,
+  // and a remount after a save should not send someone back to Posts.
+  draw(document.body.classList.contains('profile-replies'));
 }

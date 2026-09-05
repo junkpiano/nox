@@ -388,9 +388,6 @@ export async function loadReactionsPage(
     deleteBtn.type = 'button';
     deleteBtn.className =
       'inline-flex items-center justify-center p-1 rounded text-red-600 hover:text-red-800 hover:bg-red-50 transition-colors';
-    // Browsing as a key shows that key's likes; none of them can be taken
-    // back from here, so the bin is not offered.
-    deleteBtn.hidden = !canWrite();
     deleteBtn.title = 'Delete reaction';
     deleteBtn.setAttribute('aria-label', 'Delete reaction');
     deleteBtn.innerHTML = `
@@ -427,7 +424,10 @@ export async function loadReactionsPage(
     );
 
     right.appendChild(timeEl);
-    right.appendChild(deleteBtn);
+    // Browsing as a key shows that key's likes; none of them can be taken
+    // back from here, so the bin is not in the row. (Not `hidden`: the
+    // button's display utility outranks the attribute.)
+    if (canWrite()) right.appendChild(deleteBtn);
 
     header.appendChild(left);
     header.appendChild(right);

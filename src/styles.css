@@ -2094,3 +2094,9 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
+
+/* Opened upward: no room below the trigger, room above it. */
+.nox-menu-up {
+  top: auto;
+  bottom: calc(100% + 0.4rem);
+}
