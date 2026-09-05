@@ -1,4 +1,9 @@
 import { createMoreMenu } from '../../common/more-menu.js';
+
+/** normalizeRelayUrl takes a bare host or a ws(s):// URL; the error says the same. */
+const RELAY_ADDRESS_ERROR: string =
+  'Enter a relay address, like relay.example.com or wss://relay.example.com.';
+
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import type { SetActiveNavFn } from '../../common/types.js';
 
@@ -57,26 +62,26 @@ export function loadRelaysPage(options: RelaysPageOptions): void {
     options.output.innerHTML = `
       <div class="space-y-5 text-sm">
         <div class="text-gray-600">
-          Servers that send and receive your Nostr activity. This list is saved in your browser.
+          Servers used to send and receive posts.
         </div>
         <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs">
-          A relay you just added has none of your posts yet. Broadcast re-sends your recent ones to it.
+          A new relay may not have your recent posts yet. Broadcast sends them.
         </div>
         <div class="bg-slate-50 border border-slate-200 text-slate-900 rounded-lg p-3 text-xs space-y-2">
           <div class="font-semibold">Advanced · NIP-65</div>
           <div class="text-slate-700">
-            Publish your relay preferences so other Nostr apps can find them, or import the list you published from another app.
+            Share this relay list with other Nostr apps.
           </div>
           <div class="flex flex-col sm:flex-row gap-2">
             <button id="nip65-import"
               class="bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
-              Import my published list
+              Import list
             </button>
             <button id="nip65-publish"
               class="bg-indigo-700 hover:bg-indigo-800 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow">
-              Publish this list
+              Publish list
             </button>
-            <span class="text-xs text-gray-500 self-center">Publishing needs you signed in.</span>
+            <span class="text-xs text-gray-500 self-center">You need to be signed in to publish.</span>
           </div>
           <p id="nip65-status" class="text-xs text-gray-600"></p>
         </div>
@@ -222,7 +227,7 @@ export function loadRelaysPage(options: RelaysPageOptions): void {
               const normalized: string | null =
                 options.normalizeRelayUrl(updatedRaw);
               if (!normalized) {
-                setError('That is not a relay address. It starts with wss://');
+                setError(RELAY_ADDRESS_ERROR);
                 return;
               }
               const isDuplicate: boolean = currentRelays.some(
@@ -310,7 +315,7 @@ export function loadRelaysPage(options: RelaysPageOptions): void {
         relayInput.value,
       );
       if (!normalized) {
-        setError('That is not a relay address. It starts with wss://');
+        setError(RELAY_ADDRESS_ERROR);
         return;
       }
       if (currentRelays.includes(normalized)) {

@@ -99,8 +99,8 @@ export async function loadHomeTimeline(
       output.innerHTML = `
         <div class="nox-empty-state">
           <h3 class="nox-panel-title">Nothing here yet</h3>
-          <p class="nox-panel-copy">Home shows posts from people you follow. Find someone on the <a href="/global">Global timeline</a> and follow them from their profile; their posts appear here.</p>
-          <p class="nox-panel-copy">If you already follow people, their relays may not be answering. Check <a href="/relays">Relays</a>.</p>
+          <p class="nox-panel-copy">Home shows posts from people you follow. Find people on the <a href="/global">Global timeline</a>.</p>
+          <p class="nox-panel-copy">Already following people? Check <a href="/relays">Relays</a>.</p>
         </div>
       `;
     },
