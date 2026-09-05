@@ -14,6 +14,7 @@ import {
   updateLogoutButton,
 } from '../common/session.js';
 import { canWrite } from '../common/signer.js';
+import { profileName } from '../features/profile/profile.js';
 import { loadReactionsPage } from '../features/reactions/reactions-page.js';
 import {
   getAllRelays,
@@ -279,6 +280,10 @@ export function handleRoute(scrollRestoreState?: unknown): void {
     'route-event',
     /^\/(nevent1|note1)/.test(path),
   );
+  // The profile page too: the person's name is the heading, and the
+  // stylesheet keeps the list heading off the wide layout.
+  document.body.classList.toggle('route-profile', /^\/npub1/.test(path));
+  document.body.classList.remove('profile-replies');
   if (output && !/^\/(nevent1|note1)/.test(path)) {
     delete output.dataset.threadIds;
   }
@@ -1069,6 +1074,7 @@ async function startAppCore(
     ] = await Promise.all([getProfilePageModule(), getProfileFollowModule()]);
     if (!isRouteActive()) return; // Guard before DOM update
     renderProfile(pubkeyHex, npub, appState.profile, profileSection);
+    mountProfileTabs(profileSection);
     setupProfileZapButton(pubkeyHex, npub, appState.profile, profileSection);
     setupProfileEditor(pubkeyHex, npub, appState.profile, profileSection, {
       getRelays: (): string[] => appState.relays,
@@ -1155,7 +1161,45 @@ async function startAppCore(
     document.getElementById('posts-header');
   if (postsHeader) {
     if (!isRouteActive()) return; // Guard before DOM update
-    postsHeader.textContent = 'Posts';
+    // The phone's top bar copies this: it should say whose page this is,
+    // not what kind of list is on it.
+    postsHeader.textContent = profileName(npub, appState.profile);
     postsHeader.style.display = '';
   }
+}
+
+/**
+ * Posts / Replies under the profile header.
+ *
+ * Both kinds are already on the page - a profile's timeline fetches them
+ * together - so the switch only decides which kind is shown, through a
+ * class the stylesheet reads off each card. Replies were mixed into the
+ * posts with nothing to tell them apart.
+ */
+function mountProfileTabs(profileSection: HTMLElement): void {
+  const tabs: HTMLDivElement = document.createElement('div');
+  tabs.className = 'nox-segment nox-profile-tabs';
+  tabs.setAttribute('role', 'group');
+  tabs.setAttribute('aria-label', 'Show');
+  const draw = (replies: boolean): void => {
+    document.body.classList.toggle('profile-replies', replies);
+    for (const button of tabs.querySelectorAll<HTMLButtonElement>('button')) {
+      const on: boolean = (button.dataset.kind === 'replies') === replies;
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  };
+  for (const [kind, label] of [
+    ['posts', 'Posts'],
+    ['replies', 'Replies'],
+  ] as const) {
+    const button: HTMLButtonElement = document.createElement('button');
+    button.type = 'button';
+    button.className = 'nox-segment-option';
+    button.dataset.kind = kind;
+    button.textContent = label;
+    button.addEventListener('click', (): void => draw(kind === 'replies'));
+    tabs.appendChild(button);
+  }
+  profileSection.appendChild(tabs);
+  draw(false);
 }

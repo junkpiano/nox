@@ -31,7 +31,7 @@ import {
   storeEvents,
 } from './db/index.js';
 import { createDeletionGate, findDeletedIds } from './deletion-gate.js';
-import { renderEvent } from './event-render.js';
+import { renderEvent, showVerifiedNip05 } from './event-render.js';
 import { fetchingProfiles, profileCache } from './timeline-cache.js';
 import { applyStatusesToTimeline } from './timeline-status.js';
 
@@ -145,6 +145,11 @@ function updateRenderedProfile(
       if (nameEl) {
         const npubStr: Npub = nip19.npubEncode(event.pubkey);
         nameEl.textContent = getDisplayName(npubStr, renderProfile);
+        void showVerifiedNip05(
+          el as HTMLElement,
+          event.pubkey as PubkeyHex,
+          renderProfile,
+        );
       }
       if (avatarEl) {
         setAvatar(avatarEl as HTMLImageElement, event.pubkey, renderProfile);
