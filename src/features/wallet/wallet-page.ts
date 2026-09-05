@@ -98,6 +98,7 @@ function renderDisconnected(output: HTMLElement): void {
         <span class="font-semibold">Connect a wallet</span>
         ${HELP_BUTTON}
       </div>
+      <p class="nox-panel-copy">Paste your wallet connection string to send tips.</p>
 
       <textarea
         id="nwc-uri"

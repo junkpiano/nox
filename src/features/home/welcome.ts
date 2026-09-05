@@ -1,5 +1,6 @@
 import type { PubkeyHex } from '../../../types/nostr';
 import { showKeyBackupNotice } from '../../common/key-backup.js';
+import { isNativeRuntime } from '../../common/native-http.js';
 import {
   beginSignedInSession,
   InvalidPublicKeyError,
@@ -40,13 +41,22 @@ export async function showInputForm(
     return;
   }
 
+  // The same page is drawn in a browser and in the desktop app, and the key
+  // lands somewhere different in each: localStorage on the web, the OS
+  // credential store under Tauri, or localStorage again if that store fails.
+  // The note promises only what both paths keep: the device.
+  const storageNote: string = isNativeRuntime()
+    ? 'Stored on this device. Signing out deletes it.'
+    : 'Stored in this browser only, which is less secure than an extension. Signing out deletes it.';
+
   options.output.innerHTML = `
       <section class="nox-welcome py-4 sm:py-8">
         <div class="nox-auth-card space-y-5">
           <div>
             <p class="nox-kicker">Welcome</p>
             <h3 class="nox-panel-title">Sign in to nox</h3>
-            <p class="nox-panel-copy">A browser extension keeps your key out of this page, so it is the way in we recommend. Your secret key stays in the extension; nox receives only the signed event.</p>
+            <p class="nox-panel-copy">No account is needed. Your key is your identity.</p>
+            <p class="nox-panel-copy mt-2">A browser extension is the recommended way in. Your secret key stays in the extension.</p>
           </div>
 
           <div class="nox-auth-actions">
@@ -71,12 +81,13 @@ export async function showInputForm(
               </button>
             </div>
             <p id="public-key-error" class="nox-auth-error" hidden></p>
-            <p class="nox-auth-note">Shows the timeline, profile and likes that key sees. Nothing can be posted, and no secret is asked for: to post, sign in.</p>
+            <p class="nox-auth-note">A public key is safe to share. Browsing shows what that key sees; nothing can be posted.</p>
           </div>
 
           <details class="nox-reveal">
             <summary class="nox-reveal-summary">I have a secret key</summary>
             <div class="nox-reveal-body space-y-2">
+              <p class="nox-auth-note">Anyone with this key can post as you.</p>
               <label for="private-key-input" class="sr-only">Secret key</label>
               <div class="flex flex-col sm:flex-row gap-2">
                 <input id="private-key-input" type="password" autocomplete="off" placeholder="nsec1… or 64-character hex"
@@ -86,7 +97,7 @@ export async function showInputForm(
                   Use this key
                 </button>
               </div>
-              <p class="nox-auth-note">Stored in this browser. It never leaves this browser, and browser storage is less secure than an extension. Signing out deletes it.</p>
+              <p class="nox-auth-note">${storageNote}</p>
             </div>
           </details>
         </div>
