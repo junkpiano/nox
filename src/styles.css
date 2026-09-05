@@ -1674,3 +1674,54 @@ main {
   margin: 0 0 0.75rem;
   text-align: left;
 }
+
+/* The secret key is the way in that costs the most, so it is the one that
+   is folded: a line to open, not a box waiting to be filled. Opening it is
+   a choice, and the note under it says plainly where the key will live. */
+.nox-reveal {
+  padding-top: 1.1rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.28);
+}
+
+.nox-reveal-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  list-style: none;
+  color: #cfd8ea;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.nox-reveal-summary::-webkit-details-marker {
+  display: none;
+}
+
+.nox-reveal-summary::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.nox-reveal[open] .nox-reveal-summary::before {
+  transform: rotate(45deg);
+}
+
+.nox-reveal-summary:hover {
+  color: #e8eeff;
+}
+
+.nox-reveal-body {
+  margin-top: 0.85rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nox-reveal-summary::before {
+    transition: none;
+  }
+}
