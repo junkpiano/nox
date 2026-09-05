@@ -1,10 +1,8 @@
-import { bech32 } from '@scure/base';
-import { nip57 } from 'nostr-tools';
 import * as QRCode from 'qrcode';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
 import { getWalletConnection } from '../features/wallet/wallet-store.js';
-import { crossOriginFetch } from './native-http.js';
 import { signWithSession } from './signer.js';
+import { requestZapInvoice, type ZapInvoice } from './zap-request.js';
 
 interface ZapOverlayOptions {
   getSessionPrivateKey: () => Uint8Array | null;
@@ -17,22 +15,6 @@ interface ZapContext {
   recipientName: string;
   recipientProfile: NostrProfile | null;
   event?: NostrEvent;
-}
-
-interface ZapPayInfo {
-  callback: string;
-  minSendable: number;
-  maxSendable: number;
-  commentAllowed?: number;
-  allowsNostr?: boolean;
-  metadata?: string;
-  nostrPubkey?: string;
-}
-
-interface ZapInvoiceResponse {
-  pr?: string;
-  reason?: string;
-  status?: string;
 }
 
 interface WindowWithNostrAndWebLn extends Window {
@@ -48,17 +30,6 @@ interface WindowWithNostrAndWebLn extends Window {
 
 interface WebLnPaymentResult {
   verified: boolean;
-}
-
-interface ParsedBolt11Invoice {
-  amountSats: number;
-  description?: string;
-  purposeCommitHash?: string;
-}
-
-interface InvoiceValidationResult {
-  canAutoPay: boolean;
-  warningMessage?: string;
 }
 
 let currentZapContext: ZapContext | null = null;
@@ -97,187 +68,10 @@ function getZapIdentifier(profile: NostrProfile | null): string | null {
   return null;
 }
 
-function resolveLnurl(profile: NostrProfile | null): string | null {
-  if (!profile) {
-    return null;
-  }
-
-  if (typeof profile.lud16 === 'string' && profile.lud16.includes('@')) {
-    const [name, domain] = profile.lud16.trim().split('@');
-    if (name && domain) {
-      return new URL(
-        `/.well-known/lnurlp/${name}`,
-        `https://${domain}`,
-      ).toString();
-    }
-  }
-
-  if (typeof profile.lud06 === 'string' && profile.lud06.trim()) {
-    try {
-      const lud06: `${string}1${string}` =
-        profile.lud06.trim() as `${string}1${string}`;
-      const decoded = bech32.decode(lud06, 1000);
-      const data: Uint8Array = new Uint8Array(bech32.fromWords(decoded.words));
-      return new TextDecoder().decode(data);
-    } catch (error: unknown) {
-      console.warn('[Zap] Failed to decode lud06:', error);
-    }
-  }
-
-  return null;
-}
-
-async function fetchZapPayInfo(
-  profile: NostrProfile | null,
-): Promise<ZapPayInfo> {
-  const lnurl: string | null = resolveLnurl(profile);
-  if (!lnurl) {
-    throw new Error('Recipient does not have a Lightning address configured.');
-  }
-
-  const response: Response = await crossOriginFetch(lnurl);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load zap endpoint: ${response.status} ${response.statusText}`,
-    );
-  }
-
-  const data: ZapPayInfo & { reason?: string; status?: string } =
-    await response.json();
-  if (data.status === 'ERROR') {
-    throw new Error(data.reason || 'Recipient zap endpoint returned an error.');
-  }
-  if (!data.callback || !data.allowsNostr || !data.nostrPubkey) {
-    throw new Error('Recipient does not support NIP-57 zaps.');
-  }
-  if (
-    !Number.isFinite(data.minSendable) ||
-    !Number.isFinite(data.maxSendable) ||
-    data.minSendable <= 0 ||
-    data.maxSendable < data.minSendable
-  ) {
-    throw new Error('Recipient zap endpoint returned invalid amount limits.');
-  }
-  return data;
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const bytes: Uint8Array = new TextEncoder().encode(value);
-  const digest: ArrayBuffer = await crypto.subtle.digest(
-    'SHA-256',
-    bytes as BufferSource,
-  );
-  return Array.from(new Uint8Array(digest))
-    .map((byte: number): string => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function bytesToHex(bytes: Uint8Array): string {
+function _bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((byte: number): string => byte.toString(16).padStart(2, '0'))
     .join('');
-}
-
-function parseBolt11Invoice(invoice: string): ParsedBolt11Invoice {
-  const decoded = bech32.decode(invoice as `${string}1${string}`, 5000);
-  const words: number[] = decoded.words;
-  if (words.length <= 111) {
-    throw new Error('Invoice is too short to be valid.');
-  }
-
-  const invoiceWords: number[] = words.slice(0, -104);
-  if (invoiceWords.length < 7) {
-    throw new Error('Invoice is missing tagged fields.');
-  }
-
-  const taggedFields: number[] = invoiceWords.slice(7);
-  const parsed: ParsedBolt11Invoice = {
-    amountSats: nip57.getSatoshisAmountFromBolt11(invoice),
-  };
-
-  let cursor: number = 0;
-  while (cursor + 3 <= taggedFields.length) {
-    const type: number | undefined = taggedFields[cursor];
-    const lengthHigh: number | undefined = taggedFields[cursor + 1];
-    const lengthLow: number | undefined = taggedFields[cursor + 2];
-    if (
-      type === undefined ||
-      lengthHigh === undefined ||
-      lengthLow === undefined
-    ) {
-      break;
-    }
-    const dataLength: number = (lengthHigh << 5) + lengthLow;
-    const start: number = cursor + 3;
-    const end: number = start + dataLength;
-    if (end > taggedFields.length) {
-      break;
-    }
-
-    const fieldWords: number[] = taggedFields.slice(start, end);
-    const rawFieldBytes: unknown = bech32.fromWordsUnsafe(fieldWords);
-    if (!(rawFieldBytes instanceof Uint8Array)) {
-      cursor = end;
-      continue;
-    }
-    const fieldBytes: Uint8Array = new Uint8Array(rawFieldBytes);
-
-    if (type === 13) {
-      parsed.description = new TextDecoder().decode(fieldBytes);
-    } else if (type === 23) {
-      parsed.purposeCommitHash = bytesToHex(fieldBytes);
-    }
-
-    cursor = end;
-  }
-
-  return parsed;
-}
-
-async function validateInvoiceForZap(
-  invoice: string,
-  requestedAmountSats: number,
-  payInfo: ZapPayInfo,
-  zapRequestJson: string,
-): Promise<InvoiceValidationResult> {
-  const decoded: ParsedBolt11Invoice = parseBolt11Invoice(invoice);
-  if (decoded.amountSats !== requestedAmountSats) {
-    throw new Error('Invoice amount does not match the requested zap amount.');
-  }
-
-  const invoiceMetadataHash: string | undefined = decoded.purposeCommitHash;
-  const invoiceDescription: string | undefined = decoded.description;
-  const expectedZapRequestHash: string = await sha256Hex(zapRequestJson);
-  const expectedMetadataHash: string | null = payInfo.metadata
-    ? await sha256Hex(payInfo.metadata)
-    : null;
-
-  if (invoiceMetadataHash) {
-    if (
-      invoiceMetadataHash !== expectedZapRequestHash &&
-      invoiceMetadataHash !== expectedMetadataHash
-    ) {
-      throw new Error(
-        'Invoice description hash does not match the zap request or LNURL response.',
-      );
-    }
-    return { canAutoPay: true };
-  }
-
-  if (invoiceDescription) {
-    if (
-      invoiceDescription !== zapRequestJson &&
-      invoiceDescription !== payInfo.metadata
-    ) {
-      return {
-        canAutoPay: false,
-        warningMessage:
-          'Invoice created, but its plain-text description differs from the zap request. Auto-pay was disabled; pay manually if you trust this recipient.',
-      };
-    }
-  }
-
-  return { canAutoPay: true };
 }
 
 async function signZapRequest(
@@ -290,89 +84,35 @@ async function signZapRequest(
   return signWithSession(unsignedEvent);
 }
 
-async function requestZapInvoice(
+/**
+ * The web's half of a zap: who is signing, and which relays to name.
+ *
+ * Everything else - the LNURL lookup, the request, the invoice and its checks
+ * - is in `zap-request.ts`, shared with the phone. Only the view differs.
+ */
+async function buildZapInvoice(
   context: ZapContext,
   amountSats: number,
   comment: string,
   options: ZapOverlayOptions,
-): Promise<{ invoice: string; payInfo: ZapPayInfo; zapRequestJson: string }> {
+): Promise<ZapInvoice> {
   const storedPubkey: PubkeyHex | null = getStoredPubkey();
   if (!storedPubkey) {
     throw new Error('Sign-in required to send a zap.');
   }
 
-  const payInfo: ZapPayInfo = await fetchZapPayInfo(context.recipientProfile);
-  const amountMsats: number = amountSats * 1000;
-  if (amountMsats < payInfo.minSendable || amountMsats > payInfo.maxSendable) {
-    const minSats: number = Math.ceil(payInfo.minSendable / 1000);
-    const maxSats: number = Math.floor(payInfo.maxSendable / 1000);
-    throw new Error(`Amount must be between ${minSats} and ${maxSats} sats.`);
-  }
-
-  const trimmedComment: string = comment.trim();
-  const commentAllowed: number = Math.max(0, payInfo.commentAllowed || 0);
-  if (trimmedComment && commentAllowed === 0) {
-    throw new Error('Recipient does not accept zap comments.');
-  }
-  if (trimmedComment && trimmedComment.length > commentAllowed) {
-    throw new Error(
-      `Comment is too long. Limit: ${commentAllowed} characters.`,
-    );
-  }
-
-  const zapTemplate =
-    context.targetType === 'event' && context.event
-      ? nip57.makeZapRequest({
-          event: context.event,
-          amount: amountMsats,
-          comment: trimmedComment,
-          relays: options.getRelays(),
-        })
-      : nip57.makeZapRequest({
-          pubkey: context.recipientPubkey,
-          amount: amountMsats,
-          comment: trimmedComment,
-          relays: options.getRelays(),
-        });
-
-  const signedZapRequest: NostrEvent = await signZapRequest(
-    {
-      ...zapTemplate,
-      pubkey: storedPubkey,
-    },
-    options,
-  );
-  const zapRequestJson: string = JSON.stringify(signedZapRequest);
-
-  const callbackUrl: URL = new URL(payInfo.callback);
-  callbackUrl.searchParams.set('amount', amountMsats.toString());
-  callbackUrl.searchParams.set('nostr', zapRequestJson);
-  if (trimmedComment && commentAllowed > 0) {
-    callbackUrl.searchParams.set('comment', trimmedComment);
-  }
-
-  const invoiceResponse: Response = await crossOriginFetch(
-    callbackUrl.toString(),
-  );
-  if (!invoiceResponse.ok) {
-    throw new Error(
-      `Failed to create invoice: ${invoiceResponse.status} ${invoiceResponse.statusText}`,
-    );
-  }
-
-  const invoiceData: ZapInvoiceResponse = await invoiceResponse.json();
-  if (invoiceData.status === 'ERROR') {
-    throw new Error(invoiceData.reason || 'Zap invoice request failed.');
-  }
-  if (!invoiceData.pr) {
-    throw new Error('Zap endpoint did not return a Lightning invoice.');
-  }
-
-  return {
-    invoice: invoiceData.pr,
-    payInfo,
-    zapRequestJson,
-  };
+  return requestZapInvoice({
+    senderPubkey: storedPubkey,
+    recipientPubkey: context.recipientPubkey,
+    recipientProfile: context.recipientProfile,
+    ...(context.targetType === 'event' && context.event
+      ? { event: context.event }
+      : {}),
+    amountSats,
+    comment,
+    relays: options.getRelays(),
+    sign: (event) => signZapRequest(event, options),
+  });
 }
 
 function extractPaymentPreimage(result: unknown): string | null {
@@ -653,17 +393,11 @@ export function setupZapOverlay(options: ZapOverlayOptions): void {
     statusEl.textContent = 'Creating Lightning invoice...';
 
     try {
-      const { invoice, payInfo, zapRequestJson } = await requestZapInvoice(
+      const { invoice, validation } = await buildZapInvoice(
         currentZapContext,
         amountSats,
         commentInput.value,
         options,
-      );
-      const validation: InvoiceValidationResult = await validateInvoiceForZap(
-        invoice,
-        amountSats,
-        payInfo,
-        zapRequestJson,
       );
       const qrCodeDataUrl: string = await QRCode.toDataURL(
         `lightning:${invoice}`,
@@ -688,8 +422,8 @@ export function setupZapOverlay(options: ZapOverlayOptions): void {
       if (webLnPayment.verified) {
         statusEl.textContent =
           'Payment verified by wallet response. Zap receipt may appear shortly.';
-      } else if (validation.warningMessage) {
-        statusEl.textContent = validation.warningMessage;
+      } else if (validation.warning) {
+        statusEl.textContent = validation.warning;
       } else if ((window as WindowWithNostrAndWebLn).webln) {
         statusEl.textContent =
           'Invoice validated, but wallet payment could not be verified. Scan the QR or use Open wallet to complete manually.';

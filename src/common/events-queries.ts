@@ -28,18 +28,32 @@ export interface FollowListFetchOptions {
 }
 
 /**
- * Fetch the most recent kind-3 (follow list) event for a pubkey.
+ * What a follow-list lookup actually learned.
  *
- * Returns the full event so callers can preserve tags/content when republishing,
- * and returns `null` when no valid kind-3 was received from any relay. Callers that
- * mutate and republish the follow list MUST treat `null` as "unknown" (abort) rather
- * than "no follows" — publishing an empty list would wipe the user's follows.
+ * `event: null` on its own is ambiguous in a way that matters: it means both
+ * "this person has no contact list yet" and "no relay would tell us". The
+ * first is a new account whose first follow should be allowed; the second is
+ * a state in which publishing a kind 3 would replace a real list with an
+ * empty one. `answered` separates them.
  */
-export async function fetchLatestFollowListEvent(
+export interface FollowListLookup {
+  event: NostrEvent | null;
+  /** At least one relay reached EOSE, so an absent event means it is absent. */
+  answered: boolean;
+}
+
+/**
+ * Fetches the newest kind 3, and reports whether anyone answered.
+ *
+ * The relay-by-relay outcome was already being collected here for logging;
+ * this returns it, because the caller deciding whether to publish is the one
+ * who needs it.
+ */
+export async function lookupFollowList(
   pubkeyHex: PubkeyHex,
   relays: string[],
   options: FollowListFetchOptions = {},
-): Promise<NostrEvent | null> {
+): Promise<FollowListLookup> {
   console.log(`Fetching follow list for ${pubkeyHex}`);
   let latestFollowTimestamp: number = -1;
   let latestFollowTagCount: number = 0;
@@ -145,7 +159,33 @@ export async function fetchLatestFollowListEvent(
   console.log(
     `Using latest kind 3 event at ${latestFollowTimestamp >= 0 ? latestFollowTimestamp : 'n/a'}, tags: ${latestFollowTimestamp >= 0 ? latestFollowTagCount : 'none'}`,
   );
-  return latestFollowEvent;
+
+  return {
+    event: latestFollowEvent,
+    // An entry exists for a relay only once it has reached EOSE or delivered
+    // an event; one is enough to know the absence is real.
+    answered: relayResults.size > 0 || latestFollowEvent !== null,
+  };
+}
+
+/**
+ * The newest kind 3, or null.
+ *
+ * Kept for callers that only want to read the list. Anything about to
+ * *publish* one wants {@link lookupFollowList} instead, because null here
+ * cannot tell an empty list from an unreachable one.
+ */
+export async function fetchLatestFollowListEvent(
+  pubkeyHex: PubkeyHex,
+  relays: string[],
+  options: FollowListFetchOptions = {},
+): Promise<NostrEvent | null> {
+  const lookup: FollowListLookup = await lookupFollowList(
+    pubkeyHex,
+    relays,
+    options,
+  );
+  return lookup.event;
 }
 
 /**

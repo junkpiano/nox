@@ -1,12 +1,10 @@
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { setupBottomTabs } from '../common/bottom-tabs.js';
 import { setupComposeOverlay } from '../common/compose.js';
-import { getTimelineNewestTimestamp } from '../common/db/index.js';
 import { clearMuteList, loadCachedMuteList } from '../common/mute-state.js';
 import { setupNavigation } from '../common/navigation.js';
 import { setupImageOverlay } from '../common/overlays.js';
 import { applyPlatformClass } from '../common/platform-class.js';
-import { createRelayWebSocket } from '../common/relay-socket.js';
 import { setupReplyOverlay } from '../common/reply.js';
 import { setupSearchBar } from '../common/search.js';
 import {
@@ -19,14 +17,15 @@ import {
   registerServiceWorker,
   startPeriodicSync,
 } from '../common/sync/service-worker-manager.js';
+import { hasAcceptedTerms } from '../common/terms.js';
 import { setupZapOverlay } from '../common/zap.js';
+import { showTermsGate } from '../features/legal/terms-gate.js';
 import { clearMessages } from '../features/messages/messages-store.js';
 import { stopMessageSync } from '../features/messages/messages-sync.js';
 import { migrateLegacyMessageCache } from '../features/messages/plaintext-cache-migration.js';
 import { refreshMuteListFromRelays } from '../features/moderation/moderation-actions.js';
 import { setupModerationOverlay } from '../features/moderation/moderation-overlay.js';
 import { clearNotifications } from '../features/notifications/notifications.js';
-import { recordRelayFailure } from '../features/relays/relays.js';
 import {
   clearWalletConnection,
   loadWalletConnection,
@@ -43,16 +42,18 @@ import {
   connectingMsg,
   createRouteGuard,
   homeKinds,
-  limit,
   maybeSyncRelaysFromNip65OnLogin,
-  output,
-  profileSection,
   pushAppHistoryPath,
   replaceAppHistoryPath,
   saveScrollToHistoryState,
-  seenEventIds,
   syncRelays,
 } from './app-state.js';
+import {
+  clearNewPosts,
+  pollForNewPosts,
+  startNewPostsPolling,
+  stopNewPostsPolling,
+} from './new-posts-row.js';
 
 async function getGlobalTimelineModule(): Promise<
   typeof import('../features/global/global-timeline.js')
@@ -82,161 +83,6 @@ async function publishEventToRelays(
   await publishEventToRelays(event, relayList);
 }
 
-function showNewEventsNotification(_timelineType: string, count: number): void {
-  // Remove existing notification if any
-  const existingNotification = document.getElementById(
-    'sw-new-events-notification',
-  );
-  if (existingNotification) {
-    existingNotification.remove();
-  }
-
-  // Create notification banner
-  const notification = document.createElement('div');
-  notification.id = 'sw-new-events-notification';
-  notification.className =
-    'fixed top-16 left-1/2 transform -translate-x-1/2 z-50 bg-indigo-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 cursor-pointer hover:bg-indigo-700 transition-colors';
-  notification.innerHTML = `
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-    </svg>
-    <span>${count} new ${count === 1 ? 'post' : 'posts'} available</span>
-    <button class="ml-2 text-sm underline">Refresh</button>
-  `;
-
-  notification.addEventListener('click', (): void => {
-    // Force a relay refresh instead of going through handleRoute(), because
-    // handleRoute() may restore from cache for back/forward navigations.
-    void (async (): Promise<void> => {
-      notification.remove();
-
-      const path: string = window.location.pathname;
-      if (path === '/home') {
-        const storedPubkey: string | null =
-          localStorage.getItem('nostr_pubkey');
-        if (!storedPubkey || !output) {
-          handleRoute();
-          return;
-        }
-
-        // Prefer the cached follow list; fall back to refetching if missing.
-        const followedPubkeys: PubkeyHex[] =
-          (appState.cachedHomeTimeline?.followedPubkeys as
-            | PubkeyHex[]
-            | undefined) || [];
-
-        output.innerHTML = '';
-        seenEventIds.clear();
-        appState.untilTimestamp = Math.floor(Date.now() / 1000);
-        appState.newestEventTimestamp = appState.untilTimestamp;
-
-        const routeGuard: () => boolean = createRouteGuard();
-        if (followedPubkeys.length > 0) {
-          const { loadHomeTimeline } = await getHomeTimelineModule();
-          await loadHomeTimeline(
-            followedPubkeys,
-            homeKinds,
-            appState.relays,
-            limit,
-            appState.untilTimestamp,
-            seenEventIds,
-            output,
-            connectingMsg,
-            appState.activeWebSockets,
-            appState.activeTimeouts,
-            routeGuard,
-            storedPubkey as PubkeyHex,
-          );
-        } else {
-          const { loadUserHomeTimeline } = await getHomeLoaderModule();
-          await loadUserHomeTimeline({
-            pubkeyHex: storedPubkey as PubkeyHex,
-            relays: appState.relays,
-            output,
-            profileSection,
-            connectingMsg,
-            homeKinds,
-            limit,
-            seenEventIds,
-            activeWebSockets: appState.activeWebSockets,
-            activeTimeouts: appState.activeTimeouts,
-            setUntilTimestamp: (value: number): void => {
-              appState.untilTimestamp = value;
-            },
-            setNewestEventTimestamp: (value: number): void => {
-              appState.newestEventTimestamp = value;
-            },
-            setCachedHomeTimeline: (
-              followedWithSelf: PubkeyHex[],
-              seen: Set<string>,
-            ): void => {
-              appState.cachedHomeTimeline = {
-                events: Array.from(seen),
-                followedPubkeys: followedWithSelf,
-                timestamp: Date.now(),
-              };
-            },
-            startBackgroundFetch,
-            isRouteActive: routeGuard,
-          });
-        }
-
-        // Best-effort: align the background fetch cursor to the newest cached event.
-        try {
-          const newest: number = await getTimelineNewestTimestamp(
-            'home',
-            storedPubkey as PubkeyHex,
-          );
-          if (Number.isFinite(newest) && newest > 0) {
-            appState.newestEventTimestamp = newest;
-          }
-        } catch {
-          // Best-effort only.
-        }
-        return;
-      }
-
-      if (path === '/global') {
-        if (!output) {
-          handleRoute();
-          return;
-        }
-
-        output.innerHTML = '';
-        seenEventIds.clear();
-        appState.untilTimestamp = Math.floor(Date.now() / 1000);
-
-        const routeGuard: () => boolean = createRouteGuard();
-        const { loadGlobalTimeline } = await getGlobalTimelineModule();
-        await loadGlobalTimeline(
-          appState.relays,
-          limit,
-          appState.untilTimestamp,
-          seenEventIds,
-          output,
-          connectingMsg,
-          appState.activeWebSockets,
-          appState.activeTimeouts,
-          routeGuard,
-        );
-        return;
-      }
-
-      // Fallback for other routes.
-      handleRoute();
-    })();
-  });
-
-  document.body.appendChild(notification);
-
-  // Auto-hide after 10 seconds
-  setTimeout((): void => {
-    if (notification.parentElement) {
-      notification.remove();
-    }
-  }, 10000);
-}
-
 function handleLogout(): void {
   // Whichever kind of session this is: signed in, or browsing as a key.
   endSession();
@@ -252,32 +98,27 @@ function handleLogout(): void {
 
   appState.cachedHomeTimeline = null;
 
-  if (appState.backgroundFetchInterval) {
-    clearInterval(appState.backgroundFetchInterval);
-    appState.backgroundFetchInterval = null;
-  }
-
-  const notification = document.getElementById('new-posts-notification');
-  if (notification) {
-    notification.remove();
-  }
+  stopNewPostsPolling();
+  clearNewPosts();
 
   updateLogoutButton(composeButton);
 }
 
+/**
+ * Keeps the home timeline current without moving it.
+ *
+ * New posts wait behind a row at the top of the list; see new-posts-row.ts.
+ * The service worker's periodic sync is started alongside, for when the
+ * tab is in the background.
+ */
 function startBackgroundFetch(followedPubkeys: PubkeyHex[]): void {
-  // Clear existing interval if any
-  if (appState.backgroundFetchInterval) {
-    clearInterval(appState.backgroundFetchInterval);
-  }
-
-  // Fetch new posts every 30 seconds
-  appState.backgroundFetchInterval = window.setInterval(async () => {
-    await fetchNewPosts(followedPubkeys);
-  }, 30000);
-
-  // Start service worker periodic sync
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
+  startNewPostsPolling({
+    timelineType: 'home',
+    ...(storedPubkey ? { timelinePubkey: storedPubkey as PubkeyHex } : {}),
+    filter: { kinds: homeKinds, authors: followedPubkeys },
+  });
+
   if (storedPubkey) {
     startPeriodicSync({
       userPubkey: storedPubkey as PubkeyHex,
@@ -289,140 +130,30 @@ function startBackgroundFetch(followedPubkeys: PubkeyHex[]): void {
   }
 }
 
-async function fetchNewPosts(followedPubkeys: PubkeyHex[]): Promise<void> {
-  if (!output || followedPubkeys.length === 0) return;
-
-  const newEvents: any[] = [];
-  // Nostr filter `since` is inclusive; +1 avoids repeatedly refetching the same newest timestamp.
-  const since = appState.newestEventTimestamp + 1;
-
-  for (const relayUrl of appState.relays) {
-    try {
-      const socket: WebSocket = createRelayWebSocket(relayUrl);
-
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          recordRelayFailure(relayUrl);
-          socket.close();
-          resolve();
-        }, 5000);
-
-        socket.onopen = (): void => {
-          const subId: string = `new-${Math.random().toString(36).slice(2)}`;
-          const req = [
-            'REQ',
-            subId,
-            {
-              kinds: homeKinds,
-              authors: followedPubkeys,
-              since: since,
-              limit: 20,
-            },
-          ];
-          socket.send(JSON.stringify(req));
-        };
-
-        socket.onmessage = (msg: MessageEvent): void => {
-          const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'EVENT') {
-            const event = arr[2];
-            if (!seenEventIds.has(event.id)) {
-              newEvents.push(event);
-              if (event.created_at > appState.newestEventTimestamp) {
-                appState.newestEventTimestamp = event.created_at;
-              }
-            }
-          } else if (arr[0] === 'EOSE') {
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          }
-        };
-
-        socket.onerror = (): void => {
-          clearTimeout(timeout);
-          socket.close();
-          resolve();
-        };
-      });
-    } catch (e) {
-      console.warn(`Failed to fetch new posts from ${relayUrl}:`, e);
-    }
-  }
-
-  if (newEvents.length > 0) {
-    showNewPostsNotification(newEvents.length);
-  }
+/** The same for the global timeline, which had no way to learn of new posts. */
+function startGlobalBackgroundFetch(): void {
+  startNewPostsPolling({
+    timelineType: 'global',
+    filter: { kinds: [1, 6, 16] },
+  });
 }
 
-function showNewPostsNotification(count: number): void {
-  // Check if notification already exists
-  let notification: HTMLElement | null = document.getElementById(
-    'new-posts-notification',
-  );
-
-  if (!notification) {
-    notification = document.createElement('div');
-    notification.id = 'new-posts-notification';
-    notification.className =
-      'fixed top-20 left-1/2 transform -translate-x-1/2 bg-indigo-600 text-white px-6 py-3 rounded-lg shadow-lg cursor-pointer hover:bg-indigo-700 transition-colors z-50 animate-bounce';
-    notification.innerHTML = `
-      <span class="font-semibold">${count} new post${count > 1 ? 's' : ''} available</span>
-      <span class="ml-2">↻ Click to refresh</span>
-    `;
-
-    notification.addEventListener('click', async () => {
-      const storedPubkey = localStorage.getItem('nostr_pubkey');
-      if (storedPubkey) {
-        // Remove notification
-        notification?.remove();
-        // Reload timeline
-        if (output) {
-          output.innerHTML = '';
-        }
-        seenEventIds.clear();
-        appState.untilTimestamp = Math.floor(Date.now() / 1000);
-        appState.newestEventTimestamp = appState.untilTimestamp;
-
-        const followedPubkeys =
-          appState.cachedHomeTimeline?.followedPubkeys || [];
-        if (followedPubkeys.length > 0 && output) {
-          const isRouteActive = createRouteGuard();
-          const { loadHomeTimeline } = await getHomeTimelineModule();
-          await loadHomeTimeline(
-            followedPubkeys,
-            homeKinds,
-            appState.relays,
-            limit,
-            appState.untilTimestamp,
-            seenEventIds,
-            output,
-            connectingMsg,
-            appState.activeWebSockets,
-            appState.activeTimeouts,
-            isRouteActive,
-            storedPubkey as PubkeyHex,
-          );
-        }
-      }
-    });
-
-    document.body.appendChild(notification);
-  } else {
-    // Update existing notification
-    notification.innerHTML = `
-      <span class="font-semibold">${count} new post${count > 1 ? 's' : ''} available</span>
-      <span class="ml-2">↻ Click to refresh</span>
-    `;
-  }
-}
-
-configureRouteDependencies({ startBackgroundFetch });
+configureRouteDependencies({
+  startBackgroundFetch,
+  startGlobalBackgroundFetch,
+});
 
 document.addEventListener('DOMContentLoaded', (): void => {
   // Before anything renders, so the safe-area rules apply to the first paint.
   applyPlatformClass();
 
+  // Nothing else starts until this resolves. The global timeline has no
+  // filter, so an app that boots first and asks afterwards has already shown a
+  // stranger's post to somebody who was never told what this is.
+  void showTermsGate().then(boot);
+});
+
+function boot(): void {
   if ('scrollRestoration' in window.history) {
     window.history.scrollRestoration = 'manual';
   }
@@ -478,8 +209,9 @@ document.addEventListener('DOMContentLoaded', (): void => {
       `[App] Service worker found ${count} new events for ${timelineType} timeline`,
     );
 
-    // Show notification banner
-    showNewEventsNotification(timelineType, count);
+    // Whatever it found goes behind the new-posts row like anything else,
+    // so there is one way of being told and not a second banner.
+    void pollForNewPosts();
   }) as EventListener);
 
   // Setup search functionality
@@ -625,7 +357,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
       // render, and a relay round-trip should not delay it.
       void refreshMuteListFromRelays(appState.relays);
     });
-});
+}
 
 // Cleanup background fetch on page unload
 window.addEventListener('beforeunload', (): void => {
@@ -636,5 +368,11 @@ window.addEventListener('beforeunload', (): void => {
 
 // Handle browser back/forward buttons
 window.addEventListener('popstate', (event: PopStateEvent): void => {
+  // Not while the gate is up. The overlay covers the page, but a route run
+  // behind it would still open sockets and fetch posts - and "covered" is a
+  // stylesheet away from "shown".
+  if (!hasAcceptedTerms()) {
+    return;
+  }
   handleRoute(event.state);
 });

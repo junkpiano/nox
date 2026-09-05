@@ -1,3 +1,5 @@
+import { emitAppEvent } from '../../common/app-events.js';
+import { kvGet, kvSet } from '../../common/kv.js';
 const RELAYS_STORAGE_KEY: string = 'nostr_relays';
 const RELAY_HEALTH_KEY: string = 'nostr_relay_health_v1';
 const defaultRelays: string[] = [
@@ -27,12 +29,12 @@ export function getAllRelays(): string[] {
 }
 
 export function didUserConfigureRelays(): boolean {
-  return localStorage.getItem(RELAYS_STORAGE_KEY) !== null;
+  return kvGet(RELAYS_STORAGE_KEY) !== null;
 }
 
 export function setRelays(relayList: string[]): void {
   const unique: string[] = Array.from(new Set(relayList));
-  localStorage.setItem(RELAYS_STORAGE_KEY, JSON.stringify(unique));
+  kvSet(RELAYS_STORAGE_KEY, JSON.stringify(unique));
   relays = unique;
   relayHealth.forEach(
     (_value: { success: number; failure: number }, relayUrl: string): void => {
@@ -101,7 +103,7 @@ export function recordRelaySuccess(relayUrl: string): void {
 
 function loadRelaysFromStorage(): string[] {
   try {
-    const raw: string | null = localStorage.getItem(RELAYS_STORAGE_KEY);
+    const raw: string | null = kvGet(RELAYS_STORAGE_KEY);
     if (!raw) return [...defaultRelays];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [...defaultRelays];
@@ -119,7 +121,7 @@ function loadRelaysFromStorage(): string[] {
 
 function loadRelayHealth(): Map<string, { success: number; failure: number }> {
   try {
-    const raw: string | null = localStorage.getItem(RELAY_HEALTH_KEY);
+    const raw: string | null = kvGet(RELAY_HEALTH_KEY);
     if (!raw) return new Map();
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return new Map();
@@ -158,17 +160,13 @@ function persistRelayHealth(): void {
       healthObj[key] = value;
     },
   );
-  localStorage.setItem(RELAY_HEALTH_KEY, JSON.stringify(healthObj));
+  kvSet(RELAY_HEALTH_KEY, JSON.stringify(healthObj));
 }
 
 function notifyRelaysUpdated(): void {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('relays-updated'));
-  }
+  emitAppEvent('relays-updated');
 }
 
 function notifyRelayHealthUpdated(): void {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('relay-health-updated'));
-  }
+  emitAppEvent('relay-health-updated');
 }

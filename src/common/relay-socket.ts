@@ -5,6 +5,8 @@ import {
   recordRelayFailure,
   recordRelaySuccess,
 } from '../features/relays/relays.js';
+import { askUser, canAsk } from './ask.js';
+import { kvGet, kvSet } from './kv.js';
 import { getSessionPrivateKey } from './session.js';
 import { signWithSession } from './signer.js';
 
@@ -49,7 +51,7 @@ interface WindowWithNostr extends Window {
 
 function loadRelayAuthPermissions(): RelayAuthPermissions {
   try {
-    const raw: string | null = localStorage.getItem(RELAY_AUTH_PERMISSIONS_KEY);
+    const raw: string | null = kvGet(RELAY_AUTH_PERMISSIONS_KEY);
     if (!raw) {
       return {};
     }
@@ -73,10 +75,7 @@ function loadRelayAuthPermissions(): RelayAuthPermissions {
 
 function persistRelayAuthPermissions(permissions: RelayAuthPermissions): void {
   try {
-    localStorage.setItem(
-      RELAY_AUTH_PERMISSIONS_KEY,
-      JSON.stringify(permissions),
-    );
+    kvSet(RELAY_AUTH_PERMISSIONS_KEY, JSON.stringify(permissions));
   } catch (error: unknown) {
     console.warn('Failed to persist relay auth permissions:', error);
   }
@@ -178,11 +177,11 @@ function ensureRelayAuthAllowed(relayUrl: string): boolean {
     return false;
   }
 
-  if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
+  if (!canAsk()) {
     return false;
   }
 
-  const allowed: boolean = window.confirm(
+  const allowed: boolean = askUser(
     `Relay authentication is required.\n\nAllow signing auth challenges for all configured relays?`,
   );
   setRelayAuthPermissionForRelays(

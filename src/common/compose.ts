@@ -1,5 +1,6 @@
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
+import { contentWarningTags } from './content-warning.js';
 import { storeEvent } from './db/index.js';
 import type { ImageUploadResult } from './image-upload.js';
 import { uploadImage } from './image-upload.js';
@@ -264,17 +265,9 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
 
       statusEl.textContent = 'Posting...';
 
-      const tags: string[][] = [];
-      if (contentWarningToggle.checked) {
-        const reason: string = contentWarningReason.value.trim();
-        if (reason) {
-          tags.push(['content-warning', reason]);
-          tags.push(['l', reason, 'content-warning']);
-        } else {
-          tags.push(['content-warning']);
-        }
-        tags.push(['L', 'content-warning']);
-      }
+      const tags: string[][] = contentWarningToggle.checked
+        ? contentWarningTags(contentWarningReason.value)
+        : [];
 
       const textContent: string = textarea.value.trim();
       const content: string =

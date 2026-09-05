@@ -225,9 +225,16 @@ export function getSessionPrivateKey(): Uint8Array | null {
     return sessionPrivateKey;
   }
 
-  // Natively the key lives in the credential store, which cannot be read
-  // synchronously; restoreSessionPrivateKey() populates the cache at startup.
-  if (isNativeRuntime()) {
+  // Where the key lives in a credential store it cannot be read
+  // synchronously, and restoreSessionPrivateKey() populates the cache at
+  // start-up instead. `isNativeRuntime()` answers that for Tauri; React
+  // Native is the same situation but is not Tauri, and is recognised by
+  // having no localStorage at all.
+  //
+  // Without the second test the code below would still return null, because
+  // the throw is caught - but by accident rather than on purpose, and an
+  // accident is not something the next reader can rely on.
+  if (isNativeRuntime() || typeof localStorage === 'undefined') {
     return null;
   }
 

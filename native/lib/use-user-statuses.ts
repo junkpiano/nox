@@ -1,0 +1,92 @@
+/**
+ * NIP-38 statuses for the people on a screen.
+ *
+ * One book for the whole app, so a person asked about on the home timeline
+ * is not asked about again on their profile, and a screen that opens shows
+ * what is already known before it asks about anyone new. The shared book
+ * decides who still needs asking; this only ties it to a render.
+ */
+
+import { useEffect, useMemo, useState } from 'react';
+import {
+  createStatusBook,
+  STATUS_ANSWER_TTL_SECONDS,
+} from '../../src/common/status-book';
+import type { UserStatus } from '../../src/features/profile/user-status';
+import { getRelays } from '../../src/features/relays/relays';
+import type { PubkeyHex } from '../../types/nostr';
+
+const book = createStatusBook();
+
+/** The statuses of these authors, filled in as the relays answer. */
+export function useUserStatuses(
+  posts: ReadonlyArray<{ pubkey: PubkeyHex }>,
+): Map<PubkeyHex, UserStatus> {
+  const [statuses, setStatuses] = useState<Map<PubkeyHex, UserStatus>>(() =>
+    book.known(),
+  );
+  // The effect keys on the set of people, not the list: a list that only
+  // reordered, or gained a second post by someone, has nobody new to ask.
+  const authors: string = Array.from(
+    new Set(posts.map((post): PubkeyHex => post.pubkey)),
+  )
+    .sort()
+    .join(',');
+
+  useEffect((): (() => void) => {
+    let cancelled = false;
+    if (!authors) {
+      return (): void => {
+        cancelled = true;
+      };
+    }
+    const people: PubkeyHex[] = authors.split(',') as PubkeyHex[];
+    let atExpiry: ReturnType<typeof setTimeout> | null = null;
+    const ask = (): void => {
+      void book.ask(people, getRelays()).then((known): void => {
+        if (cancelled) return;
+        setStatuses(known);
+        // A status can end before the next scheduled ask: its author set
+        // an `expiration`. The book drops it on the dot, but the screen
+        // only learns that when it asks - so ask when the soonest one on
+        // this screen ends, and the row goes with it.
+        if (atExpiry !== null) clearTimeout(atExpiry);
+        atExpiry = null;
+        const ends: number[] = people.flatMap((pubkey: PubkeyHex): number[] => {
+          const status = known.get(pubkey);
+          return status ? [status.until] : [];
+        });
+        // Only an expiry before the next scheduled ask needs a timer of its
+        // own; the interval covers the rest. Never a long timer: past about
+        // 24.8 days a setTimeout delay overflows 32 bits and fires at once,
+        // and an author can set an `expiration` years out - which would
+        // have made ask, setState and setTimeout a tight loop.
+        if (ends.length > 0) {
+          const wait: number = Math.min(...ends) * 1000 - Date.now();
+          if (wait <= STATUS_ANSWER_TTL_SECONDS * 1000) {
+            atExpiry = setTimeout(ask, Math.max(0, wait) + 50);
+          }
+        }
+      });
+    };
+    ask();
+    // A screen left open outlives the book's belief in its answers.
+    // Asking again on the book's own schedule keeps them current; the book
+    // decides whether anyone is actually asked, so a quiet screen costs
+    // nothing.
+    const again = setInterval(ask, STATUS_ANSWER_TTL_SECONDS * 1000);
+    return (): void => {
+      cancelled = true;
+      clearInterval(again);
+      if (atExpiry !== null) clearTimeout(atExpiry);
+    };
+  }, [authors]);
+
+  return statuses;
+}
+
+/** One person's status, for their profile. */
+export function useUserStatus(pubkey: PubkeyHex): UserStatus | null {
+  const one = useMemo((): { pubkey: PubkeyHex }[] => [{ pubkey }], [pubkey]);
+  return useUserStatuses(one).get(pubkey) ?? null;
+}

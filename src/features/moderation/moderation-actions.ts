@@ -9,15 +9,18 @@ import { isReadOnlySession } from '../../common/session.js';
  */
 
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
+import { kvGet } from '../../common/kv.js';
 import {
   addMutedLocally,
   getMuteListCreatedAt,
   removeMutedLocally,
+  setMutedWordsLocally,
   setMuteList,
 } from '../../common/mute-state.js';
+import { publishEventToRelays } from '../../common/publish-event.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
-import { publishEventToRelays } from '../profile/follow.js';
 import { recordRelayFailure } from '../relays/relays.js';
+import type { MuteEntries } from './mute-entries.js';
 import {
   MUTE_LIST_KIND,
   parseMuteListEvent,
@@ -32,12 +35,11 @@ function getViewerPubkey(): PubkeyHex | null {
   if (isReadOnlySession()) {
     return null;
   }
-  try {
-    const stored: string | null = localStorage.getItem('nostr_pubkey');
-    return stored ? (stored as PubkeyHex) : null;
-  } catch {
-    return null;
-  }
+  // Through the kv seam: on the web this is still localStorage, and on the
+  // phone it is the same key in SQLite. Reading the global directly here was
+  // the last thing keeping the mute list from working natively.
+  const stored: string | null = kvGet('nostr_pubkey');
+  return stored ? (stored as PubkeyHex) : null;
 }
 
 /**
@@ -133,18 +135,26 @@ export async function refreshMuteListFromRelays(
   }
 
   try {
-    const pubkeys: PubkeyHex[] = await parseMuteListEvent(
+    const entries: MuteEntries = await parseMuteListEvent(
       resolved,
       viewerPubkey,
     );
-    setMuteList(pubkeys, resolved.created_at);
+    setMuteList(entries, resolved.created_at);
   } catch (error: unknown) {
     console.warn('[mute] Failed to apply fetched mute list:', error);
   }
 }
 
+/**
+ * Publishes the whole list.
+ *
+ * It takes `MuteEntries` rather than a list of people on purpose: kind:10000
+ * is replaceable, so a call that carried only the pubkeys would delete every
+ * muted word - and every hashtag mute set in another client - the moment
+ * somebody muted one more person.
+ */
 async function publishMuteList(
-  pubkeys: PubkeyHex[],
+  entries: MuteEntries,
   relays: string[],
 ): Promise<void> {
   const viewerPubkey: PubkeyHex | null = getViewerPubkey();
@@ -154,10 +164,10 @@ async function publishMuteList(
 
   const event: NostrEvent = await signMuteListEvent({
     pubkeyHex: viewerPubkey,
-    mutedPubkeys: pubkeys,
+    entries,
   });
 
-  setMuteList(pubkeys, event.created_at);
+  setMuteList(entries, event.created_at);
   await publishEventToRelays(event, relays);
 }
 
@@ -166,7 +176,7 @@ export async function muteUser(
   pubkey: PubkeyHex,
   relays: string[],
 ): Promise<boolean> {
-  const updated: PubkeyHex[] | null = addMutedLocally(pubkey);
+  const updated: MuteEntries | null = addMutedLocally(pubkey);
   if (updated === null) {
     return false;
   }
@@ -185,7 +195,31 @@ export async function unmuteUser(
   pubkey: PubkeyHex,
   relays: string[],
 ): Promise<boolean> {
-  const updated: PubkeyHex[] | null = removeMutedLocally(pubkey);
+  const updated: MuteEntries | null = removeMutedLocally(pubkey);
+  if (updated === null) {
+    return false;
+  }
+
+  try {
+    await publishMuteList(updated, relays);
+  } catch (error: unknown) {
+    console.warn('[mute] Failed to publish mute list:', error);
+    throw error;
+  }
+  return true;
+}
+
+/**
+ * Replaces the muted words. Returns false when the list is unchanged.
+ *
+ * The words are published in the encrypted half of the list, like the people:
+ * what somebody would rather not read is nobody else's business.
+ */
+export async function setMutedWords(
+  words: string[],
+  relays: string[],
+): Promise<boolean> {
+  const updated: MuteEntries | null = setMutedWordsLocally(words);
   if (updated === null) {
     return false;
   }
