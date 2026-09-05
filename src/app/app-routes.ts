@@ -273,6 +273,15 @@ export function handleRoute(scrollRestoreState?: unknown): void {
   // signing in, which is the moment tabs that depend on a session need to
   // refresh. pushState alone would miss it.
   window.dispatchEvent(new CustomEvent('app-route-changed'));
+  // The event page dresses differently: no panel around the post, no
+  // heading above it. Everything else takes the class off again.
+  document.body.classList.toggle(
+    'route-event',
+    /^\/(nevent1|note1)/.test(path),
+  );
+  if (output && !/^\/(nevent1|note1)/.test(path)) {
+    delete output.dataset.threadIds;
+  }
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
 
   void (async (): Promise<void> => {

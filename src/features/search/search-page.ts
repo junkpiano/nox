@@ -111,7 +111,7 @@ function updateRenderedProfile(
     if (renderProfile) {
       if (nameEl) {
         const npubStr: Npub = nip19.npubEncode(pubkey);
-        nameEl.textContent = `👤 ${getDisplayName(npubStr, renderProfile)}`;
+        nameEl.textContent = getDisplayName(npubStr, renderProfile);
       }
       if (avatarEl) {
         setAvatar(avatarEl as HTMLImageElement, pubkey, renderProfile);
