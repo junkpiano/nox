@@ -23,6 +23,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import type { TimelineKey } from '../../src/common/db/types';
@@ -298,11 +299,14 @@ function Header({ profile }: { profile: ProfileData }) {
   // a short bio on a narrow screen and offer "Show more" on a long one that
   // already fit.
   const [longBio, setLongBio] = useState<boolean | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new person or a new bio is measured afresh
+  // Measured again when the text would wrap differently: a new person or
+  // bio, a rotation, or a change to the system font size.
+  const { width, fontScale } = useWindowDimensions();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these are the things that change how the bio wraps
   useEffect((): void => {
     setLongBio(null);
     setBioOpen(false);
-  }, [profile.pubkey, profile.about]);
+  }, [profile.pubkey, profile.about, width, fontScale]);
   // How many people they follow, from their own kind 3, through the same
   // function the web app and Notifications use. No answer, or no list on
   // these relays, leaves the number out rather than showing a zero.
