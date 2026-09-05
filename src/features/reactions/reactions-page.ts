@@ -344,6 +344,9 @@ export async function loadReactionsPage(
     return;
   }
 
+  // Reactions deleted from this list, so a second deletion can tell
+  // whether any of yours is still on the same post.
+  const deleted: Set<string> = new Set();
   visibleEvents.forEach((reactionEvent: NostrEvent): void => {
     const targetEventId: string | null = getTargetEventId(reactionEvent);
     const timeLabel: string = formatEventTimeLabel(reactionEvent.created_at);
@@ -414,9 +417,16 @@ export async function loadReactionsPage(
         try {
           await deleteEventOnRelays(reactionEvent, options.relays);
           await deleteEvents([reactionEvent.id]);
-          // The cards elsewhere drew their ♡ from the book; tell it.
+          deleted.add(reactionEvent.id);
+          // The cards elsewhere drew their ♡ from the book. The heart
+          // stood for any reaction of yours on the post, so it empties
+          // only when the last one on this list is gone.
           const target: string | null = getTargetEventId(reactionEvent);
-          if (target) {
+          const remaining: boolean = visibleEvents.some(
+            (other: NostrEvent): boolean =>
+              !deleted.has(other.id) && getTargetEventId(other) === target,
+          );
+          if (target && !remaining) {
             recordOwnReaction(
               reactionEvent.pubkey as PubkeyHex,
               target,

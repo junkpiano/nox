@@ -199,11 +199,20 @@ export function createReactionBook(
   const liked: Set<string> = new Set();
   const reposted: Set<string> = new Set();
   const pending: Map<string, Promise<void>> = new Map();
-  // Every mark or unmark is numbered. A lookup remembers the number it
-  // started at and leaves alone any post edited since: the relays were
-  // asked before the like was made, so their answer is older than it.
+  // Every mark or unmark is numbered, per post and per kind of reaction.
+  // A lookup remembers the number it started at and leaves alone what was
+  // edited since: the relays were asked before the like was made, so their
+  // answer is older than it. A like made meanwhile does not discard what
+  // they found out about a repost.
   let edits: number = 0;
   const editedAt: Map<string, number> = new Map();
+  const editKey = (reaction: Reaction, id: string): string =>
+    `${reaction}:${id}`;
+  const editedSince = (
+    reaction: Reaction,
+    id: string,
+    since: number,
+  ): boolean => (editedAt.get(editKey(reaction, id)) ?? 0) > since;
 
   const belongsTo = (viewer: PubkeyHex): void => {
     if (owner === viewer) return;
@@ -233,11 +242,14 @@ export function createReactionBook(
       // nothing: a like withdrawn elsewhere is not a like now. A post the
       // app itself edited while the question was out keeps the app's answer.
       for (const id of fresh) {
-        if ((editedAt.get(id) ?? 0) > startedAt) continue;
-        if (found.liked.has(id)) liked.add(id);
-        else liked.delete(id);
-        if (found.reposted.has(id)) reposted.add(id);
-        else reposted.delete(id);
+        if (!editedSince('like', id, startedAt)) {
+          if (found.liked.has(id)) liked.add(id);
+          else liked.delete(id);
+        }
+        if (!editedSince('repost', id, startedAt)) {
+          if (found.reposted.has(id)) reposted.add(id);
+          else reposted.delete(id);
+        }
       }
     } catch {
       // Nobody answered. That is not knowledge about any of these.
@@ -284,13 +296,13 @@ export function createReactionBook(
       (reaction === 'like' ? liked : reposted).add(id);
       // Fresh knowledge; no need to ask about this post for a while.
       askedAt.set(id, clock());
-      editedAt.set(id, ++edits);
+      editedAt.set(editKey(reaction, id), ++edits);
     },
     unmark(viewer, id, reaction) {
       belongsTo(viewer);
       (reaction === 'like' ? liked : reposted).delete(id);
       askedAt.set(id, clock());
-      editedAt.set(id, ++edits);
+      editedAt.set(editKey(reaction, id), ++edits);
     },
   };
 }

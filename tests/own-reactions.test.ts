@@ -201,11 +201,13 @@ test('reaction book: a like made while the relays were being asked is not undone
   const book = createReactionBook(lookup, clock().now);
   const asking = book.ask(ME, [POST_A, POST_B], RELAYS);
   book.mark(ME, POST_A, 'like');
-  // The relays answer "none of these" - true when they were asked.
-  release({ liked: new Set(), reposted: new Set() });
+  // The relays answer "no likes, but a repost of A" - true when asked.
+  release({ liked: new Set(), reposted: new Set([POST_A]) });
   const known = await asking;
   assert.deepEqual([...known.liked], [POST_A]);
   assert.ok(!known.liked.has(POST_B));
+  // The like made meanwhile did not throw away what they found out.
+  assert.deepEqual([...known.reposted], [POST_A]);
 });
 
 test('reaction book: an answer is believed for a while, then asked again', async () => {
