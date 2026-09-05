@@ -224,6 +224,32 @@ test('reaction book: a forgotten post is asked about again', async () => {
   assert.equal(asked.length, 2, 'asked again after forgetting');
 });
 
+test('reaction book: an old question finishing does not cancel the new one', async () => {
+  const releases: Array<(answer: OwnReactions) => void> = [];
+  const lookup: OwnReactionLookup = () =>
+    new Promise<OwnReactions>((resolve) => {
+      releases.push(resolve);
+    });
+  const book = createReactionBook(lookup, clock().now);
+  const first = book.ask(ME, [POST_A], RELAYS);
+  book.forget(ME, POST_A);
+  const second = book.ask(ME, [POST_A], RELAYS);
+  assert.equal(releases.length, 2, 'forgetting sent a new question');
+  // The old question comes back first, and says nothing.
+  releases[0]?.({ liked: new Set(), reposted: new Set() });
+  await first;
+  // A card rendered now waits for the new question, not the old answer.
+  let third: OwnReactions | null = null;
+  void book.ask(ME, [POST_A], RELAYS).then((known): void => {
+    third = known;
+  });
+  await Promise.resolve();
+  assert.equal(third, null, 'still waiting on the new question');
+  releases[1]?.({ liked: new Set([POST_A]), reposted: new Set() });
+  const known = await second;
+  assert.ok(known.liked.has(POST_A));
+});
+
 test('reaction book: an answer is believed for a while, then asked again', async () => {
   const time = clock();
   let liked = new Set([POST_A]);

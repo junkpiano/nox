@@ -234,12 +234,17 @@ export function createReactionBook(
     reposted: new Set(reposted),
   });
 
+  // A lookup cleans up only after itself. A post forgotten while its
+  // question was out gets a new question, and the old one finishing must
+  // not remove the new one's entry or unset the time the new one was asked.
   const lookUp = async (
     viewer: PubkeyHex,
     fresh: string[],
     relays: string[],
+    self: { flight?: Promise<void> },
   ): Promise<void> => {
     const startedAt: number = edits;
+    const mine = (id: string): boolean => pending.get(id) === self.flight;
     try {
       const found: OwnReactions = await lookup(viewer, fresh, relays);
       if (owner !== viewer) return;
@@ -258,9 +263,13 @@ export function createReactionBook(
       }
     } catch {
       // Nobody answered. That is not knowledge about any of these.
-      if (owner === viewer) for (const id of fresh) askedAt.delete(id);
+      if (owner === viewer) {
+        for (const id of fresh) if (mine(id)) askedAt.delete(id);
+      }
     } finally {
-      if (owner === viewer) for (const id of fresh) pending.delete(id);
+      if (owner === viewer) {
+        for (const id of fresh) if (mine(id)) pending.delete(id);
+      }
     }
   };
 
@@ -276,8 +285,9 @@ export function createReactionBook(
       });
       if (fresh.length > 0) {
         for (const id of fresh) askedAt.set(id, now);
-        const flight: Promise<void> = lookUp(viewer, fresh, relays);
-        for (const id of fresh) pending.set(id, flight);
+        const self: { flight?: Promise<void> } = {};
+        self.flight = lookUp(viewer, fresh, relays, self);
+        for (const id of fresh) pending.set(id, self.flight);
       }
       await Promise.all(
         Array.from(
