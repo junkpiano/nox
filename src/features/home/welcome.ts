@@ -43,9 +43,10 @@ export async function showInputForm(
 
   // The same page is drawn in a browser and in the desktop app, and the key
   // lands somewhere different in each: localStorage on the web, the OS
-  // credential store under Tauri. The note says which.
+  // credential store under Tauri, or localStorage again if that store fails.
+  // The note promises only what both paths keep: the device.
   const storageNote: string = isNativeRuntime()
-    ? "Stored in this device's credential store. Signing out deletes it."
+    ? 'Stored on this device. Signing out deletes it.'
     : 'Stored in this browser only, which is less secure than an extension. Signing out deletes it.';
 
   options.output.innerHTML = `
