@@ -1707,7 +1707,11 @@ main {
 
 .nox-profile-banner-blank {
   background:
-    radial-gradient(circle at 20% 30%, rgba(137, 168, 255, 0.18), transparent 45%),
+    radial-gradient(
+      circle at 20% 30%,
+      rgba(137, 168, 255, 0.18),
+      transparent 45%
+    ),
     linear-gradient(135deg, #16233f, #0b1220);
 }
 
@@ -1944,4 +1948,81 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   .nox-profile-body {
     padding: 0 1rem 0.5rem;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Keyboard focus, once, for everything.
+
+   Focus used to be whatever each control happened to get: a Tailwind ring
+   here, nothing there, `outline-none` in a few places. One rule, on the
+   things a keyboard can land on, in the one colour the app uses for
+   attention. The current page in the nav is a fill; focus is a ring; the
+   two never look alike.
+   --------------------------------------------------------------------------- */
+:where(
+    a,
+    button,
+    [role="button"],
+    [role="menuitem"],
+    input,
+    textarea,
+    select,
+    summary,
+    [tabindex]
+  ):focus-visible {
+  outline: 2px solid var(--nox-cyan);
+  outline-offset: 2px;
+}
+
+/* A field's ring hugs the field; the offset would float it. */
+:where(input, textarea, select):focus-visible {
+  outline-offset: 0;
+}
+
+/* A thumb, not a fingertip: the mark that opens a row's menu. */
+.nox-more-trigger {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.nox-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.nox-menu-end {
+  left: auto;
+  right: 0;
+}
+
+/* A relay row: the address, its status, one mark. Tall enough to be a
+   target on a phone; the address is one line, and the whole of it on hover. */
+.nox-relay-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 0.8rem;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.nox-relay-url {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  color: #e8eeff;
+}
+
+.nox-relay-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: none;
 }

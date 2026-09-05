@@ -3,6 +3,7 @@ import {
   fetchFollowList,
   fetchLatestFollowListEvent,
 } from '../../common/events-queries.js';
+import { createMoreMenu } from '../../common/more-menu.js';
 import { isMuted } from '../../common/mute-state.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getSessionPrivateKey } from '../../common/session.js';
@@ -14,9 +15,6 @@ interface FollowToggleOptions {
   publishEvent: (event: NostrEvent, relayList: string[]) => Promise<void>;
   onFollowListChanged?: () => void;
 }
-
-/** The document-level listeners of the current profile's more-menu. */
-let menuListeners: AbortController | null = null;
 
 export async function setupFollowToggle(
   targetPubkey: PubkeyHex,
@@ -58,96 +56,54 @@ export async function setupFollowToggle(
       <button id="follow-toggle" class="nox-primary-button py-2 px-5 text-sm">
         Follow
       </button>
-      <div class="nox-more">
-        <button id="profile-more" type="button" class="nox-more-trigger" aria-label="More actions" aria-haspopup="menu" aria-expanded="false" title="More">···</button>
-        <div id="profile-more-menu" class="nox-menu" role="menu" hidden>
-          <button id="profile-message" type="button" role="menuitem" class="nox-menu-item">Message</button>
-          <button id="profile-mute-toggle" type="button" role="menuitem" class="nox-menu-item">${isMuted(targetPubkey) ? 'Unmute' : 'Mute'}</button>
-          <button id="profile-report" type="button" role="menuitem" class="nox-menu-item nox-menu-item-danger">Report</button>
-        </div>
-      </div>
     </div>
   `;
-
-  const moreTrigger: HTMLButtonElement | null = document.getElementById(
-    'profile-more',
-  ) as HTMLButtonElement | null;
-  const moreMenu: HTMLElement | null =
-    document.getElementById('profile-more-menu');
-  if (moreTrigger && moreMenu) {
-    // The document listeners belong to this menu, and a profile is drawn
-    // many times in a session. The previous menu's listeners go when the
-    // next one is wired, so they cannot pile up holding detached menus.
-    menuListeners?.abort();
-    menuListeners = new AbortController();
-    const { signal } = menuListeners;
-    const close = (): void => {
-      moreMenu.hidden = true;
-      moreTrigger.setAttribute('aria-expanded', 'false');
-    };
-    moreTrigger.addEventListener('click', (event: MouseEvent): void => {
-      event.stopPropagation();
-      const open: boolean = moreMenu.hidden;
-      moreMenu.hidden = !open;
-      moreTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-    });
-    // A choice closes the menu; so does a tap anywhere else, or Escape.
-    moreMenu.addEventListener('click', close);
-    document.addEventListener(
-      'click',
-      (event: MouseEvent): void => {
-        if (!moreMenu.hidden && !moreMenu.contains(event.target as Node)) {
-          close();
-        }
-      },
-      { signal },
-    );
-    document.addEventListener(
-      'keydown',
-      (event: KeyboardEvent): void => {
-        if (event.key === 'Escape') close();
-      },
-      { signal },
-    );
-  }
-
-  document
-    .getElementById('profile-message')
-    ?.addEventListener('click', (): void => {
-      void (async (): Promise<void> => {
-        // Imported on demand: the messages module is lazy-loaded, and a profile
-        // view should not pull it in just to render a button.
-        const { openConversationWith } = await import(
-          '../messages/messages-page.js'
-        );
-        openConversationWith(targetPubkey);
-        window.dispatchEvent(
-          new CustomEvent('navigate-to-path', {
-            detail: { path: '/messages' },
-          }),
-        );
-      })();
-    });
-
-  document
-    .getElementById('profile-mute-toggle')
-    ?.addEventListener('click', (): void => {
-      window.dispatchEvent(
-        new CustomEvent('request-mute-user', {
-          detail: { pubkey: targetPubkey, name: '' },
-        }),
-      );
-    });
-
-  document
-    .getElementById('profile-report')
-    ?.addEventListener('click', (): void => {
-      window.dispatchEvent(
-        new CustomEvent('request-report-content', {
-          detail: { pubkey: targetPubkey, name: '' },
-        }),
-      );
-    });
+  container.querySelector('.nox-profile-action-row')?.appendChild(
+    createMoreMenu({
+      label: 'More actions for this person',
+      items: [
+        {
+          label: 'Message',
+          onSelect: (): void => {
+            void (async (): Promise<void> => {
+              // Imported on demand: the messages module is lazy-loaded, and
+              // a profile view should not pull it in just to render a button.
+              const { openConversationWith } = await import(
+                '../messages/messages-page.js'
+              );
+              openConversationWith(targetPubkey);
+              window.dispatchEvent(
+                new CustomEvent('navigate-to-path', {
+                  detail: { path: '/messages' },
+                }),
+              );
+            })();
+          },
+        },
+        {
+          label: isMuted(targetPubkey) ? 'Unmute' : 'Mute',
+          onSelect: (): void => {
+            window.dispatchEvent(
+              new CustomEvent('request-mute-user', {
+                detail: { pubkey: targetPubkey, name: '' },
+              }),
+            );
+          },
+        },
+        {
+          label: 'Report',
+          danger: true,
+          onSelect: (): void => {
+            window.dispatchEvent(
+              new CustomEvent('request-report-content', {
+                detail: { pubkey: targetPubkey, name: '' },
+              }),
+            );
+          },
+        },
+      ],
+    }),
+  );
 
   const button: HTMLButtonElement | null = document.getElementById(
     'follow-toggle',
