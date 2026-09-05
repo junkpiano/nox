@@ -2078,6 +2078,23 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   flex: none;
 }
 
+/* An empty timeline says what the page is for and the one thing to do. */
+.nox-empty-state {
+  display: grid;
+  gap: 0.6rem;
+  max-width: 34rem;
+  padding: 2.5rem 0;
+}
+
+.nox-empty-state .nox-panel-title {
+  margin: 0;
+}
+
+.nox-empty-state a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 /* Opened upward: no room below the trigger, room above it. */
 .nox-menu-up {
   top: auto;
