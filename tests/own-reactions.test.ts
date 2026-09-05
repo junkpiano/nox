@@ -250,6 +250,29 @@ test('reaction book: an old question finishing does not cancel the new one', asy
   assert.ok(known.liked.has(POST_A));
 });
 
+test('reaction book: a viewer who left and came back is not answered by the old question', async () => {
+  const OTHER: PubkeyHex = '9'.repeat(64) as PubkeyHex;
+  const releases: Array<(answer: OwnReactions) => void> = [];
+  const lookup: OwnReactionLookup = () =>
+    new Promise<OwnReactions>((resolve) => {
+      releases.push(resolve);
+    });
+  const book = createReactionBook(lookup, clock().now);
+  const stale = book.ask(ME, [POST_A], RELAYS);
+  // Somebody else looks, then the first viewer is back and asks again.
+  const other = book.ask(OTHER, [POST_A], RELAYS);
+  releases[1]?.({ liked: new Set(), reposted: new Set() });
+  await other;
+  const fresh = book.ask(ME, [POST_A], RELAYS);
+  assert.equal(releases.length, 3);
+  releases[2]?.({ liked: new Set([POST_A]), reposted: new Set() });
+  await fresh;
+  // The first question comes back last, and says nothing.
+  releases[0]?.({ liked: new Set(), reposted: new Set() });
+  await stale;
+  assert.ok(book.known(ME).liked.has(POST_A), 'the newer answer stands');
+});
+
 test('reaction book: an answer is believed for a while, then asked again', async () => {
   const time = clock();
   let liked = new Set([POST_A]);

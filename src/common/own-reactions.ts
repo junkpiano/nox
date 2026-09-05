@@ -234,9 +234,10 @@ export function createReactionBook(
     reposted: new Set(reposted),
   });
 
-  // A lookup cleans up only after itself. A post forgotten while its
-  // question was out gets a new question, and the old one finishing must
-  // not remove the new one's entry or unset the time the new one was asked.
+  // A lookup speaks only for the questions still its own. A post forgotten
+  // while its question was out gets a new question; so does a viewer who
+  // left and came back. The old question finishing must neither write its
+  // answer over the new one's nor remove the new one's entry.
   const lookUp = async (
     viewer: PubkeyHex,
     fresh: string[],
@@ -250,8 +251,10 @@ export function createReactionBook(
       if (owner !== viewer) return;
       // An answer replaces what was held for these posts, including with
       // nothing: a like withdrawn elsewhere is not a like now. A post the
-      // app itself edited while the question was out keeps the app's answer.
+      // app itself edited while the question was out keeps the app's
+      // answer, and a post asked about again since is the newer question's.
       for (const id of fresh) {
+        if (!mine(id)) continue;
         if (!editedSince('like', id, startedAt)) {
           if (found.liked.has(id)) liked.add(id);
           else liked.delete(id);
