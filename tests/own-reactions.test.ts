@@ -13,6 +13,7 @@ import {
   collectOwnReactions,
   createReactionBook,
   fetchOwnReactions,
+  type OwnReactionLookup,
   type OwnReactions,
   REACTION_ANSWER_TTL_SECONDS,
 } from '../src/common/own-reactions.js';
@@ -189,6 +190,22 @@ test('reaction book: a like made here shows at once, without asking', async () =
   assert.deepEqual([...book.known(ME).liked], [POST_A]);
   await book.ask(ME, [POST_A], RELAYS);
   assert.equal(asked.length, 1);
+});
+
+test('reaction book: a like made while the relays were being asked is not undone by their answer', async () => {
+  let release: (answer: OwnReactions) => void = () => {};
+  const lookup: OwnReactionLookup = () =>
+    new Promise<OwnReactions>((resolve) => {
+      release = resolve;
+    });
+  const book = createReactionBook(lookup, clock().now);
+  const asking = book.ask(ME, [POST_A, POST_B], RELAYS);
+  book.mark(ME, POST_A, 'like');
+  // The relays answer "none of these" - true when they were asked.
+  release({ liked: new Set(), reposted: new Set() });
+  const known = await asking;
+  assert.deepEqual([...known.liked], [POST_A]);
+  assert.ok(!known.liked.has(POST_B));
 });
 
 test('reaction book: an answer is believed for a while, then asked again', async () => {

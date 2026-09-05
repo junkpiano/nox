@@ -3,6 +3,7 @@ import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { deleteEvents } from '../../common/db/index.js';
 import { isMuted } from '../../common/mute-state.js';
 import { setActiveNav } from '../../common/navigation.js';
+import { recordOwnReaction } from '../../common/own-reactions-dom.js';
 import { filterDeletedReactionEvents } from '../../common/reaction-interactions.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { canWrite, signWithSession } from '../../common/signer.js';
@@ -413,6 +414,16 @@ export async function loadReactionsPage(
         try {
           await deleteEventOnRelays(reactionEvent, options.relays);
           await deleteEvents([reactionEvent.id]);
+          // The cards elsewhere drew their ♡ from the book; tell it.
+          const target: string | null = getTargetEventId(reactionEvent);
+          if (target) {
+            recordOwnReaction(
+              reactionEvent.pubkey as PubkeyHex,
+              target,
+              'like',
+              false,
+            );
+          }
           row.remove();
         } catch (error: unknown) {
           console.error('Failed to delete reaction:', error);

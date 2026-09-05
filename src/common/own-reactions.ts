@@ -199,6 +199,11 @@ export function createReactionBook(
   const liked: Set<string> = new Set();
   const reposted: Set<string> = new Set();
   const pending: Map<string, Promise<void>> = new Map();
+  // Every mark or unmark is numbered. A lookup remembers the number it
+  // started at and leaves alone any post edited since: the relays were
+  // asked before the like was made, so their answer is older than it.
+  let edits: number = 0;
+  const editedAt: Map<string, number> = new Map();
 
   const belongsTo = (viewer: PubkeyHex): void => {
     if (owner === viewer) return;
@@ -207,6 +212,7 @@ export function createReactionBook(
     liked.clear();
     reposted.clear();
     pending.clear();
+    editedAt.clear();
   };
 
   const snapshot = (): OwnReactions => ({
@@ -219,12 +225,15 @@ export function createReactionBook(
     fresh: string[],
     relays: string[],
   ): Promise<void> => {
+    const startedAt: number = edits;
     try {
       const found: OwnReactions = await lookup(viewer, fresh, relays);
       if (owner !== viewer) return;
       // An answer replaces what was held for these posts, including with
-      // nothing: a like withdrawn elsewhere is not a like now.
+      // nothing: a like withdrawn elsewhere is not a like now. A post the
+      // app itself edited while the question was out keeps the app's answer.
       for (const id of fresh) {
+        if ((editedAt.get(id) ?? 0) > startedAt) continue;
         if (found.liked.has(id)) liked.add(id);
         else liked.delete(id);
         if (found.reposted.has(id)) reposted.add(id);
@@ -275,11 +284,13 @@ export function createReactionBook(
       (reaction === 'like' ? liked : reposted).add(id);
       // Fresh knowledge; no need to ask about this post for a while.
       askedAt.set(id, clock());
+      editedAt.set(id, ++edits);
     },
     unmark(viewer, id, reaction) {
       belongsTo(viewer);
       (reaction === 'like' ? liked : reposted).delete(id);
       askedAt.set(id, clock());
+      editedAt.set(id, ++edits);
     },
   };
 }

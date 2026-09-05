@@ -110,14 +110,20 @@ export function noteRenderedCard(card: HTMLElement, eventId: string): void {
 /**
  * Records a reaction the app just made, or took back, and paints every
  * card for that post that is on screen.
+ *
+ * `by` is whoever made it, taken when the action began: a publish waits
+ * on the relays, and if the session changed meanwhile the result belongs
+ * to a key no longer on screen and is dropped rather than written into
+ * the wrong book.
  */
 export function recordOwnReaction(
+  by: PubkeyHex,
   eventId: string,
   reaction: Reaction,
   on: boolean,
 ): void {
   const me: PubkeyHex | null = viewer();
-  if (!me) return;
+  if (!me || me !== by) return;
   if (on) book.mark(me, eventId, reaction);
   else book.unmark(me, eventId, reaction);
   const cards: NodeListOf<HTMLElement> = document.querySelectorAll(
