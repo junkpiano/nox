@@ -97,15 +97,10 @@ export async function loadHomeTimeline(
         `[HomeTimeline] No events found. Authors: ${followedPubkeys.length}, Kinds: ${kinds.join(', ')}, Relays: ${relays.length}`,
       );
       output.innerHTML = `
-        <div class="text-center py-8">
-          <p class="text-gray-700 mb-4">No posts found in your home timeline.</p>
-          <p class="text-gray-500 text-sm mb-2">This could mean:</p>
-          <ul class="text-gray-500 text-sm list-disc list-inside mb-4">
-            <li>The people you follow haven't posted recently</li>
-            <li>Your relays are not responding</li>
-            <li>You're not following anyone yet</li>
-          </ul>
-          <p class="text-gray-600 text-sm">Try viewing the <a href="/global" class="text-indigo-600 hover:underline">Global Timeline</a> or check your <a href="/relays" class="text-indigo-600 hover:underline">Relay settings</a>.</p>
+        <div class="nox-empty-state">
+          <h3 class="nox-panel-title">Nothing here yet</h3>
+          <p class="nox-panel-copy">Home shows posts from people you follow. Find someone on the <a href="/global">Global timeline</a> and follow them from their profile; their posts appear here.</p>
+          <p class="nox-panel-copy">If you already follow people, their relays may not be answering. Check <a href="/relays">Relays</a>.</p>
         </div>
       `;
     },

@@ -46,7 +46,8 @@ export async function showInputForm(
           <div>
             <p class="nox-kicker">Welcome</p>
             <h3 class="nox-panel-title">Sign in to nox</h3>
-            <p class="nox-panel-copy">A browser extension keeps your key out of this page, so it is the way in we recommend. Your secret key stays in the extension; nox receives only the signed event.</p>
+            <p class="nox-panel-copy">nox reads and posts on Nostr through relays you choose. There is no account to create: a key pair is your identity.</p>
+            <p class="nox-panel-copy mt-2">A browser extension keeps your key out of this page, so it is the way in we recommend. Your secret key stays in the extension; nox receives only the signed event.</p>
           </div>
 
           <div class="nox-auth-actions">
@@ -71,12 +72,13 @@ export async function showInputForm(
               </button>
             </div>
             <p id="public-key-error" class="nox-auth-error" hidden></p>
-            <p class="nox-auth-note">Shows the timeline, profile and likes that key sees. Nothing can be posted, and no secret is asked for: to post, sign in.</p>
+            <p class="nox-auth-note">A public key (npub1…) is the address people find someone by, and is safe to share. Browsing as one shows the timeline, profile and likes it sees; nothing can be posted, and no secret is asked for.</p>
           </div>
 
           <details class="nox-reveal">
             <summary class="nox-reveal-summary">I have a secret key</summary>
             <div class="nox-reveal-body space-y-2">
+              <p class="nox-auth-note">A secret key (nsec1…) signs your posts. Anyone who has it can post as you, so give it only to an app you trust.</p>
               <label for="private-key-input" class="sr-only">Secret key</label>
               <div class="flex flex-col sm:flex-row gap-2">
                 <input id="private-key-input" type="password" autocomplete="off" placeholder="nsec1… or 64-character hex"
