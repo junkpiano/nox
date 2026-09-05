@@ -323,7 +323,13 @@ export async function loadNotificationsPage(
   list.id = 'notifications-list';
   output.append(switcher, notice, list);
 
+  // Each draw is numbered, and only the newest one is allowed to touch
+  // the list. Following takes a relay round trip; a tap back to All in
+  // that time must not have its list overwritten when the round trip ends.
+  let generation: number = 0;
   const draw = async (scope: NotificationScope): Promise<void> => {
+    generation += 1;
+    const mine: number = generation;
     saveNotificationScope(scope);
     for (const button of switcher.querySelectorAll<HTMLButtonElement>(
       'button',
@@ -343,7 +349,7 @@ export async function loadNotificationsPage(
       events,
       options.relays,
     );
-    if (!isRouteActive()) return;
+    if (!isRouteActive() || mine !== generation) return;
     notice.hidden = scoped.scope !== 'following-unavailable';
     notice.textContent =
       'Your follow list could not be read, so everything is shown.';
