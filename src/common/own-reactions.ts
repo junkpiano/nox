@@ -183,6 +183,11 @@ export interface ReactionBook {
   mark(viewer: PubkeyHex, id: string, reaction: Reaction): void;
   /** Takes back a reaction the app just deleted. */
   unmark(viewer: PubkeyHex, id: string, reaction: Reaction): void;
+  /**
+   * Drops what is held about a post, so the next ask goes to the relays.
+   * For when the app changed something and cannot say what remains.
+   */
+  forget(viewer: PubkeyHex, id: string): void;
 }
 
 /**
@@ -303,6 +308,17 @@ export function createReactionBook(
       (reaction === 'like' ? liked : reposted).delete(id);
       askedAt.set(id, clock());
       editedAt.set(editKey(reaction, id), ++edits);
+    },
+    forget(viewer, id) {
+      belongsTo(viewer);
+      askedAt.delete(id);
+      // A question already out is not the answer wanted now; the next ask
+      // sends a new one rather than waiting on it.
+      pending.delete(id);
+      // Counted as an edit, so a lookup that was already out does not
+      // write its now-stale answer back over the forgetting.
+      editedAt.set(editKey('like', id), ++edits);
+      editedAt.set(editKey('repost', id), ++edits);
     },
   };
 }

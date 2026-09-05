@@ -108,6 +108,21 @@ export function noteRenderedCard(card: HTMLElement, eventId: string): void {
 }
 
 /**
+ * Forgets what is held about a post and asks the relays again for every
+ * card of it on screen. For when the app deleted one of its reactions and
+ * cannot tell from where it stands whether another remains.
+ */
+export function refreshOwnReactions(by: PubkeyHex, eventId: string): void {
+  const me: PubkeyHex | null = viewer();
+  if (!me || me !== by) return;
+  book.forget(me, eventId);
+  const cards: NodeListOf<HTMLElement> = document.querySelectorAll(
+    `.event-container[data-event-id="${CSS.escape(eventId)}"]`,
+  );
+  for (const card of cards) noteRenderedCard(card, eventId);
+}
+
+/**
  * Records a reaction the app just made, or took back, and paints every
  * card for that post that is on screen.
  *

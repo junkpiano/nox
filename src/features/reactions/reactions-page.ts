@@ -3,7 +3,7 @@ import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { deleteEvents } from '../../common/db/index.js';
 import { isMuted } from '../../common/mute-state.js';
 import { setActiveNav } from '../../common/navigation.js';
-import { recordOwnReaction } from '../../common/own-reactions-dom.js';
+import { refreshOwnReactions } from '../../common/own-reactions-dom.js';
 import { filterDeletedReactionEvents } from '../../common/reaction-interactions.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { canWrite, signWithSession } from '../../common/signer.js';
@@ -344,9 +344,6 @@ export async function loadReactionsPage(
     return;
   }
 
-  // Reactions deleted from this list, so a second deletion can tell
-  // whether any of yours is still on the same post.
-  const deleted: Set<string> = new Set();
   visibleEvents.forEach((reactionEvent: NostrEvent): void => {
     const targetEventId: string | null = getTargetEventId(reactionEvent);
     const timeLabel: string = formatEventTimeLabel(reactionEvent.created_at);
@@ -417,22 +414,13 @@ export async function loadReactionsPage(
         try {
           await deleteEventOnRelays(reactionEvent, options.relays);
           await deleteEvents([reactionEvent.id]);
-          deleted.add(reactionEvent.id);
           // The cards elsewhere drew their ♡ from the book. The heart
-          // stood for any reaction of yours on the post, so it empties
-          // only when the last one on this list is gone.
+          // stood for any reaction of yours on the post, and this list
+          // holds only the newest hundred, so whether one remains is a
+          // question for the relays: the book forgets and asks again.
           const target: string | null = getTargetEventId(reactionEvent);
-          const remaining: boolean = visibleEvents.some(
-            (other: NostrEvent): boolean =>
-              !deleted.has(other.id) && getTargetEventId(other) === target,
-          );
-          if (target && !remaining) {
-            recordOwnReaction(
-              reactionEvent.pubkey as PubkeyHex,
-              target,
-              'like',
-              false,
-            );
+          if (target) {
+            refreshOwnReactions(reactionEvent.pubkey as PubkeyHex, target);
           }
           row.remove();
         } catch (error: unknown) {

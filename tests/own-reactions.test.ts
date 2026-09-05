@@ -210,6 +210,20 @@ test('reaction book: a like made while the relays were being asked is not undone
   assert.deepEqual([...known.reposted], [POST_A]);
 });
 
+test('reaction book: a forgotten post is asked about again', async () => {
+  const { asked, lookup } = lookupThatAnswers(() => ({
+    liked: new Set([POST_A]),
+    reposted: new Set(),
+  }));
+  const book = createReactionBook(lookup, clock().now);
+  await book.ask(ME, [POST_A], RELAYS);
+  await book.ask(ME, [POST_A], RELAYS);
+  assert.equal(asked.length, 1, 'believed');
+  book.forget(ME, POST_A);
+  await book.ask(ME, [POST_A], RELAYS);
+  assert.equal(asked.length, 2, 'asked again after forgetting');
+});
+
 test('reaction book: an answer is believed for a while, then asked again', async () => {
   const time = clock();
   let liked = new Set([POST_A]);
