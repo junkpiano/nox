@@ -1,3 +1,4 @@
+import { createMoreMenu } from '../../common/more-menu.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import type { SetActiveNavFn } from '../../common/types.js';
 
@@ -81,7 +82,7 @@ export function loadRelaysPage(options: RelaysPageOptions): void {
         </div>
         <div class="flex flex-col sm:flex-row gap-2">
           <input id="relay-input" type="text" placeholder="wss://relay.example.com"
-            class="border border-gray-300 rounded-lg px-4 py-2 flex-1 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            class="border border-gray-300 rounded-lg px-4 py-2 flex-1 text-gray-700" />
           <button id="relay-add"
             class="bg-gradient-to-r from-slate-800 via-indigo-900 to-purple-950 hover:from-slate-900 hover:via-indigo-950 hover:to-purple-950 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-lg">
             +
@@ -165,127 +166,105 @@ export function loadRelaysPage(options: RelaysPageOptions): void {
 
     currentRelays.forEach((relayUrl: string, index: number): void => {
       const row: HTMLDivElement = document.createElement('div');
-      row.className =
-        'flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2';
+      row.className = 'nox-relay-row';
 
       const urlText: HTMLSpanElement = document.createElement('span');
-      urlText.className =
-        'font-mono text-xs sm:text-sm text-gray-800 break-all';
+      urlText.className = 'nox-relay-url';
       urlText.textContent = relayUrl;
+      urlText.title = relayUrl;
 
       const status: HTMLSpanElement = document.createElement('span');
       status.className =
         'text-xs font-semibold px-2 py-1 rounded-full bg-gray-200 text-gray-700';
       status.textContent = 'Checking...';
 
+      // Four things a row can have done to it, behind one mark the size of
+      // a thumb. Four symbol buttons in a line were four ways to hit the
+      // wrong one, and the one that removed a relay had no second look.
+      const move = (from: number, to: number): void => {
+        clearError();
+        if (to < 0 || to >= currentRelays.length) return;
+        const reordered: string[] = [...currentRelays];
+        const moved: string | undefined = reordered[from];
+        const other: string | undefined = reordered[to];
+        if (!moved || !other) return;
+        reordered[to] = moved;
+        reordered[from] = other;
+        currentRelays = reordered;
+        options.setRelays(currentRelays);
+        options.onRelaysChanged();
+        renderRelayList();
+      };
+
+      const menu: HTMLElement = createMoreMenu({
+        label: `Actions for ${relayUrl}`,
+        align: 'end',
+        items: [
+          {
+            label: 'Move up',
+            disabled: index === 0,
+            onSelect: (): void => move(index, index - 1),
+          },
+          {
+            label: 'Move down',
+            disabled: index === currentRelays.length - 1,
+            onSelect: (): void => move(index, index + 1),
+          },
+          {
+            label: 'Edit address',
+            onSelect: (): void => {
+              clearError();
+              const updatedRaw: string | null = window.prompt(
+                'Relay address:',
+                relayUrl,
+              );
+              if (updatedRaw === null) return;
+              const normalized: string | null =
+                options.normalizeRelayUrl(updatedRaw);
+              if (!normalized) {
+                setError('That is not a relay address. It starts with wss://');
+                return;
+              }
+              const isDuplicate: boolean = currentRelays.some(
+                (url: string, i: number): boolean =>
+                  url === normalized && i !== index,
+              );
+              if (isDuplicate) {
+                setError('This relay is already in the list.');
+                return;
+              }
+              currentRelays[index] = normalized;
+              options.setRelays(currentRelays);
+              options.onRelaysChanged();
+              renderRelayList();
+            },
+          },
+          {
+            label: 'Remove',
+            danger: true,
+            onSelect: (): void => {
+              clearError();
+              // Losing a relay is losing what it held: the posts and profiles
+              // this app reads from it stop arriving. Said once, before.
+              const sure: boolean = window.confirm(
+                `Remove ${relayUrl}?\n\nPosts and profiles it was providing stop loading here.`,
+              );
+              if (!sure) return;
+              currentRelays = currentRelays.filter(
+                (_: string, i: number): boolean => i !== index,
+              );
+              options.setRelays(currentRelays);
+              options.onRelaysChanged();
+              renderRelayList();
+            },
+          },
+        ],
+      });
+
       const actions: HTMLDivElement = document.createElement('div');
-      actions.className = 'flex gap-2 items-center';
-
-      const upBtn: HTMLButtonElement = document.createElement('button');
-      upBtn.className =
-        'px-3 py-1 text-xs font-semibold rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors';
-      upBtn.textContent = '↑';
-      upBtn.title = 'Move up';
-      upBtn.setAttribute('aria-label', 'Move relay up');
-      upBtn.disabled = index === 0;
-      if (upBtn.disabled) {
-        upBtn.classList.add('opacity-60', 'cursor-not-allowed');
-      }
-      upBtn.addEventListener('click', (): void => {
-        clearError();
-        if (index <= 0) return;
-        const reordered: string[] = [...currentRelays];
-        const above: string | undefined = reordered[index - 1];
-        const current: string | undefined = reordered[index];
-        if (!above || !current) return;
-        reordered[index - 1] = current;
-        reordered[index] = above;
-        currentRelays = reordered;
-        options.setRelays(currentRelays);
-        options.onRelaysChanged();
-        renderRelayList();
-      });
-
-      const downBtn: HTMLButtonElement = document.createElement('button');
-      downBtn.className =
-        'px-3 py-1 text-xs font-semibold rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors';
-      downBtn.textContent = '↓';
-      downBtn.title = 'Move down';
-      downBtn.setAttribute('aria-label', 'Move relay down');
-      downBtn.disabled = index === currentRelays.length - 1;
-      if (downBtn.disabled) {
-        downBtn.classList.add('opacity-60', 'cursor-not-allowed');
-      }
-      downBtn.addEventListener('click', (): void => {
-        clearError();
-        if (index >= currentRelays.length - 1) return;
-        const reordered: string[] = [...currentRelays];
-        const below: string | undefined = reordered[index + 1];
-        const current: string | undefined = reordered[index];
-        if (!below || !current) return;
-        reordered[index + 1] = current;
-        reordered[index] = below;
-        currentRelays = reordered;
-        options.setRelays(currentRelays);
-        options.onRelaysChanged();
-        renderRelayList();
-      });
-
-      const editBtn: HTMLButtonElement = document.createElement('button');
-      editBtn.className =
-        'px-3 py-1 text-xs font-semibold rounded bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors';
-      editBtn.textContent = '✎';
-      editBtn.title = 'Edit relay';
-      editBtn.setAttribute('aria-label', 'Edit relay');
-      editBtn.addEventListener('click', (): void => {
-        clearError();
-        const updatedRaw: string | null = window.prompt(
-          'Edit relay URL:',
-          relayUrl,
-        );
-        if (updatedRaw === null) return;
-        const normalized: string | null = options.normalizeRelayUrl(updatedRaw);
-        if (!normalized) {
-          setError('Invalid relay URL. Use ws:// or wss://');
-          return;
-        }
-        const isDuplicate: boolean = currentRelays.some(
-          (url: string, i: number): boolean =>
-            url === normalized && i !== index,
-        );
-        if (isDuplicate) {
-          setError('This relay is already in the list.');
-          return;
-        }
-        currentRelays[index] = normalized;
-        options.setRelays(currentRelays);
-        options.onRelaysChanged();
-        renderRelayList();
-      });
-
-      const deleteBtn: HTMLButtonElement = document.createElement('button');
-      deleteBtn.className =
-        'px-3 py-1 text-xs font-semibold rounded bg-red-100 text-red-700 hover:bg-red-200 transition-colors';
-      deleteBtn.textContent = '🗑';
-      deleteBtn.title = 'Delete relay';
-      deleteBtn.setAttribute('aria-label', 'Delete relay');
-      deleteBtn.addEventListener('click', (): void => {
-        clearError();
-        currentRelays = currentRelays.filter(
-          (_: string, i: number): boolean => i !== index,
-        );
-        options.setRelays(currentRelays);
-        options.onRelaysChanged();
-        renderRelayList();
-      });
-
-      actions.appendChild(status);
-      actions.appendChild(upBtn);
-      actions.appendChild(downBtn);
-      actions.appendChild(editBtn);
-      actions.appendChild(deleteBtn);
-      row.appendChild(urlText);
-      row.appendChild(actions);
+      actions.className = 'nox-relay-actions';
+      actions.append(status, menu);
+      row.append(urlText, actions);
       relayListEl.appendChild(row);
 
       checkRelayStatus(relayUrl, status);
