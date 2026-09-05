@@ -65,8 +65,8 @@ export default function BrowseAsKey({
         <Text style={styles.buttonText}>Browse</Text>
       </Pressable>
       <Text style={styles.note}>
-        Shows the timeline, profile and likes that key sees. Nothing can be
-        posted, and no secret is asked for: to post, sign in.
+        A public key is safe to share. Browsing shows what that key sees;
+        nothing can be posted.
       </Text>
     </View>
   );

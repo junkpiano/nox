@@ -18,6 +18,7 @@ import { generateSecretKey, nip19 } from 'nostr-tools';
 import { useState } from 'react';
 import {
   Alert,
+  LayoutAnimation,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -47,6 +48,10 @@ export default function SignIn({
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<string | null>(null);
+  // The secret-key box is folded: a screen whose first field asks for a
+  // secret reads as a screen that wants your secret. Creating a key and
+  // browsing as a public key ask for nothing, and come first.
+  const [secretOpen, setSecretOpen] = useState(false);
 
   const adopt = (raw: string): void => {
     try {
@@ -139,9 +144,8 @@ export default function SignIn({
       {viewingAs ? (
         <View style={styles.notice}>
           <Text style={styles.noticeText}>
-            👁 Browsing as {nip19.npubEncode(viewingAs).slice(0, 16)}… without
-            their key, so nothing can be posted. Sign in below to write as
-            yourself.
+            👁 Browsing as {nip19.npubEncode(viewingAs).slice(0, 16)}…{'\n'}
+            Nothing can be posted. Sign in to write as yourself.
           </Text>
           <Pressable onPress={stopBrowsing} style={styles.noticeButton}>
             <Text style={styles.noticeButtonText}>Stop browsing</Text>
@@ -149,39 +153,11 @@ export default function SignIn({
         </View>
       ) : null}
       <Text style={styles.body}>
-        A browser can keep your key in an extension. A phone cannot, so this app
-        holds it - in the device credential store, available only while the
-        phone is unlocked, and not carried to another device by a backup.
+        No account is needed. Your key is your identity.
       </Text>
 
-      {/* Announced to the platform as a password field so a password manager
-          offers to fill it and, having taken one, to save it. An nsec is the
-          only copy of an identity, and the people most likely to keep it
-          somewhere sensible are exactly the ones using a manager - leaving the
-          field anonymous means they have to go and find it by hand. */}
-      <TextInput
-        value={draft}
-        onChangeText={setDraft}
-        placeholder="nsec1..."
-        placeholderTextColor="#5b6b88"
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry
-        autoComplete="password"
-        textContentType="password"
-        importantForAutofill="yes"
-        style={styles.input}
-      />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <Pressable onPress={(): void => adopt(draft)} style={styles.button}>
-        <Text style={styles.buttonText}>Use this key</Text>
-      </Pressable>
-
-      <Text style={styles.or}>or</Text>
-
-      <Pressable onPress={generate} style={styles.secondary}>
-        <Text style={styles.secondaryText}>Create a new key</Text>
+      <Pressable onPress={generate} style={styles.button}>
+        <Text style={styles.buttonText}>Create a new key</Text>
       </Pressable>
 
       {viewingAs ? null : (
@@ -189,6 +165,56 @@ export default function SignIn({
           onStarted={(pubkey: PubkeyHex): void => onChange(pubkey)}
         />
       )}
+
+      <Pressable
+        onPress={(): void => {
+          LayoutAnimation.easeInEaseOut();
+          setSecretOpen(!secretOpen);
+        }}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: secretOpen }}
+        style={styles.reveal}
+      >
+        <Text style={styles.revealText}>
+          {secretOpen ? '▾' : '▸'} I have a secret key
+        </Text>
+      </Pressable>
+
+      {secretOpen ? (
+        <View style={styles.revealBody}>
+          <Text style={styles.note}>Anyone with this key can post as you.</Text>
+          {/* Announced to the platform as a password field so a password
+              manager offers to fill it and, having taken one, to save it. An
+              nsec is the only copy of an identity, and the people most likely
+              to keep it somewhere sensible are exactly the ones using a
+              manager - leaving the field anonymous means they have to go and
+              find it by hand. */}
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="nsec1..."
+            placeholderTextColor="#5b6b88"
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            autoComplete="password"
+            textContentType="password"
+            importantForAutofill="yes"
+            accessibilityLabel="Secret key"
+            style={styles.input}
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Pressable
+            onPress={(): void => adopt(draft)}
+            style={styles.secondary}
+          >
+            <Text style={styles.secondaryText}>Use this key</Text>
+          </Pressable>
+          <Text style={styles.note}>
+            Stored in this phone's credential store. Signing out deletes it.
+          </Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -225,6 +251,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   error: { color: '#ff9a9a', fontSize: 12 },
+  note: { color: '#5b6b88', fontSize: 12, lineHeight: 17 },
+  reveal: {
+    marginTop: 8,
+    paddingTop: 18,
+    borderTopWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(148,163,184,0.35)',
+  },
+  revealText: { color: '#cfd8ea', fontSize: 14, fontWeight: '700' },
+  revealBody: { gap: 10 },
   notice: {
     backgroundColor: '#16233f',
     borderRadius: 10,
@@ -249,7 +285,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonText: { color: '#0b1220', fontWeight: '700', fontSize: 15 },
-  or: { color: '#5b6b88', fontSize: 12, textAlign: 'center' },
   secondary: {
     borderWidth: 1,
     borderColor: '#25406e',
