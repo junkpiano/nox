@@ -33,6 +33,7 @@ import {
 import { classifyMediaUrl, withPosterFrame } from './media-type.js';
 import { isMuted } from './mute-state.js';
 import { verifiedNip05 } from './nip05.js';
+import { noteRenderedCard, recordOwnReaction } from './own-reactions-dom.js';
 import type { ReactionAggregate } from './reaction-interactions.js';
 import {
   applyOptimisticReactionState,
@@ -1060,11 +1061,12 @@ async function publishReaction(
   return signedEvent;
 }
 
-async function publishRepost(targetEvent: NostrEvent): Promise<void> {
+/** Resolves true once the repost is signed and sent; false if it never was. */
+async function publishRepost(targetEvent: NostrEvent): Promise<boolean> {
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
   if (!storedPubkey) {
     alert('Sign in to repost.');
-    return;
+    return false;
   }
 
   const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = withClientTag({
@@ -1080,7 +1082,7 @@ async function publishRepost(targetEvent: NostrEvent): Promise<void> {
     signedEvent = await signWithSession(unsignedEvent);
   } catch (error: unknown) {
     alert(error instanceof Error ? error.message : 'Sign in to repost.');
-    return;
+    return false;
   }
 
   const relays: string[] = getRelays();
@@ -1118,6 +1120,7 @@ async function publishRepost(targetEvent: NostrEvent): Promise<void> {
   });
 
   await Promise.allSettled(promises);
+  return true;
 }
 
 function renderReplyBadge(
@@ -1626,7 +1629,14 @@ export function renderEvent(
         repostButton.disabled = true;
         repostButton.classList.add('opacity-60', 'cursor-not-allowed');
         try {
-          await publishRepost(event);
+          if (await publishRepost(event)) {
+            recordOwnReaction(
+              storedPubkey as PubkeyHex,
+              event.id,
+              'repost',
+              true,
+            );
+          }
         } catch (error: unknown) {
           console.error('Failed to repost:', error);
           alert('Failed to repost. Please try again.');
@@ -1668,11 +1678,12 @@ export function renderEvent(
             relayReactionEvents,
             getOptimisticReactionEvents(event.id, reaction.key),
           );
+          // Whatever filled the heart is what unliking takes back: every
+          // reaction of yours on this post, not only a ❤.
           const existingHeartReactions: NostrEvent[] = findOwnReactionEvents(
             reactionEvents,
             viewerPubkey,
             event.id,
-            reaction.key,
           );
 
           if (existingHeartReactions.length > 0) {
@@ -1694,13 +1705,14 @@ export function renderEvent(
                 (reactionEvent: NostrEvent): string => reactionEvent.id,
               ),
             );
-            forgetOptimisticReactions(
-              event.id,
-              reaction.key,
-              existingHeartReactions.map(
-                (reactionEvent: NostrEvent): string => reactionEvent.id,
-              ),
-            );
+            for (const removed of existingHeartReactions) {
+              forgetOptimisticReactions(
+                event.id,
+                getReactionAggregate(removed.content, removed.tags).key,
+                [removed.id],
+              );
+            }
+            recordOwnReaction(viewerPubkey, event.id, 'like', false);
           } else {
             const publishedReaction: NostrEvent | null = await publishReaction(
               event.id,
@@ -1714,6 +1726,7 @@ export function renderEvent(
                 publishedReaction,
               );
               forgetOptimisticRemovedReaction(event.id, publishedReaction.id);
+              recordOwnReaction(viewerPubkey, event.id, 'like', true);
             }
           }
 
@@ -1729,6 +1742,10 @@ export function renderEvent(
       },
     );
   }
+
+  // Whether this viewer already liked or reposted it is asked once for all
+  // the cards of this render, and painted onto the ♡ and ⇄ when known.
+  noteRenderedCard(div, event.id);
 
   const zapButton: HTMLButtonElement | null = div.querySelector(
     '.zap-event-btn',

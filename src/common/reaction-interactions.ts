@@ -36,7 +36,7 @@ function getEmojiTagMap(tags: string[][]): Map<string, string> {
   return emojiMap;
 }
 
-function getTargetEventId(event: NostrEvent): string | null {
+export function getTargetEventId(event: NostrEvent): string | null {
   const eTag: string[] | undefined = event.tags.find(
     (tag: string[]): boolean => tag[0] === 'e' && Boolean(tag[1]),
   );
@@ -95,11 +95,17 @@ export function getNextReactionDetailsState(
   };
 }
 
+/**
+ * The viewer's own reactions to a post. With a key, only reactions of that
+ * kind (a ❤, a particular emoji); without one, every reaction they made,
+ * which is what "unlike" takes back when the filled heart stood for any
+ * of them.
+ */
 export function findOwnReactionEvents(
   events: NostrEvent[],
   viewerPubkey: PubkeyHex,
   targetEventId: string,
-  reactionKey: string,
+  reactionKey?: string,
 ): NostrEvent[] {
   return events
     .filter((event: NostrEvent): boolean => {
@@ -109,9 +115,14 @@ export function findOwnReactionEvents(
       if (getTargetEventId(event) !== targetEventId) {
         return false;
       }
-      return getReactionAggregate(event.content, event.tags).key === reactionKey;
+      return (
+        reactionKey === undefined ||
+        getReactionAggregate(event.content, event.tags).key === reactionKey
+      );
     })
-    .sort((a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at);
+    .sort(
+      (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
+    );
 }
 
 export function mergeReactionEvents(
