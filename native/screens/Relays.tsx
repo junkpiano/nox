@@ -42,7 +42,9 @@ export default function Relays() {
   const add = useCallback((): void => {
     const normalized: string | null = normalizeRelayUrl(draft);
     if (!normalized) {
-      setError('That is not a relay address. Try wss://relay.example.com');
+      setError(
+        'Enter a relay address, like relay.example.com or wss://relay.example.com.',
+      );
       return;
     }
     if (getRelays().includes(normalized)) {
@@ -66,11 +68,26 @@ export default function Relays() {
       );
       return;
     }
-    setRelays(remaining);
+    // Asked once, before, and only what is certain: this app stops talking
+    // to the relay. Removing was one tap next to the address, with no way
+    // back but typing it again.
+    Alert.alert(
+      `Remove ${relayUrl}?`,
+      'nox stops sending to it and reading from it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: (): void => setRelays(remaining),
+        },
+      ],
+    );
   }, []);
 
   return (
     <View style={styles.screen}>
+      <Text style={styles.intro}>Servers used to send and receive posts.</Text>
       <View style={styles.adder}>
         <TextInput
           value={draft}
@@ -97,7 +114,11 @@ export default function Relays() {
             <Text style={styles.url} numberOfLines={1}>
               {item}
             </Text>
-            <Pressable onPress={() => remove(item)} hitSlop={8}>
+            <Pressable
+              onPress={() => remove(item)}
+              hitSlop={8}
+              style={styles.removeTarget}
+            >
               <Text style={styles.remove}>Remove</Text>
             </Pressable>
           </View>
@@ -109,6 +130,13 @@ export default function Relays() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0b1220' },
+  intro: {
+    color: '#8ea0c0',
+    fontSize: 13,
+    lineHeight: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
   adder: { flexDirection: 'row', gap: 8, padding: 16 },
   input: {
     flex: 1,
@@ -143,6 +171,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   url: { color: '#b9c6de', fontSize: 13, flex: 1 },
+  // A thumb, not a fingertip: the row's only control is 44pt tall.
+  removeTarget: { minHeight: 44, justifyContent: 'center', paddingLeft: 8 },
   remove: { color: '#ff9a9a', fontSize: 13 },
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
 });

@@ -44,8 +44,8 @@ function IdentityPrompt({ onChosen }: { onChosen: (key: PubkeyHex) => void }) {
     <View style={styles.prompt}>
       <Text style={styles.promptTitle}>Whose timeline?</Text>
       <Text style={styles.promptSub}>
-        Sign in to read and write as yourself, or paste any public key below to
-        read as that person.
+        Home shows posts from people you follow. Sign in, or browse as a public
+        key.
       </Text>
       <Pressable onPress={openSignIn} style={styles.button}>
         <Text style={styles.buttonText}>Sign in</Text>

@@ -183,9 +183,8 @@ export default function Wallet() {
       <ScrollView style={styles.screen} contentContainerStyle={styles.body}>
         <Text style={styles.heading}>Connect a wallet</Text>
         <Text style={styles.hint}>
-          Paste a Nostr Wallet Connect string from your wallet. It is kept in
-          this phone's credential store, never in ordinary app storage, and is
-          deleted when you sign out.
+          Paste your wallet connection string to send tips. It is kept in this
+          phone's credential store and deleted when you sign out.
         </Text>
         <TextInput
           value={uri}
