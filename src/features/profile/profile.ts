@@ -12,6 +12,7 @@ import {
 import { loadableOnThisPage } from '../../common/avatar-dom.js';
 import { storeProfile } from '../../common/db/index.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
+import { fetchFollowSet } from '../../common/notification-filter.js';
 import { openRelaySubscription } from '../../common/relay-socket.js';
 import { signWithSession } from '../../common/signer.js';
 import { openZapComposer } from '../../common/zap.js';
@@ -486,7 +487,7 @@ export function renderProfile(
   // context. A profile's picture/banner are attacker-controlled kind-0 fields.
   const avatar: string =
     loadableOnThisPage(avatarRaw) ?? fallbackAvatarUrl(pubkey);
-  const rawName: string = getDisplayName(npub, renderProfileData);
+  const rawName: string = profileName(npub, renderProfileData);
   const banner: string | null = renderProfileData?.banner
     ? normalizeHttpUrl(renderProfileData.banner)
     : null;
@@ -505,38 +506,57 @@ export function renderProfile(
     ? emojifyAndLinkify(renderProfileData.about, emojiTags)
     : '';
 
-  // Avatar HTML based on energy saving mode
+  // The banner is a banner: a fixed strip the person chose, with nothing
+  // written over it. The face straddles its lower edge, and everything that
+  // has to be read sits on the plain ground below.
   const avatarHtml: string = isEnergySavingMode
-    ? `<div class="w-20 h-20 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-3xl mb-2 border-4 ${banner ? 'border-white shadow-lg' : 'border-gray-200'}">👤</div>`
-    : `<img src="${escapeHtml(avatar)}" alt="Avatar" class="w-20 h-20 rounded-full object-cover mb-2 border-4 ${banner ? 'border-white shadow-lg' : 'border-gray-200'}"
+    ? `<div class="nox-profile-avatar nox-profile-avatar-blank" aria-hidden="true">👤</div>`
+    : `<img src="${escapeHtml(avatar)}" alt="" class="nox-profile-avatar"
             onerror="${avatarErrorAttribute(pubkey)}" />`;
 
-  // Banner HTML based on energy saving mode
   const bannerHtml: string =
     banner && !isEnergySavingMode
-      ? `
-        <div class="absolute inset-0 w-full h-full">
-          <img src="${escapeHtml(banner)}" alt="Profile Banner" class="w-full h-full object-cover"
-            onerror="this.style.display='none';" />
-          <div class="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/70"></div>
-        </div>
-      `
-      : '';
+      ? `<div class="nox-profile-banner"><img src="${escapeHtml(banner)}" alt="" onerror="this.parentElement.classList.add('nox-profile-banner-blank'); this.remove();" /></div>`
+      : `<div class="nox-profile-banner nox-profile-banner-blank"></div>`;
 
+  // The line under the name: where they can be reached, and how many they
+  // follow. The count is filled in once the relays answer.
+  const identityParts: string[] = [];
+  identityParts.push(
+    nip05
+      ? `<span class="nox-profile-nip05">${escapeHtml(nip05)}<span id="nip05-verified" class="nox-profile-verified hidden" aria-label="NIP-05 verified" title="NIP-05 verified">✔</span></span>`
+      : `<span class="nox-profile-npub" title="${escapeHtml(npub)}">${escapeHtml(npub.slice(0, 12))}…</span>`,
+  );
+  if (websiteUrl) {
+    identityParts.push(
+      `<a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener noreferrer" class="nox-profile-website">${escapeHtml(websiteLabel)}</a>`,
+    );
+  }
+  identityParts.push(
+    `<span id="profile-following" class="nox-profile-following" hidden></span>`,
+  );
+
+  // Whose header this is. The follow count below arrives after a relay
+  // round trip, by which time this section may be showing somebody else.
+  profileSection.dataset.pubkey = pubkey;
   profileSection.innerHTML = `
-    <div class="relative overflow-hidden rounded-lg">
+    <div class="nox-profile">
       ${bannerHtml}
-      <div class="relative flex flex-col items-center ${banner && !isEnergySavingMode ? 'py-12 px-4' : 'py-6'}">
-        ${avatarHtml}
-        <h2 class="font-bold text-lg ${banner && !isEnergySavingMode ? 'text-white drop-shadow-lg' : 'text-gray-900'} flex items-center gap-1">
-          <span>${nameHtml}</span>
-          <span id="nip05-verified" class="hidden inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[10px]" aria-label="NIP-05 verified" title="NIP-05 verified">✔</span>
-        </h2>
-        <p id="profile-status" class="hidden text-sm mt-1 text-center max-w-2xl break-words px-4 ${banner && !isEnergySavingMode ? 'text-white/80 drop-shadow' : 'text-gray-500'}"></p>
-        <div id="profile-status-editor" class="hidden mt-2 w-full max-w-md px-4"></div>
-        ${bioHtml ? `<p class="nox-post-text ${banner && !isEnergySavingMode ? 'text-white/90 drop-shadow' : 'text-gray-600'} text-sm mt-1 text-center max-w-2xl break-words px-4 w-full whitespace-pre-wrap">${bioHtml}</p>` : ''}
-        ${websiteUrl ? `<p class="text-sm mt-2 text-center ${banner && !isEnergySavingMode ? 'text-blue-100 drop-shadow' : 'text-blue-600'}"><a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noopener noreferrer" class="underline break-all">${escapeHtml(websiteLabel)}</a></p>` : ''}
-        <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
+      <div class="nox-profile-body">
+        <div class="nox-profile-face">${avatarHtml}</div>
+        <h2 class="nox-profile-name">${nameHtml}</h2>
+        <p class="nox-profile-identity">${identityParts.join('<span class="nox-profile-dot" aria-hidden="true">·</span>')}</p>
+        <p id="profile-status" class="nox-profile-status hidden"></p>
+        <div id="profile-status-editor" class="hidden mt-2 w-full max-w-md"></div>
+        ${
+          bioHtml
+            ? `<div class="nox-profile-bio" data-folded="true">
+                 <p class="nox-post-text nox-profile-bio-text">${bioHtml}</p>
+                 <button type="button" class="nox-profile-more" hidden aria-expanded="false">Show more</button>
+               </div>`
+            : ''
+        }
+        <div class="nox-profile-actions">
           <div id="profile-owner-action"></div>
           <div id="follow-action"></div>
           <div id="profile-zap-action"></div>
@@ -545,6 +565,47 @@ export function renderProfile(
       </div>
     </div>
   `;
+
+  // A long bio folds at a few lines. The person's addresses and manifesto
+  // are still one tap away; the posts are not two screens away.
+  const bio: HTMLElement | null =
+    profileSection.querySelector('.nox-profile-bio');
+  const bioText: HTMLElement | null = profileSection.querySelector(
+    '.nox-profile-bio-text',
+  );
+  const more: HTMLButtonElement | null =
+    profileSection.querySelector('.nox-profile-more');
+  if (bio && bioText && more) {
+    // Measured after layout: the clamp is CSS, and only the browser knows
+    // whether it cut anything.
+    requestAnimationFrame((): void => {
+      if (bioText.scrollHeight > bioText.clientHeight + 2) {
+        more.hidden = false;
+      }
+    });
+    more.addEventListener('click', (): void => {
+      const folded: boolean = bio.dataset.folded !== 'false';
+      bio.dataset.folded = folded ? 'false' : 'true';
+      more.textContent = folded ? 'Show less' : 'Show more';
+      more.setAttribute('aria-expanded', folded ? 'true' : 'false');
+    });
+  }
+
+  // How many people they follow, from their own kind 3. A relay that did
+  // not answer leaves the number out rather than showing a zero.
+  void (async (): Promise<void> => {
+    try {
+      const following = await fetchFollowSet(pubkey, getRelays());
+      if (profileSection.dataset.pubkey !== pubkey) return;
+      const element: HTMLElement | null =
+        profileSection.querySelector('#profile-following');
+      if (!element) return;
+      element.innerHTML = `following <b>${following.size.toLocaleString()}</b>`;
+      element.hidden = false;
+    } catch {
+      // Nobody answered; the line simply has one fewer thing on it.
+    }
+  })();
 
   // Filled in after the fact, like the NIP-05 badge below: a status is
   // decoration, and nothing about the profile should wait on it. A lookup that
@@ -589,12 +650,25 @@ export function renderProfile(
         if (icon) {
           icon.classList.remove('hidden');
           icon.setAttribute('title', `NIP-05 verified: ${nip05}`);
+          icon.closest('.nox-profile-nip05')?.classList.add('is-verified');
         }
       } catch (error: unknown) {
         console.warn('[Profile] Failed to verify NIP-05:', error);
       }
     })();
   }
+}
+
+/**
+ * The name the person chose, for the heading. The address (NIP-05) is
+ * shown on its own line as an address; it is not a name, and the line
+ * that mixes them - the timeline's `getDisplayName` - is for a card, where
+ * there is room for one string only.
+ */
+export function profileName(npub: Npub, profile: NostrProfile | null): string {
+  const chosen: string | undefined =
+    profile?.display_name?.trim() || profile?.name?.trim();
+  return chosen || `${npub.slice(0, 12)}…`;
 }
 
 export function setupProfileZapButton(
@@ -624,7 +698,7 @@ export function setupProfileZapButton(
   zapAction.innerHTML = `
     <button
       id="profile-zap-trigger"
-      class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+      class="nox-secondary-button py-2 px-4 text-sm"
       title="Zap via Lightning"
     >
       ⚡ Zap

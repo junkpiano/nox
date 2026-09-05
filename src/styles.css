@@ -1725,3 +1725,274 @@ main {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The profile page. The person is the page.
+
+   The banner is a banner: a fixed strip, nothing written over it. The face
+   straddles its lower edge; the name and everything that has to be read sit
+   on the plain ground below, left-aligned, because paragraphs are. The name
+   is the one place on the page set in the masthead's serif - the one string
+   here the person chose for themselves.
+   --------------------------------------------------------------------------- */
+.nox-profile {
+  position: relative;
+  /* The section it sits in centres its text; a name and a paragraph are
+     read from the left. */
+  text-align: left;
+}
+
+.nox-profile-banner {
+  height: 180px;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: linear-gradient(135deg, #16233f, #0b1220);
+}
+
+.nox-profile-banner img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nox-profile-banner-blank {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(137, 168, 255, 0.18), transparent 45%),
+    linear-gradient(135deg, #16233f, #0b1220);
+}
+
+.nox-profile-body {
+  padding: 0 0.25rem 0.5rem;
+}
+
+.nox-profile-face {
+  margin-top: -2.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.nox-profile-avatar {
+  display: block;
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 3px solid #0b1220;
+  background: #25406e;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+.nox-profile-avatar-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: #8ea0c0;
+}
+
+.nox-profile-name {
+  margin: 0;
+  color: #f5f8ff;
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1.7rem;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+
+.nox-profile-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.5rem;
+  margin: 0.35rem 0 0;
+  color: var(--nox-text-dim);
+  font-size: 0.88rem;
+}
+
+.nox-profile-dot {
+  opacity: 0.6;
+}
+
+.nox-profile-nip05 {
+  color: #b9c6de;
+}
+
+.nox-profile-nip05.is-verified {
+  color: #89a8ff;
+}
+
+.nox-profile-verified {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.7rem;
+  color: #73f0c1;
+}
+
+.nox-profile-website {
+  color: #89a8ff;
+  text-decoration: none;
+}
+
+.nox-profile-website:hover {
+  text-decoration: underline;
+}
+
+.nox-profile-following b {
+  color: #e8eeff;
+  font-weight: 600;
+}
+
+.nox-profile-status {
+  margin: 0.6rem 0 0;
+  color: #cfd8ea;
+  font-size: 0.92rem;
+  font-style: italic;
+}
+
+/* Left-aligned, and folded: six lines of a bio is a person; sixty is a
+   document, and the posts are what the page is for. */
+.nox-profile-bio {
+  margin-top: 0.85rem;
+  max-width: 40rem;
+}
+
+.nox-profile-bio-text {
+  margin: 0;
+  color: #b9c6de;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.nox-profile-bio[data-folded="true"] .nox-profile-bio-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+
+.nox-profile-more {
+  margin-top: 0.3rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #89a8ff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nox-profile-more:hover {
+  text-decoration: underline;
+}
+
+/* One decision, one filled button. Zap beside it as an outline. Everything
+   else behind the three dots. */
+.nox-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.nox-profile-action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.nox-more {
+  position: relative;
+}
+
+.nox-more-trigger {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--nox-text-muted);
+  font-size: 1.1rem;
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+
+.nox-more-trigger:hover,
+.nox-more-trigger[aria-expanded="true"] {
+  color: #e8eeff;
+  border-color: rgba(137, 168, 255, 0.4);
+}
+
+.nox-menu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 20;
+  min-width: 11rem;
+  padding: 0.35rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 0.8rem;
+  background: rgba(16, 26, 46, 0.98);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+}
+
+.nox-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.8rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: none;
+  color: #e8eeff;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.nox-menu-item:hover {
+  background: rgba(137, 168, 255, 0.12);
+}
+
+.nox-menu-item-danger {
+  color: #ff9a9a;
+}
+
+/* Posts / Replies: both kinds are loaded; the tab says which is shown. */
+.nox-profile-tabs {
+  display: flex;
+  width: max-content;
+  margin-top: 1.25rem;
+  margin-bottom: 0;
+}
+
+/* The address beside a name on a card: there, but quieter than the name. */
+.theme-nox .event-nip05 {
+  color: var(--nox-text-dim);
+}
+
+.profile-replies .event-container[data-reply="false"] {
+  display: none;
+}
+
+body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  /* The name is in the header already; the phone's bar borrows this text. */
+  .route-profile #posts-header,
+  .route-profile .nox-feed-header {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .nox-profile-banner {
+    height: 140px;
+    border-radius: 0;
+  }
+  .nox-profile-body {
+    padding: 0 1rem 0.5rem;
+  }
+}
