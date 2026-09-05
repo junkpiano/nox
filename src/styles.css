@@ -1615,6 +1615,73 @@ main {
   font-size: 0.8rem;
 }
 
+/* ---------------------------------------------------------------------------
+   The event page. The post is the page.
+
+   Everywhere else a card is one of many in a panel; here it is the subject,
+   and the panel and the heading above it were two frames around a picture
+   that needed none. On a wide screen the frame goes and the post stands on
+   the ground; on a phone the panel was already gone.
+   --------------------------------------------------------------------------- */
+@media (min-width: 1024px) {
+  .route-event #posts-header,
+  .route-event .nox-feed-header {
+    display: none !important;
+  }
+  .route-event .nox-feed-panel {
+    padding-top: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
+  .route-event .nox-feed-panel::before {
+    display: none;
+  }
+}
+
+/* The subject, set a step up from a reply and left still: a card lifts on
+   hover to say "open me", and this one is open. */
+.theme-nox .event-container.event-root {
+  border-color: rgba(137, 168, 255, 0.28) !important;
+}
+.theme-nox .event-container.event-root:hover {
+  transform: none;
+}
+.event-root .nox-post-text {
+  font-size: 17px;
+  line-height: 1.65;
+}
+.event-root .event-avatar {
+  width: 3.25rem;
+  height: 3.25rem;
+}
+.event-root .event-username {
+  font-size: 1rem;
+}
+
+/* The replies hang off the root on one rail. The count is the heading:
+   "Replies" said what the rail already shows, and the number says something
+   it does not. */
+.thread-replies {
+  margin-top: 1.5rem;
+}
+.thread-replies-kicker {
+  margin: 0 0 0.25rem;
+}
+.thread-branch {
+  border-left: 2px solid rgba(137, 168, 255, 0.22);
+  padding-left: 0.85rem;
+}
+
+/* A dead end says where the road continues. */
+.nox-gate-hint {
+  max-width: 28rem;
+  color: var(--nox-text-dim);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
 /* A two-way switch above a list, saying what the list is. Quiet: a pill of
    two words, the chosen one lit, no icon - the words are the whole message.
    Pressed state on the button itself, so a screen reader hears it. */
