@@ -32,6 +32,19 @@ export interface MoreMenuOptions {
 
 let openMenu: (() => void) | null = null;
 
+/** The bottom edge of the nearest ancestor that scrolls, or the viewport. */
+function scrollBottom(element: HTMLElement): number {
+  let node: HTMLElement | null = element.parentElement;
+  while (node) {
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === 'auto' || overflowY === 'scroll') {
+      return node.getBoundingClientRect().bottom;
+    }
+    node = node.parentElement;
+  }
+  return window.innerHeight;
+}
+
 /** Builds the trigger and its menu. Append the returned element where the mark belongs. */
 export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
   const wrap: HTMLDivElement = document.createElement('div');
@@ -94,7 +107,19 @@ export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
     openMenu?.();
     openMenu = close;
     menu.hidden = false;
+    menu.classList.remove('nox-menu-up');
     trigger.setAttribute('aria-expanded', 'true');
+    // A row near the bottom of a scrolling panel would open its menu into
+    // the panel's overflow, where it can only be reached by scrolling the
+    // list. If there is no room below and there is room above, open upward.
+    const rect: DOMRect = menu.getBoundingClientRect();
+    const limit: number = Math.min(window.innerHeight, scrollBottom(wrap));
+    if (
+      rect.bottom > limit &&
+      rect.height < trigger.getBoundingClientRect().top
+    ) {
+      menu.classList.add('nox-menu-up');
+    }
     listeners = new AbortController();
     const { signal } = listeners;
     document.addEventListener(

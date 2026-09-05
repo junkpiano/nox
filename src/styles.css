@@ -2077,3 +2077,9 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   gap: 0.5rem;
   flex: none;
 }
+
+/* Opened upward: no room below the trigger, room above it. */
+.nox-menu-up {
+  top: auto;
+  bottom: calc(100% + 0.4rem);
+}

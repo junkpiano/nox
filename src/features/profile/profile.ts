@@ -204,8 +204,24 @@ const profileMemoryCache: Map<
 const profileInFlight: Map<PubkeyHex, Promise<NostrProfile | null>> = new Map();
 const profileLastAttempt: Map<PubkeyHex, number> = new Map();
 const PROFILE_EDITABLE_FIELDS: Array<
-  'name' | 'about' | 'picture' | 'banner' | 'website' | 'nip05' | 'lud16'
-> = ['name', 'about', 'picture', 'banner', 'website', 'nip05', 'lud16'];
+  | 'display_name'
+  | 'name'
+  | 'about'
+  | 'picture'
+  | 'banner'
+  | 'website'
+  | 'nip05'
+  | 'lud16'
+> = [
+  'display_name',
+  'name',
+  'about',
+  'picture',
+  'banner',
+  'website',
+  'nip05',
+  'lud16',
+];
 
 interface ProfileEditorOptions {
   getRelays: () => string[];
@@ -591,11 +607,12 @@ export function renderProfile(
     });
   }
 
-  // How many people they follow, from their own kind 3. A relay that did
-  // not answer leaves the number out rather than showing a zero.
+  // How many people they follow, from their own kind 3. No answer, or no
+  // list on these relays, leaves the number out rather than showing a zero.
   void (async (): Promise<void> => {
     try {
       const following = await fetchFollowSet(pubkey, getRelays());
+      if (!following) return;
       if (profileSection.dataset.pubkey !== pubkey) return;
       const element: HTMLElement | null =
         profileSection.querySelector('#profile-following');
@@ -761,7 +778,11 @@ export function setupProfileEditor(
     <form id="profile-edit-form" class="rounded-xl border border-slate-200 bg-white/95 p-4 text-left shadow-sm backdrop-blur">
       <div class="grid gap-4 md:grid-cols-2">
         <label class="block text-sm font-medium text-slate-700">
-          Name
+          Display name
+          <input name="display_name" type="text" value="${escapeHtml(profile?.display_name || '')}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="block text-sm font-medium text-slate-700">
+          Username
           <input name="name" type="text" value="${escapeHtml(profile?.name || '')}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
         </label>
         <label class="block text-sm font-medium text-slate-700">
@@ -899,10 +920,12 @@ export function setupProfileEditor(
       );
       await options.publishEvent(signedEvent, options.getRelays());
       await cacheResolvedProfile(pubkey, nextProfile, true);
-      options.onProfileUpdated?.(nextProfile);
       renderProfile(pubkey, npub, nextProfile, profileSection);
       setupProfileZapButton(pubkey, npub, nextProfile, profileSection);
       setupProfileEditor(pubkey, npub, nextProfile, profileSection, options);
+      // Told last: the section has been redrawn, and whatever the page
+      // mounts on it - the Posts/Replies tabs - has to be put back now.
+      options.onProfileUpdated?.(nextProfile);
     } catch (error: unknown) {
       console.error('[Profile] Failed to publish metadata:', error);
       statusEl.textContent = 'Failed to publish profile';

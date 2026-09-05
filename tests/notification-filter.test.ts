@@ -91,18 +91,20 @@ test('following: only notifications from people on the list stay, in order', () 
 test("follow set: the viewer's own signed list, newest first", () => {
   const older = followList(me, [STRANGER], NOW - 600);
   const newer = followList(me, [FRIEND], NOW - 30);
-  assert.deepEqual([...collectFollowSet(ME, [older, newer])], [FRIEND]);
+  assert.deepEqual([...(collectFollowSet(ME, [older, newer]) ?? [])], [FRIEND]);
 });
 
 test("follow set: a list with the viewer's pubkey and somebody else's signature is not theirs", () => {
   const forged: NostrEvent = { ...followList(other, [STRANGER]), pubkey: ME };
   const real = followList(me, [FRIEND], NOW - 600);
-  assert.deepEqual([...collectFollowSet(ME, [forged, real])], [FRIEND]);
-  assert.equal(collectFollowSet(ME, [followList(other, [STRANGER])]).size, 0);
+  assert.deepEqual([...(collectFollowSet(ME, [forged, real]) ?? [])], [FRIEND]);
+  // Somebody else's list is not the viewer's: no list at all.
+  assert.equal(collectFollowSet(ME, [followList(other, [STRANGER])]), null);
 });
 
-test('follow set: no list means nobody followed, which is an answer', () => {
-  assert.equal(collectFollowSet(ME, []).size, 0);
+test('follow set: no list is not an answer; an empty signed list is', () => {
+  assert.equal(collectFollowSet(ME, []), null);
+  assert.equal(collectFollowSet(ME, [followList(me, [])])?.size, 0);
 });
 
 test('follow set: silence from every relay is an error, not an empty list', async () => {
@@ -111,12 +113,12 @@ test('follow set: silence from every relay is an error, not an empty list', asyn
     NoRelayAnsweredError,
   );
   await assert.rejects(fetchFollowSet(ME, []), NoRelayAnsweredError);
-  const empty = await fetchFollowSet(
+  const none = await fetchFollowSet(
     ME,
     ['wss://a'],
     scripted({ 'wss://a': 'answer' }),
   );
-  assert.equal(empty.size, 0);
+  assert.equal(none, null);
 });
 
 test('scope: "all" asks nobody; "following" filters; nobody followed and nobody answering are told apart', async () => {
@@ -149,11 +151,22 @@ test('scope: "all" asks nobody; "following" filters; nobody followed and nobody 
     ME,
     events,
     ['wss://a'],
-    scripted({ 'wss://a': 'answer' }),
+    scripted({ 'wss://a': 'answer' }, [followList(me, [])]),
   );
   assert.equal(nobody.scope, 'following');
   assert.equal(nobody.events.length, 0);
   assert.equal(nobody.scope === 'following' && nobody.followCount, 0);
+
+  // Answered, but without the list: the filter cannot be applied.
+  const missing = await scopeNotifications(
+    'following',
+    ME,
+    events,
+    ['wss://a'],
+    scripted({ 'wss://a': 'answer' }),
+  );
+  assert.equal(missing.scope, 'following-unavailable');
+  assert.equal(missing.events.length, 2);
 
   const failed = await scopeNotifications(
     'following',
