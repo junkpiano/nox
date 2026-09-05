@@ -46,7 +46,7 @@ export async function showInputForm(
           <div>
             <p class="nox-kicker">Welcome</p>
             <h3 class="nox-panel-title">Sign in to nox</h3>
-            <p class="nox-panel-copy">A browser extension keeps your key out of this page, so it is the way in we recommend. Nothing you sign here is sent to nox.</p>
+            <p class="nox-panel-copy">A browser extension keeps your key out of this page, so it is the way in we recommend. Your secret key stays in the extension; nox receives only the signed event.</p>
           </div>
 
           <div class="nox-auth-actions">
@@ -86,7 +86,7 @@ export async function showInputForm(
                   Use this key
                 </button>
               </div>
-              <p class="nox-auth-note">Stored in this browser. It is never sent to nox, but browser storage is less secure than an extension. Signing out deletes it.</p>
+              <p class="nox-auth-note">Stored in this browser. It never leaves this browser, and browser storage is less secure than an extension. Signing out deletes it.</p>
             </div>
           </details>
         </div>
