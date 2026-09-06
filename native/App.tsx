@@ -48,7 +48,6 @@ import Profile from './screens/Profile';
 import Relays from './screens/Relays';
 import Search from './screens/Search';
 import Settings from './screens/Settings';
-import SharedCodeCheck from './screens/SharedCodeCheck';
 import Terms from './screens/Terms';
 import Thread from './screens/Thread';
 import Wallet from './screens/Wallet';
@@ -60,7 +59,6 @@ export type RootStackParamList = {
   Settings: undefined;
   Compose: undefined;
   Relays: undefined;
-  Checks: undefined;
   Profile: { pubkey: PubkeyHex };
   /**
    * `reply` opens the thread with the composer already up. `relays` are the
@@ -341,11 +339,6 @@ export default function App() {
             name="Relays"
             component={Relays}
             options={{ title: 'Relays' }}
-          />
-          <Stack.Screen
-            name="Checks"
-            component={SharedCodeCheck}
-            options={{ title: 'Shared code' }}
           />
           <Stack.Screen
             name="Profile"
