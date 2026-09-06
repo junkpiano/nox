@@ -26,13 +26,13 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import { onAppEvent } from '../../src/common/app-events';
 import { kvGet } from '../../src/common/kv';
 import type { StoredMessage } from '../../src/features/messages/messages-store';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import { readConversation, send } from '../lib/messages';
+import { useKeyboardHeight } from '../lib/use-keyboard-height';
 
 type ChatRoute = RouteProp<RootStackParamList, 'Chat'>;
 
@@ -55,6 +55,7 @@ export default function Chat({ route }: { route: ChatRoute }) {
   const viewer = viewerPubkey();
   // The composer is the bottom edge of the screen; see Compose.
   const insets = useSafeAreaInsets();
+  const keyboard: number = useKeyboardHeight();
 
   const [messages, setMessages] = useState<StoredMessage[]>(() =>
     readConversation(peer),
@@ -147,7 +148,19 @@ export default function Chat({ route }: { route: ChatRoute }) {
 
       {note ? <Text style={styles.note}>{note}</Text> : null}
 
-      <View style={[styles.composer, { paddingBottom: 10 + insets.bottom }]}>
+      <View
+        style={[
+          styles.composer,
+          {
+            // iOS is moved by the avoiding view above; Android, edge to
+            // edge, is not moved by anything, so the composer pads itself.
+            paddingBottom:
+              Platform.OS === 'android' && keyboard > 0
+                ? keyboard + 10
+                : 10 + insets.bottom,
+          },
+        ]}
+      >
         <TextInput
           value={draft}
           onChangeText={setDraft}
