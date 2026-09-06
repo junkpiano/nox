@@ -10,6 +10,11 @@ app's side is in `native/app.json` on `rn-trunk`.
 | Android | `assetlinks.json` | `android.intentFilters` with `autoVerify` |
 | iOS | `apple-app-site-association` | `ios.associatedDomains` |
 
+The id `garden.nox.rn` is provisional. When the final package name and
+bundle id are chosen, both files here and `android.package` and
+`ios.bundleIdentifier` in `native/app.json` change together; a file that
+names the old id vouches for nothing.
+
 Both files are served with `Content-Type: application/json` by the rule in
 `public/_headers`, which the AASA file needs because it has no extension.
 Neither file may redirect, and both must be reachable at `nox.garden`
