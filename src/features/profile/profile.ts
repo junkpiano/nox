@@ -601,9 +601,19 @@ export function renderProfile(
     });
     more.addEventListener('click', (): void => {
       const folded: boolean = bio.dataset.folded !== 'false';
+      // Where this button sat on screen before the bio changed height.
+      // Folding removes lines above it, so the page keeps its scroll offset
+      // while the content moves up, and the reader who tapped "Show less"
+      // ends up somewhere down the timeline. Scrolling by the same amount
+      // leaves the button under the finger that pressed it.
+      const before: number = more.getBoundingClientRect().top;
       bio.dataset.folded = folded ? 'false' : 'true';
       more.textContent = folded ? 'Show less' : 'Show more';
       more.setAttribute('aria-expanded', folded ? 'true' : 'false');
+      const shift: number = more.getBoundingClientRect().top - before;
+      if (shift !== 0) {
+        window.scrollBy({ top: shift, behavior: 'instant' });
+      }
     });
   }
 

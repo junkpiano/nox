@@ -1127,6 +1127,11 @@ export function renderEvent(
 
   const _deleteButtonTitle: string = 'Delete post';
   const moderationBtnClasses: string = `${actionBtnBase} text-gray-400 hover:text-gray-600 hover:bg-gray-100`;
+  // The mark opens the menu that holds mute, report and delete. Muting and
+  // reporting are for other people's posts and deleting is for your own, so
+  // a mark shown only for the first left your own posts with no way to ask
+  // for a deletion at all.
+  const hasMoreActions: boolean = canModerate || canDeletePost;
 
   const actionBarHtml: string = `
           <div class="event-actions flex items-center">
@@ -1157,7 +1162,7 @@ export function renderEvent(
                 : ''
             }
             ${
-              canModerate
+              hasMoreActions
                 ? `<button class="${moderationBtnClasses} more-actions-btn" aria-label="More actions" title="More actions" aria-haspopup="menu">
                     <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 block" aria-hidden="true">
                       <circle cx="5" cy="12" r="1.6" />
