@@ -205,6 +205,39 @@ export function clearSessionPrivateKey(): void {
 }
 
 /**
+ * The same sign-in, resolved only once the key is in the credential store.
+ *
+ * The phone has no extension and holds the key itself, so "signed in" must
+ * mean "stored", not "in memory until the app is killed". A store that
+ * refuses leaves nothing behind and rejects; the caller says so.
+ */
+export async function storeSessionPrivateKey(
+  rawKey: string,
+): Promise<PubkeyHex> {
+  const secretBytes: Uint8Array = parsePrivateKey(rawKey);
+  await writeSecret(PRIVATE_KEY_STORAGE_KEY, secretBytes);
+  sessionPrivateKey = secretBytes;
+  const pubkey: PubkeyHex = getPublicKey(secretBytes);
+  beginSignedInSession(pubkey);
+  return pubkey;
+}
+
+/**
+ * Ends the session only once the key is out of the credential store.
+ *
+ * Deleting first: a session ended in memory while the store still holds
+ * the key would come back signed in on the next launch, which is the
+ * opposite of what the person asked for. A store that refuses rejects
+ * and the session stands.
+ */
+export async function endSessionStored(): Promise<void> {
+  await deleteSecret(PRIVATE_KEY_STORAGE_KEY);
+  sessionPrivateKey = null;
+  kvRemove(SESSION_KIND_KEY);
+  kvRemove(VIEWER_KEY);
+}
+
+/**
  * Returns the active key as an nsec, for the backup prompt.
  *
  * Reads only the in-memory cache, so it never widens where the key is exposed.

@@ -29,8 +29,9 @@ import {
 import { emitAppEvent } from '../../src/common/app-events';
 import {
   endSession,
+  endSessionStored,
   getSessionNsec,
-  setSessionPrivateKeyFromRaw,
+  storeSessionPrivateKey,
 } from '../../src/common/session';
 import type { PubkeyHex } from '../../types/nostr';
 
@@ -53,10 +54,12 @@ export default function SignIn({
   // browsing as a public key ask for nothing, and come first.
   const [secretOpen, setSecretOpen] = useState(false);
 
-  const adopt = (raw: string): void => {
+  const adopt = async (raw: string): Promise<boolean> => {
     try {
-      // Loading the key records the sign-in itself, and ends any browsing.
-      const next: PubkeyHex = setSessionPrivateKeyFromRaw(raw.trim());
+      // Resolved only once the key is in the credential store: on a phone
+      // "signed in" means "stored". Loading the key records the sign-in
+      // itself, and ends any browsing.
+      const next: PubkeyHex = await storeSessionPrivateKey(raw.trim());
       setDraft('');
       setError(null);
       onChange(next);
@@ -64,16 +67,19 @@ export default function SignIn({
       // told. Without this, signing in as somebody else left the previous
       // account's following timeline on screen.
       emitAppEvent('session-changed');
+      return true;
     } catch (e: any) {
-      // The message is the library's, not the input: echoing what was typed
-      // would put a private key on screen inside an error.
+      // The message is the library's or the store's, not the input:
+      // echoing what was typed would put a private key on screen inside
+      // an error.
       setError(`That key was not accepted: ${String(e?.message ?? e)}`);
+      return false;
     }
   };
 
-  const generate = (): void => {
+  const generate = async (): Promise<void> => {
     const nsec: string = nip19.nsecEncode(generateSecretKey());
-    adopt(nsec);
+    if (!(await adopt(nsec))) return;
     Alert.alert(
       'A new key was created',
       'It exists only on this phone. Back it up from this screen, or it is ' +
@@ -88,10 +94,22 @@ export default function SignIn({
         text: 'Sign out',
         style: 'destructive',
         onPress: (): void => {
-          endSession();
-          setRevealed(null);
-          onChange(null);
-          emitAppEvent('session-changed');
+          // The session ends once the key is out of the store; a store
+          // that refuses leaves the session standing and says so.
+          void endSessionStored()
+            .then((): void => {
+              setRevealed(null);
+              onChange(null);
+              emitAppEvent('session-changed');
+            })
+            .catch((e: unknown): void => {
+              Alert.alert(
+                'Could not delete the key',
+                `The credential store refused: ${String(
+                  (e as Error)?.message ?? e,
+                )}. You are still signed in.`,
+              );
+            });
         },
       },
     ]);
@@ -156,7 +174,7 @@ export default function SignIn({
         No account is needed. Your key is your identity.
       </Text>
 
-      <Pressable onPress={generate} style={styles.button}>
+      <Pressable onPress={(): void => void generate()} style={styles.button}>
         <Text style={styles.buttonText}>Create a new key</Text>
       </Pressable>
 
@@ -205,7 +223,7 @@ export default function SignIn({
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable
-            onPress={(): void => adopt(draft)}
+            onPress={(): void => void adopt(draft)}
             style={styles.secondary}
           >
             <Text style={styles.secondaryText}>Use this key</Text>
