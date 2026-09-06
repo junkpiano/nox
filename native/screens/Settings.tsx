@@ -15,6 +15,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -31,6 +32,7 @@ import { setMutedWords } from '../../src/features/moderation/moderation-actions'
 import { getRelays } from '../../src/features/relays/relays';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import { relayAuthAllowed, setRelayAuthAllowed } from '../platform/relay-auth';
 import SignIn from './SignIn';
 
 function readStoredPubkey(): PubkeyHex | null {
@@ -86,6 +88,35 @@ function Elsewhere() {
  * because it is replaceable: sending the words alone would delete the muted
  * accounts, and sending the accounts alone would delete the words.
  */
+/**
+ * Whether relays that demand authentication get it.
+ *
+ * The socket cannot stop to ask on a phone, so the answer is given here,
+ * once, and read whenever a relay asks. Off is anonymous reading.
+ */
+function RelayAuth() {
+  const [allowed, setAllowed] = useState<boolean>(relayAuthAllowed);
+  return (
+    <View style={styles.compose}>
+      <Text style={styles.section}>Relay authentication</Text>
+      <View style={styles.switchRow}>
+        <Text style={[styles.hint, styles.switchHint]}>
+          Some relays ask you to prove your key before they answer. Off reads
+          them without signing.
+        </Text>
+        <Switch
+          value={allowed}
+          onValueChange={(next: boolean): void => {
+            setRelayAuthAllowed(next);
+            setAllowed(next);
+          }}
+          accessibilityLabel="Sign relay authentication challenges"
+        />
+      </View>
+    </View>
+  );
+}
+
 function MutedWords() {
   const [words, setWords] = useState<string[]>(getMutedWords);
   const [draft, setDraft] = useState('');
@@ -224,6 +255,7 @@ export default function Settings() {
         }}
       />
       <Elsewhere />
+      {canSign ? <RelayAuth /> : null}
       {canSign ? <MutedWords /> : null}
     </ScrollView>
   );
@@ -239,6 +271,8 @@ const styles = StyleSheet.create({
   },
   compose: { paddingHorizontal: 24, paddingBottom: 32, gap: 10 },
   section: { color: '#f5f8ff', fontSize: 15, fontWeight: '700' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  switchHint: { flex: 1 },
   input: {
     borderWidth: 1,
     borderColor: '#25406e',

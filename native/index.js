@@ -24,6 +24,7 @@ import App from './App';
 import { beginMessages, endMessages } from './lib/messages';
 import { installNativeDatabase } from './platform/database';
 import { installNativeHttp } from './platform/http';
+import { installNativeRelayAuth } from './platform/relay-auth';
 import { installNativeSecrets } from './platform/secrets';
 import { installNativeStorage } from './platform/storage';
 
@@ -39,6 +40,7 @@ installNativeStorage();
 installNativeHttp();
 installNativeDatabase();
 installNativeSecrets();
+installNativeRelayAuth();
 
 // One module does read a setting at import time: the relay list. It loaded
 // the defaults from the empty fallback store; now that the real store is

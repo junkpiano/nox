@@ -87,7 +87,7 @@ function getRelayAuthPermission(relayUrl: string): RelayAuthPermission | null {
   return permissions[relayUrl] || null;
 }
 
-function setRelayAuthPermissionForRelays(
+export function setRelayAuthPermissionForRelays(
   relayUrls: string[],
   permission: RelayAuthPermission,
 ): void {
