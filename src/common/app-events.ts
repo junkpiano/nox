@@ -28,7 +28,9 @@ export type AppEventName =
   | 'dm-messages-updated'
   | 'wallet-connection-changed'
   | 'relays-updated'
-  | 'relay-health-updated';
+  | 'relay-health-updated'
+  /** The tab already showing was tapped again: its list goes to the top. */
+  | 'scroll-to-top';
 
 type Handler = (detail: unknown) => void;
 

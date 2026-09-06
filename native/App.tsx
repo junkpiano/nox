@@ -27,7 +27,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { onAppEvent } from '../src/common/app-events';
+import { emitAppEvent, onAppEvent } from '../src/common/app-events';
 import { kvGet } from '../src/common/kv';
 import { resolveNostrLink } from '../src/common/nostr-link';
 import { hidesWallet } from '../src/common/platform';
@@ -103,13 +103,7 @@ const Tabs = createBottomTabNavigator<TabParamList>();
  * nowhere. A link the resolver does not understand opens the front door.
  */
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: [
-    'nox://',
-    'nox:',
-    'nostr:',
-    'web+nostr:',
-    'https://nox.garden',
-  ],
+  prefixes: ['nox://', 'nox:', 'nostr:', 'web+nostr:', 'https://nox.garden'],
   getStateFromPath: (path: string) => {
     const target = resolveNostrLink(path);
     const home = { name: 'Tabs' as const };
@@ -255,6 +249,14 @@ function SettingsButton() {
 function TabBar() {
   return (
     <Tabs.Navigator
+      // iOS scrolls a list to the top when the status bar is tapped; Android
+      // has no such gesture. Tapping the tab you are already on is the
+      // gesture both platforms can share, and the one a reader reaches for.
+      screenListeners={({ navigation, route }) => ({
+        tabPress: (): void => {
+          if (navigation.isFocused()) emitAppEvent('scroll-to-top', route.name);
+        },
+      })}
       screenOptions={{
         headerStyle: { backgroundColor: '#0b1220' },
         headerTintColor: '#f5f8ff',
