@@ -68,7 +68,7 @@ function pathOf(raw: string): string | null {
   const lower: string = raw.toLowerCase();
   for (const prefix of ['web+nostr:', 'nostr:', 'nox://', 'nox:']) {
     if (lower.startsWith(prefix)) {
-      return raw.slice(prefix.length).replace(/^\/+/, '');
+      return withoutTail(raw.slice(prefix.length).replace(/^\/+/, ''));
     }
   }
   if (lower.startsWith('https://') || lower.startsWith('http://')) {
@@ -80,8 +80,17 @@ function pathOf(raw: string): string | null {
       return null;
     }
   }
-  // Bare, the way it is pasted.
-  return raw.replace(/^\/+/, '');
+  // Bare, the way it is pasted - or the way a navigation library hands a
+  // path on with its query string still attached.
+  return withoutTail(raw.replace(/^\/+/, ''));
+}
+
+/**
+ * Drops a query string or fragment after the part that names something.
+ * A `#` in first place is a hashtag, not a fragment, and stays.
+ */
+function withoutTail(path: string): string {
+  return path.replace(/^([^?#][^?#]*)[?#][\s\S]*$/, '$1');
 }
 
 function safeDecode(segment: string): string {

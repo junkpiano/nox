@@ -15,6 +15,21 @@ const nprofile: string = nip19.nprofileEncode({ pubkey: PUBKEY });
 
 // --- every wrapper, one answer -------------------------------------------------
 
+test('link: a query string or fragment after the identifier is not part of it', () => {
+  for (const input of [
+    `${npub}?utm_source=share`,
+    `nostr:${npub}#top`,
+    `https://nox.garden/${npub}?ref=x`,
+    `t/nostr?x=1`,
+  ]) {
+    assert.notEqual(resolveNostrLink(input), null, input);
+  }
+  assert.deepEqual(resolveNostrLink('#nostr'), {
+    kind: 'hashtag',
+    tag: 'nostr',
+  });
+});
+
 test('link: a person, however wrapped', () => {
   for (const input of [
     npub,
