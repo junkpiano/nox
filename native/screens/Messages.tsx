@@ -10,7 +10,7 @@
 
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -57,10 +57,18 @@ export default function Messages() {
   const canSign = getSessionPrivateKey() !== null;
   const viewer = viewerPubkey();
 
+  // Each load is numbered. A load still in flight when the account changes
+  // would otherwise land its rows - the previous account's previews - on
+  // top of the new account's cleared list.
+  const generation = useRef(0);
   const refresh = useCallback((): void => {
+    const mine: number = ++generation.current;
     void loadConversations()
-      .then(setRows)
+      .then((next: ConversationRow[]): void => {
+        if (mine === generation.current) setRows(next);
+      })
       .catch((error: unknown): void => {
+        if (mine !== generation.current) return;
         console.warn('[dm] Could not read conversations:', error);
         setRows([]);
       });

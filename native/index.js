@@ -18,7 +18,8 @@ import {
 } from '../src/common/session';
 import { clearMessages } from '../src/features/messages/messages-store';
 import { refreshMuteListFromRelays } from '../src/features/moderation/moderation-actions';
-import { getRelays } from '../src/features/relays/relays';
+import { getRelays, reloadRelays } from '../src/features/relays/relays';
+import { clearWalletConnection } from '../src/features/wallet/wallet-store';
 import App from './App';
 import { beginMessages, endMessages } from './lib/messages';
 import { installNativeDatabase } from './platform/database';
@@ -38,6 +39,11 @@ installNativeStorage();
 installNativeHttp();
 installNativeDatabase();
 installNativeSecrets();
+
+// One module does read a setting at import time: the relay list. It loaded
+// the defaults from the empty fallback store; now that the real store is
+// here, it reads the saved list.
+reloadRelays();
 
 /**
  * Stated, not inferred.
@@ -90,6 +96,9 @@ onAppEvent('session-changed', () => {
   endMessages();
   clearMessages();
   clearMuteList();
+  // The wallet's connection string is a spending permission. It belongs to
+  // the account that pasted it, not to whoever signs in next.
+  void clearWalletConnection();
   startForCurrentSession();
   void loadCachedMuteList().then(() => {
     void refreshMuteListFromRelays(getRelays());

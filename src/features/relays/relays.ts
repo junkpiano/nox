@@ -1,5 +1,6 @@
 import { emitAppEvent } from '../../common/app-events.js';
 import { kvGet, kvSet } from '../../common/kv.js';
+
 const RELAYS_STORAGE_KEY: string = 'nostr_relays';
 const RELAY_HEALTH_KEY: string = 'nostr_relay_health_v1';
 const defaultRelays: string[] = [
@@ -19,6 +20,22 @@ relayHealth.forEach(
     }
   },
 );
+
+/**
+ * Reads the list and its health from storage again.
+ *
+ * The list is read when this module loads. A runtime that installs its
+ * storage after the modules have loaded - the phone - has to ask for the
+ * read again, or every cold start runs on the defaults.
+ */
+export function reloadRelays(): void {
+  relays = loadRelaysFromStorage();
+  relayHealth.clear();
+  for (const [relayUrl, health] of loadRelayHealth()) {
+    if (relays.includes(relayUrl)) relayHealth.set(relayUrl, health);
+  }
+  notifyRelaysUpdated();
+}
 
 export function getRelays(): string[] {
   return relays;
