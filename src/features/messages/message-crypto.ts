@@ -65,7 +65,31 @@ export interface Nip44Payload {
   ct: string;
 }
 
-export type EncryptedPayload = AesPayload | Nip44Payload;
+/**
+ * The same, in pieces. NIP-44 holds at most 65,535 bytes of plaintext and
+ * a cache of a few hundred messages is more than that; each piece is
+ * encrypted on its own and the plaintext is their concatenation.
+ */
+export interface Nip44ChunkedPayload {
+  v: 3;
+  parts: string[];
+}
+
+export type EncryptedPayload = AesPayload | Nip44Payload | Nip44ChunkedPayload;
+
+/**
+ * Characters per piece. NIP-44 counts bytes and a character is up to four
+ * of them, so this keeps a piece under the limit whatever the text.
+ */
+const NIP44_CHUNK_CHARS: number = 16000;
+
+function chunked(text: string): string[] {
+  const parts: string[] = [];
+  for (let at = 0; at < text.length; at += NIP44_CHUNK_CHARS) {
+    parts.push(text.slice(at, at + NIP44_CHUNK_CHARS));
+  }
+  return parts.length > 0 ? parts : [''];
+}
 
 let keyPromise: Promise<CryptoKey | null> | null = null;
 
@@ -132,10 +156,23 @@ export function isEncryptedPayload(value: unknown): value is EncryptedPayload {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
-  const candidate = value as { v?: unknown; iv?: unknown; ct?: unknown };
+  const candidate = value as {
+    v?: unknown;
+    iv?: unknown;
+    ct?: unknown;
+    parts?: unknown;
+  };
   if (candidate.v === 1) {
     return (
       candidate.iv instanceof Uint8Array && candidate.ct instanceof ArrayBuffer
+    );
+  }
+  if (candidate.v === 3) {
+    return (
+      Array.isArray(candidate.parts) &&
+      candidate.parts.every(
+        (part: unknown): boolean => typeof part === 'string',
+      )
     );
   }
   // A v2 blob written on the phone can be read back only on the phone, which
@@ -183,7 +220,12 @@ export async function encryptJson(
       return null;
     }
     try {
-      return { v: 2, ct: nip44.encrypt(JSON.stringify(value), localKey) };
+      return {
+        v: 3,
+        parts: chunked(JSON.stringify(value)).map((part: string): string =>
+          nip44.encrypt(part, localKey),
+        ),
+      };
     } catch (error: unknown) {
       console.warn('[dm] Failed to encrypt cache:', error);
       return null;
@@ -228,13 +270,19 @@ export async function decryptJson<T>(payload: unknown): Promise<T | null> {
     return null;
   }
 
-  if (payload.v === 2) {
+  if (payload.v === 2 || payload.v === 3) {
     const localKey: Uint8Array | null = await getLocalKey();
     if (!localKey) {
       return null;
     }
     try {
-      return JSON.parse(nip44.decrypt(payload.ct, localKey)) as T;
+      const text: string =
+        payload.v === 2
+          ? nip44.decrypt(payload.ct, localKey)
+          : payload.parts
+              .map((part: string): string => nip44.decrypt(part, localKey))
+              .join('');
+      return JSON.parse(text) as T;
     } catch (error: unknown) {
       console.warn('[dm] Failed to decrypt cache:', error);
       return null;
