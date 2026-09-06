@@ -430,6 +430,12 @@ export interface PostListProps {
    * failed with a retry, or nothing older. Absent for lists that end.
    */
   older?: OlderPostsState;
+  /**
+   * Whether this list is the pane on screen. Feed keeps Following and
+   * Global both mounted under one tab, and both count as focused; only the
+   * one showing answers a tap on the tab.
+   */
+  active?: boolean;
 }
 
 export interface OlderPostsState {
@@ -452,6 +458,7 @@ export default function PostList({
   pendingCount = 0,
   onShowNew,
   older,
+  active = true,
 }: PostListProps) {
   const navigation = useNavigation<Nav>();
   // Rows decide whether to draw their action row from the session key, and
@@ -491,10 +498,11 @@ export default function PostList({
   useEffect(
     (): (() => void) =>
       onAppEvent('scroll-to-top', (): void => {
-        if (focused)
+        if (focused && active) {
           list.current?.scrollToOffset({ offset: 0, animated: true });
+        }
       }),
-    [focused],
+    [focused, active],
   );
 
   const showNew = (): void => {

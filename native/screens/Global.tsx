@@ -108,6 +108,7 @@ export default function Global({ active = true }: { active?: boolean }) {
 
   return (
     <PostList
+      active={active}
       posts={posts}
       stats={stats}
       stage={stage}
