@@ -9,7 +9,7 @@ import { openSignIn } from '../lib/navigation';
  * two differ only in which events they ask for.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { onAppEvent } from '../../src/common/app-events';
 import type { TimelineKey } from '../../src/common/db/types';
@@ -63,6 +63,14 @@ export default function Home({ active = true }: { active?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  // How many people the follow list named, once a load has read it. Null
+  // until then: an empty timeline whose list was never read is not "you
+  // follow nobody".
+  const [follows, setFollows] = useState<number | null>(null);
+  // Each load is numbered. A load still in flight when the account changes
+  // must not land the previous account's posts, filter and cursor on top of
+  // the new account's; only the latest load may write.
+  const loadGeneration = useRef(0);
   // The question the load asked, so the poll for newer posts asks the same.
   const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
   const { pendingCount, showNew, forget } = useNewPosts(
@@ -84,19 +92,30 @@ export default function Home({ active = true }: { active?: boolean }) {
 
   const load = useCallback(
     async (viewer: PubkeyHex): Promise<void> => {
+      const mine: number = ++loadGeneration.current;
+      const live = (): boolean => mine === loadGeneration.current;
       setLoading(true);
       // A full load shows everything, so nothing is waiting any more.
       forget();
       try {
-        const result = await loadHomeTimeline(viewer, setStage, {
-          // What the cache held goes up at once; the relays follow, and the
-          // refresh spinner says so until they have.
-          onCached: (cached: TimelinePost[]): void => {
-            setPosts(cached);
-            setLoading(false);
-            setRefreshing(true);
+        const result = await loadHomeTimeline(
+          viewer,
+          (stage: string): void => {
+            if (live()) setStage(stage);
           },
-        });
+          {
+            // What the cache held goes up at once; the relays follow, and
+            // the refresh spinner says so until they have.
+            onCached: (cached: TimelinePost[]): void => {
+              if (!live()) return;
+              setPosts(cached);
+              setLoading(false);
+              setRefreshing(true);
+            },
+          },
+        );
+        if (!live()) return;
+        setFollows(result.stats.follows);
         setPosts(result.posts);
         setFilter(result.filter);
         setOldestCreatedAt(result.oldestCreatedAt);
@@ -111,11 +130,13 @@ export default function Home({ active = true }: { active?: boolean }) {
         );
         setError(null);
       } catch (e: any) {
-        setError(String(e?.message ?? e));
+        if (live()) setError(String(e?.message ?? e));
       } finally {
-        setLoading(false);
-        setRefreshing(false);
-        setStage('');
+        if (live()) {
+          setLoading(false);
+          setRefreshing(false);
+          setStage('');
+        }
       }
     },
     [forget],
@@ -137,8 +158,11 @@ export default function Home({ active = true }: { active?: boolean }) {
     (): (() => void) =>
       onAppEvent('session-changed', (): void => {
         const next: PubkeyHex | null = readStoredPubkey();
+        // Whatever load is still out belongs to the previous account.
+        loadGeneration.current += 1;
         setPosts([]);
         setFilter(null);
+        setFollows(null);
         forget();
         setStats('');
         setError(null);
@@ -201,7 +225,11 @@ export default function Home({ active = true }: { active?: boolean }) {
       onRefresh={onRefresh}
       loading={loading}
       emptyMessage={
-        'You are not following anyone yet. Posts from people you follow will appear here.'
+        follows === 0
+          ? 'You are not following anyone yet. Posts from people you follow appear here.'
+          : follows === null
+            ? 'Nothing here yet.'
+            : 'No recent posts from the people you follow.'
       }
       pendingCount={pendingCount}
       onShowNew={showNew}

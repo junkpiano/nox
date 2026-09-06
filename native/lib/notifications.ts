@@ -39,6 +39,11 @@ export interface NotificationResult {
   stats: { events: number; relays: number; ms: number };
 }
 
+/** A field somebody else wrote is a string only if it is one. */
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
 function queryRelays(
   relays: string[],
   filter: Record<string, unknown>,
@@ -150,7 +155,7 @@ export async function loadNotifications(
     try {
       const meta = JSON.parse(event.content);
       names.set(event.pubkey, {
-        name: meta.display_name || meta.name || '',
+        name: str(meta.display_name) || str(meta.name),
         picture: pictureUrl(meta.picture),
       });
       at.set(event.pubkey, event.created_at);
@@ -177,7 +182,7 @@ export async function loadNotifications(
         // A repost's content is the reposted event as JSON, not words.
         content: unwrapRepost(event).event?.content ?? '',
         targetId: targetOf(event),
-        name: meta?.name || `${event.pubkey.slice(0, 8)}...`,
+        name: str(meta?.name) || `${event.pubkey.slice(0, 8)}...`,
         picture: meta?.picture ?? null,
       };
     });

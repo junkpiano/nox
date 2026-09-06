@@ -1,3 +1,4 @@
+import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
 import { guardWrite, hasViewer } from '../lib/read-only';
 /**
@@ -14,7 +15,7 @@ import { guardWrite, hasViewer } from '../lib/read-only';
 
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -29,7 +30,9 @@ import {
   Text,
   View,
 } from 'react-native';
+import { onAppEvent } from '../../src/common/app-events';
 import { contentWarningSummary } from '../../src/common/content-warning';
+import { isMuted, isMutedContent } from '../../src/common/mute-state';
 import { newPostsLabel } from '../../src/common/new-posts';
 import type { UserStatus } from '../../src/features/profile/user-status';
 import type { PubkeyHex } from '../../types/nostr';
@@ -175,14 +178,18 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
   const run = (
     what: 'like' | 'repost',
     action: () => Promise<{ accepted: string[] }>,
-    done: () => void,
+    done: (by: PubkeyHex) => void,
   ): void => {
     if (!guardWrite()) return;
+    // Who is signing, taken now: the publish waits on the relays, and the
+    // session may not be the same one when it comes back.
+    const by: PubkeyHex | null = getSession().pubkey;
+    if (!by) return;
     setBusy(what);
     void action()
       .then((result): void => {
         if (result.accepted.length > 0) {
-          done();
+          done(by);
         } else {
           Alert.alert(`Could not ${what}`, 'No relay accepted it.');
         }
@@ -225,7 +232,7 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
           run(
             'repost',
             () => repostEvent(post.event),
-            () => own.mark(post.id, 'repost'),
+            (by: PubkeyHex) => own.mark(post.id, 'repost', by),
           )
         }
       >
@@ -243,7 +250,7 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
           run(
             'like',
             () => likeEvent(post.event),
-            () => own.mark(post.id, 'like'),
+            (by: PubkeyHex) => own.mark(post.id, 'like', by),
           )
         }
       >
@@ -450,9 +457,30 @@ export default function PostList({
   // Rows decide whether to draw their action row from the session key, and
   // FlatList only re-renders rows when the data or this changes.
   const sessionVersion = useSessionVersion();
-  const statuses = useUserStatuses(posts);
+  // Muting somebody, or a word, takes effect on what is already on screen.
+  // The rows were filtered when they were loaded; the mute list can change
+  // after that, and a list that kept showing a muted author until the next
+  // load would be a mute that did not take.
+  const [muteVersion, setMuteVersion] = useState(0);
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('mute-list-updated', (): void =>
+        setMuteVersion((v: number): number => v + 1),
+      ),
+    [],
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the mute version is what makes the filter run again
+  const visible: TimelinePost[] = useMemo(
+    (): TimelinePost[] =>
+      posts.filter(
+        (post: TimelinePost): boolean =>
+          !isMuted(post.pubkey) && !isMutedContent(post.content),
+      ),
+    [posts, muteVersion],
+  );
+  const statuses = useUserStatuses(visible);
   const own = useOwnReactions(
-    posts.map((post: TimelinePost): string => post.id),
+    visible.map((post: TimelinePost): string => post.id),
   );
   const list = useRef<FlatList<TimelinePost>>(null);
 
@@ -482,7 +510,7 @@ export default function PostList({
       ) : (
         <FlatList
           ref={list}
-          data={posts}
+          data={visible}
           keyExtractor={(p: TimelinePost) => p.key}
           extraData={{ sessionVersion, statuses, own }}
           ListHeaderComponent={

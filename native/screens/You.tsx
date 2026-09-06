@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { onAppEvent } from '../../src/common/app-events';
 import { kvGet } from '../../src/common/kv';
 import { restoreSessionPrivateKey } from '../../src/common/session';
 import type { PubkeyHex } from '../../types/nostr';
@@ -36,6 +37,14 @@ export default function You() {
   useEffect(() => {
     void restoreSessionPrivateKey().then((): void => setReady(true));
   }, []);
+
+  // Your profile is whoever is signed in now, not whoever was when this
+  // tab first drew.
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('session-changed', (): void => setViewer(readStoredPubkey())),
+    [],
+  );
 
   if (!ready) {
     return (

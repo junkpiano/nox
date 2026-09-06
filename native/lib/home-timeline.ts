@@ -373,9 +373,14 @@ function profileJson(event: NostrEvent): NostrProfile | null {
 }
 
 /** What the card needs from a profile, whichever way it arrived. */
+/** A field somebody else wrote is a string only if it is one. */
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
 function metaFrom(meta: NostrProfile): ProfileMeta | null {
   return {
-    name: meta.display_name || meta.name || '',
+    name: str(meta.display_name) || str(meta.name),
     picture: pictureUrl(meta.picture),
     nip05: typeof meta.nip05 === 'string' ? meta.nip05 : null,
   };

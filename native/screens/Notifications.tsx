@@ -13,7 +13,7 @@
 
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -24,7 +24,9 @@ import {
   Text,
   View,
 } from 'react-native';
+import { onAppEvent } from '../../src/common/app-events';
 import { kvGet } from '../../src/common/kv';
+import { isMuted, isMutedContent } from '../../src/common/mute-state';
 import {
   type NotificationScope,
   readNotificationScope,
@@ -70,7 +72,30 @@ function emptyText(scoped: ScopedNotifications<Notification>): string {
 }
 
 export default function Notifications() {
-  const [viewer] = useState<PubkeyHex | null>(readViewer);
+  const [viewer, setViewer] = useState<PubkeyHex | null>(readViewer);
+  // A different account is a different inbox. Read once at mount, the
+  // viewer stayed whoever was there when the tab first opened.
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('session-changed', (): void => {
+        setViewer(readViewer());
+        setItems(null);
+        setScoped(null);
+        setStats('');
+        setError(null);
+      }),
+    [],
+  );
+  // (12) Muting somebody while their notification is on screen hides it
+  // then, not on the next load.
+  const [muteVersion, setMuteVersion] = useState(0);
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('mute-list-updated', (): void =>
+        setMuteVersion((v: number): number => v + 1),
+      ),
+    [],
+  );
   const [items, setItems] = useState<Notification[] | null>(null);
   const [scope, setScope] = useState<NotificationScope>(readNotificationScope);
   const [scoped, setScoped] =
@@ -128,6 +153,18 @@ export default function Notifications() {
       cancelled = true;
     };
   }, [viewer, items, scope]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the mute version is what makes the filter run again
+  const visible: Notification[] = useMemo(
+    (): Notification[] =>
+      scoped
+        ? scoped.events.filter(
+            (item: Notification): boolean =>
+              !isMuted(item.pubkey) && !isMutedContent(item.content),
+          )
+        : [],
+    [scoped, muteVersion],
+  );
 
   const onRefresh = useCallback(async (): Promise<void> => {
     setRefreshing(true);
@@ -200,7 +237,7 @@ export default function Notifications() {
       ) : null}
       {stats ? <Text style={styles.stats}>{stats}</Text> : null}
       <FlatList
-        data={scoped.events}
+        data={visible}
         keyExtractor={(item: Notification) => item.id}
         extraData={scoping}
         style={scoping && styles.dim}

@@ -1,3 +1,4 @@
+import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
 import { guardWrite, hasViewer, signInPrompt } from '../lib/read-only';
 /**
@@ -28,6 +29,10 @@ import {
   View,
 } from 'react-native';
 import { readClientName } from '../../src/common/client-tag';
+import {
+  contentWarningSummary,
+  getContentWarning,
+} from '../../src/common/content-warning';
 import {
   fetchRepliesForEvent,
   isEventDeleted,
@@ -173,6 +178,10 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const liked: boolean = data?.root ? own.liked.has(data.root.id) : false;
   const reposted: boolean = data?.root ? own.reposted.has(data.root.id) : false;
   const [liking, setLiking] = useState(false);
+  // NIP-36: the author asked not to be shown unasked. The timeline and the
+  // quote card cover such a post; opened directly - from a notification, a
+  // link, a reply - the root was drawn in full. It is covered here too.
+  const [revealed, setRevealed] = useState(false);
   const [reposting, setReposting] = useState(false);
   const [draft, setDraft] = useState('');
   const [reporting, setReporting] = useState(false);
@@ -311,15 +320,18 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const attempt = async (
     what: string,
     run: () => Promise<{ accepted: string[] }>,
-    onDone: () => void,
+    onDone: (by: PubkeyHex) => void,
   ): Promise<void> => {
+    // Who is signing, taken now: the publish waits on the relays, and the
+    // session may not be the same one when it comes back.
+    const by: PubkeyHex | null = getSession().pubkey;
     try {
       const result = await run();
       if (result.accepted.length === 0) {
         Alert.alert('Not sent', `No relay accepted the ${what}.`);
         return;
       }
-      onDone();
+      if (by) onDone(by);
     } catch (e: any) {
       if (e instanceof NotSignedInError) {
         signInPrompt('Not signed in', 'Sign in to take part.');
@@ -336,7 +348,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     await attempt(
       'reaction',
       () => likeEvent(root),
-      () => own.mark(root.id, 'like'),
+      (by: PubkeyHex) => own.mark(root.id, 'like', by),
     );
     setLiking(false);
   };
@@ -346,7 +358,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     await attempt(
       'repost',
       () => repostEvent(root),
-      () => own.mark(root.id, 'repost'),
+      (by: PubkeyHex) => own.mark(root.id, 'repost', by),
     );
     setReposting(false);
   };
@@ -406,6 +418,17 @@ export default function Thread({ route }: { route: ThreadRoute }) {
               <Text style={styles.deleted}>
                 This note is data written for software, not text.
               </Text>
+            ) : getContentWarning(root).hasWarning && !revealed ? (
+              <Pressable
+                onPress={(): void => setRevealed(true)}
+                style={styles.warning}
+                accessibilityRole="button"
+              >
+                <Text style={styles.warningText}>
+                  ⚠️ {contentWarningSummary(getContentWarning(root))}
+                </Text>
+                <Text style={styles.warningHint}>Tap to show</Text>
+              </Pressable>
             ) : (
               <PostBody
                 content={root.content}
@@ -547,6 +570,17 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0b1220' },
   rootPost: { padding: 16 },
   rootContent: { color: '#e8eeff', fontSize: 17, lineHeight: 25, marginTop: 6 },
+  warning: {
+    borderWidth: 1,
+    borderColor: '#4a3a1a',
+    backgroundColor: '#221a0d',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  warningText: { color: '#ffd79a', fontSize: 14, lineHeight: 20 },
+  warningHint: { color: '#8a7550', fontSize: 11, marginTop: 4 },
   inReplyTo: { color: '#89a8ff', fontSize: 12, marginBottom: 8 },
   deleted: {
     color: '#8ea0c0',

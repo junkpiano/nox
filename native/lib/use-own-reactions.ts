@@ -39,8 +39,12 @@ function viewer(): PubkeyHex | null {
 }
 
 export interface OwnReactionState extends OwnReactions {
-  /** Records a reaction the app just published, for every screen at once. */
-  mark(id: string, reaction: Reaction): void;
+  /**
+   * Records a reaction the app just published, for every screen at once.
+   * `by` is who signed it, taken when the action began: a publish waits on
+   * the relays, and a result for a key no longer signed in is dropped.
+   */
+  mark(id: string, reaction: Reaction, by: PubkeyHex): void;
 }
 
 export function useOwnReactions(ids: ReadonlyArray<string>): OwnReactionState {
@@ -78,9 +82,9 @@ export function useOwnReactions(ids: ReadonlyArray<string>): OwnReactionState {
   return {
     liked: state.liked,
     reposted: state.reposted,
-    mark: (id: string, reaction: Reaction): void => {
+    mark: (id: string, reaction: Reaction, by: PubkeyHex): void => {
       const me: PubkeyHex | null = viewer();
-      if (!me || !canWrite()) return;
+      if (!me || me !== by || !canWrite()) return;
       book.mark(me, id, reaction);
       announce();
     },
