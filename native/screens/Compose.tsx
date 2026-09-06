@@ -28,10 +28,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import { emitAppEvent } from '../../src/common/app-events';
 import { contentWarningTags } from '../../src/common/content-warning';
 import { NotSignedInError, publishNote } from '../lib/publish';
+import { useKeyboardHeight } from '../lib/use-keyboard-height';
 
 export default function Compose() {
   const navigation = useNavigation();
@@ -39,6 +39,10 @@ export default function Compose() {
   // the system draws at the bottom. Fixed padding lost it under a
   // three-button navigation bar.
   const insets = useSafeAreaInsets();
+  // Edge to edge, the window does not shrink for the keyboard; the screen
+  // pads itself by the keyboard's height and the field, being flexible,
+  // takes what is left above it.
+  const keyboard: number = useKeyboardHeight();
   const [text, setText] = useState('');
   const [warned, setWarned] = useState(false);
   const [reason, setReason] = useState('');
@@ -85,7 +89,12 @@ export default function Compose() {
   }, [text, warned, reason, navigation]);
 
   return (
-    <View style={[styles.screen, { paddingBottom: 20 + insets.bottom }]}>
+    <View
+      style={[
+        styles.screen,
+        { paddingBottom: keyboard > 0 ? keyboard + 12 : 20 + insets.bottom },
+      ]}
+    >
       <TextInput
         value={text}
         onChangeText={setText}
