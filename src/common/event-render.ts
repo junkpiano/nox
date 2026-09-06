@@ -21,15 +21,21 @@ import {
 import { avatarErrorAttribute, fallbackAvatarUrl } from './avatar.js';
 import { loadableOnThisPage, setAvatar } from './avatar-dom.js';
 import { readClientName, withClientTag } from './client-tag.js';
+import {
+  type ContentWarning,
+  contentWarningSummary,
+  getContentWarning,
+} from './content-warning.js';
 import { deleteEvents, removeEventFromTimeline } from './db/index.js';
+import { requestDeletion } from './delete-event.js';
 import { computeTimelineRemovalTargets } from './deletion-targets.js';
-import { getCachedEvent, setCachedEvent } from './event-cache.js';
 import {
   cacheDeletionStatus,
-  fetchEventById,
   getCachedDeletionStatus,
   isEventDeleted,
 } from './events-queries.js';
+import { describeLink, type LinkCard } from './link-card.js';
+import { isMachineContent } from './machine-content.js';
 import { classifyMediaUrl, withPosterFrame } from './media-type.js';
 import { isMuted } from './mute-state.js';
 import { verifiedNip05 } from './nip05.js';
@@ -44,20 +50,15 @@ import {
   isReactionClickOnly,
   mergeReactionEvents,
 } from './reaction-interactions.js';
+import {
+  fetchReferencedEvent,
+  rememberReferencedMiss,
+} from './referenced-event.js';
 import { createRelayWebSocket } from './relay-socket.js';
 import { repostTags } from './reply-tags.js';
+import { unwrapRepost } from './repost.js';
 import { canWrite, signWithSession } from './signer.js';
 import { openZapComposer } from './zap.js';
-
-const REFERENCED_EVENT_CACHE_LIMIT: number = 1000;
-const REFERENCED_EVENT_NULL_CACHE_LIMIT: number = 2000;
-const REFERENCED_EVENT_NULL_CACHE_TTL_MS: number = 60 * 1000;
-const referencedEventCache: Map<string, Promise<NostrEvent | null>> = new Map();
-const referencedEventNullCache: Map<string, number> = new Map();
-interface ContentWarningInfo {
-  hasWarning: boolean;
-  reason: string;
-}
 
 interface ParentReference {
   eventId: string;
@@ -258,61 +259,6 @@ function hasTextSelectionWithin(container: HTMLElement): boolean {
   );
 }
 
-function isContentWarningNamespace(value: string | undefined): boolean {
-  return (value || '').trim().toLowerCase() === 'content-warning';
-}
-
-function getContentWarningInfo(event: NostrEvent): ContentWarningInfo {
-  let hasContentWarningTag: boolean = false;
-  let hasContentWarningNamespace: boolean = false;
-  let hasScopedWarningLabel: boolean = false;
-  let reason: string = '';
-
-  for (const tag of event.tags) {
-    const tagName: string = (tag[0] || '').trim();
-    if (!tagName) {
-      continue;
-    }
-
-    if (tagName.toLowerCase() === 'content-warning' || tagName === 'cw') {
-      hasContentWarningTag = true;
-      const tagReason: string = (tag[1] || '').trim();
-      if (!reason && tagReason) {
-        reason = tagReason;
-      }
-      continue;
-    }
-
-    if (tagName === 'L' && isContentWarningNamespace(tag[1])) {
-      hasContentWarningNamespace = true;
-      continue;
-    }
-
-    if (tagName === 'l' && isContentWarningNamespace(tag[2])) {
-      hasScopedWarningLabel = true;
-      const labelReason: string = (tag[1] || '').trim();
-      if (!reason && labelReason) {
-        reason = labelReason;
-      }
-    }
-  }
-
-  return {
-    hasWarning:
-      hasContentWarningTag ||
-      hasContentWarningNamespace ||
-      hasScopedWarningLabel,
-    reason,
-  };
-}
-
-function getContentWarningSummary(reason: string): string {
-  if (!reason) {
-    return '⚠️ Content warning';
-  }
-  return `⚠️ Content warning: ${escapeHtmlAttribute(reason)}`;
-}
-
 function getEmojiTagMap(tags: string[][]): Map<string, string> {
   const emojiTagMap: Map<string, string> = new Map();
   tags.forEach((tag: string[]): void => {
@@ -357,96 +303,6 @@ function replaceCustomEmojiShortcodes(
       return `<img src="${safeUrl}" alt=":${safeCode}:" title=":${safeCode}:" class="inline-block align-text-bottom h-5 w-5 mx-0.5" loading="lazy" decoding="async" />`;
     },
   );
-}
-
-function setReferencedEventCache(
-  eventId: string,
-  request: Promise<NostrEvent | null>,
-): void {
-  referencedEventCache.delete(eventId);
-  referencedEventCache.set(eventId, request);
-  if (referencedEventCache.size > REFERENCED_EVENT_CACHE_LIMIT) {
-    const oldestKey: string | undefined = referencedEventCache
-      .keys()
-      .next().value;
-    if (oldestKey) {
-      referencedEventCache.delete(oldestKey);
-    }
-  }
-}
-
-function setReferencedEventNullCache(eventId: string): void {
-  referencedEventNullCache.delete(eventId);
-  referencedEventNullCache.set(
-    eventId,
-    Date.now() + REFERENCED_EVENT_NULL_CACHE_TTL_MS,
-  );
-  if (referencedEventNullCache.size > REFERENCED_EVENT_NULL_CACHE_LIMIT) {
-    const oldestKey: string | undefined = referencedEventNullCache
-      .keys()
-      .next().value;
-    if (oldestKey) {
-      referencedEventNullCache.delete(oldestKey);
-    }
-  }
-}
-
-function isReferencedEventNullCached(eventId: string): boolean {
-  const expiresAt: number | undefined = referencedEventNullCache.get(eventId);
-  if (!expiresAt) {
-    return false;
-  }
-  if (expiresAt <= Date.now()) {
-    referencedEventNullCache.delete(eventId);
-    return false;
-  }
-  return true;
-}
-
-async function fetchEventByIdCached(
-  eventId: string,
-  relays: string[],
-  options: { bypassNullCache?: boolean; forceRefresh?: boolean } = {},
-): Promise<NostrEvent | null> {
-  const bypassNullCache: boolean = options.bypassNullCache === true;
-  const forceRefresh: boolean = options.forceRefresh === true;
-
-  if (!bypassNullCache && isReferencedEventNullCached(eventId)) {
-    return null;
-  }
-
-  if (forceRefresh) {
-    referencedEventCache.delete(eventId);
-  } else {
-    const cached: Promise<NostrEvent | null> | undefined =
-      referencedEventCache.get(eventId);
-    if (cached) {
-      setReferencedEventCache(eventId, cached);
-      return cached;
-    }
-  }
-
-  const request: Promise<NostrEvent | null> =
-    (async (): Promise<NostrEvent | null> => {
-      const cachedEvent: NostrEvent | null = await getCachedEvent(eventId);
-      if (cachedEvent) {
-        referencedEventNullCache.delete(eventId);
-        return cachedEvent;
-      }
-      const event: NostrEvent | null = await fetchEventById(eventId, relays);
-      if (event) {
-        referencedEventNullCache.delete(eventId);
-        await setCachedEvent(event);
-        return event;
-      }
-      referencedEventCache.delete(eventId);
-      if (!bypassNullCache) {
-        setReferencedEventNullCache(eventId);
-      }
-      return null;
-    })();
-  setReferencedEventCache(eventId, request);
-  return request;
 }
 
 async function fetchReactions(
@@ -746,7 +602,7 @@ async function fetchEventWithRetry(
   attempts: number = 5,
 ): Promise<NostrEvent | null> {
   for (let i = 0; i < attempts; i += 1) {
-    const event: NostrEvent | null = await fetchEventByIdCached(
+    const event: NostrEvent | null = await fetchReferencedEvent(
       eventId,
       relays,
       {
@@ -761,7 +617,7 @@ async function fetchEventWithRetry(
       await delay(700 + i * 900);
     }
   }
-  setReferencedEventNullCache(eventId);
+  rememberReferencedMiss(eventId);
   return null;
 }
 
@@ -1185,6 +1041,18 @@ export function renderEvent(
     profile,
   );
   const isRepost: boolean = event.kind === 6 || event.kind === 16;
+
+  // Data, not words. Judged on what would be shown: a plain note on its own
+  // content, a repost on its verified embedded copy. A repost with no such
+  // copy is not judged here - its content is the serialised target and the
+  // repost path below fetches the real thing.
+  const judged: NostrEvent | null = isRepost
+    ? unwrapRepost(event).event
+    : event;
+  if (judged && isMachineContent(judged.content)) {
+    return;
+  }
+
   const repostEventId: string | null = isRepost
     ? resolveRepostEventId(event)
     : null;
@@ -1257,8 +1125,7 @@ export function renderEvent(
     ? `${actionBtnBase} zap-event-btn ${actionIdle} hover:text-amber-500 hover:bg-amber-50`
     : `${actionBtnBase} zap-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
-  const deleteButtonTitle: string = 'Delete post';
-  const deleteButtonClasses: string = `${actionBtnBase} delete-event-btn text-red-600 hover:text-red-800 hover:bg-red-50`;
+  const _deleteButtonTitle: string = 'Delete post';
   const moderationBtnClasses: string = `${actionBtnBase} text-gray-400 hover:text-gray-600 hover:bg-gray-100`;
 
   const actionBarHtml: string = `
@@ -1290,19 +1157,6 @@ export function renderEvent(
                 : ''
             }
             ${
-              canDeletePost
-                ? `<button class="${deleteButtonClasses}" aria-label="${deleteButtonTitle}" title="${deleteButtonTitle}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16" />
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6" />
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M14 11v6" />
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 7l1 14h10l1-14" />
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 7V4h6v3" />
-                    </svg>
-                  </button>`
-                : ''
-            }
-            ${
               canModerate
                 ? `<button class="${moderationBtnClasses} more-actions-btn" aria-label="More actions" title="More actions" aria-haspopup="menu">
                     <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 block" aria-hidden="true">
@@ -1317,7 +1171,7 @@ export function renderEvent(
         `;
 
   const contentSource: string = isRepost ? '' : event.content;
-  const contentWarning: ContentWarningInfo = getContentWarningInfo(event);
+  const contentWarning: ContentWarning = getContentWarning(event);
   const escapedContentSource: string = escapeHtmlAttribute(contentSource);
   const urls: string[] = [];
   const imageUrls: string[] = [];
@@ -1463,7 +1317,7 @@ export function renderEvent(
     ? `
       <details class="event-cw-details mb-2 rounded-lg border border-amber-300 bg-amber-50">
         <summary class="cursor-pointer select-none text-xs font-semibold text-amber-900 px-3 py-2">
-          ${getContentWarningSummary(contentWarning.reason)}. Click to reveal.
+          ⚠️ ${escapeHtmlAttribute(contentWarningSummary(contentWarning))}. Click to reveal.
         </summary>
         <div class="px-3 pb-3 pt-2">
           ${
@@ -1607,7 +1461,15 @@ export function renderEvent(
       // no longer mute someone outright.
       window.dispatchEvent(
         new CustomEvent('request-post-actions', {
-          detail: { pubkey: event.pubkey, eventId: event.id, name },
+          detail: {
+            pubkey: event.pubkey,
+            eventId: event.id,
+            name,
+            // Passed as a function rather than a flag: the card owns the
+            // cleanup that follows a deletion, and the menu only decides
+            // whether it was asked for.
+            onDelete: canDeletePost ? runDelete : undefined,
+          },
         }),
       );
     });
@@ -1696,7 +1558,7 @@ export function renderEvent(
             await Promise.allSettled(
               existingHeartReactions.map(
                 async (reactionEvent: NostrEvent): Promise<void> => {
-                  await deleteEventOnRelays(reactionEvent);
+                  await requestDeletion(reactionEvent, getRelays());
                 },
               ),
             );
@@ -1764,54 +1626,37 @@ export function renderEvent(
     });
   }
 
-  const deleteButton: HTMLButtonElement | null = div.querySelector(
-    '.delete-event-btn',
-  ) as HTMLButtonElement | null;
-  if (deleteButton) {
-    deleteButton.addEventListener(
-      'click',
-      async (e: MouseEvent): Promise<void> => {
-        e.preventDefault();
-        e.stopPropagation();
-        const confirmed: boolean = window.confirm('Delete this post?');
-        if (!confirmed) {
-          return;
+  /**
+   * Deleting, for the overflow menu to call.
+   *
+   * It used to be a bin icon of its own, sitting beside reply and repost - a
+   * destructive, irreversible action one stray tap away from the two things
+   * people press most. It is behind the same menu as mute and report now,
+   * which is where the rare and consequential things live.
+   */
+  const runDelete = async (): Promise<void> => {
+    await requestDeletion(event, getRelays());
+    cacheDeletionStatus(event.id, true);
+    const viewerPubkey: PubkeyHex | null =
+      (localStorage.getItem('nostr_pubkey') as PubkeyHex | null) || null;
+    const targets = computeTimelineRemovalTargets({
+      viewerPubkey,
+      authorPubkey: event.pubkey as PubkeyHex,
+    });
+    await deleteEvents([event.id]);
+    await Promise.allSettled(
+      targets.map(async (target) => {
+        if (target.type === 'global') {
+          await removeEventFromTimeline('global', undefined, event.id);
+        } else if (target.type === 'home') {
+          await removeEventFromTimeline('home', target.pubkey, event.id);
+        } else {
+          await removeEventFromTimeline('user', target.pubkey, event.id);
         }
-
-        deleteButton.disabled = true;
-        deleteButton.classList.add('opacity-60', 'cursor-not-allowed');
-
-        try {
-          await deleteEventOnRelays(event);
-          cacheDeletionStatus(event.id, true);
-          const viewerPubkey: PubkeyHex | null =
-            (localStorage.getItem('nostr_pubkey') as PubkeyHex | null) || null;
-          const targets = computeTimelineRemovalTargets({
-            viewerPubkey,
-            authorPubkey: event.pubkey as PubkeyHex,
-          });
-          await deleteEvents([event.id]);
-          await Promise.allSettled(
-            targets.map(async (target) => {
-              if (target.type === 'global') {
-                await removeEventFromTimeline('global', undefined, event.id);
-              } else if (target.type === 'home') {
-                await removeEventFromTimeline('home', target.pubkey, event.id);
-              } else {
-                await removeEventFromTimeline('user', target.pubkey, event.id);
-              }
-            }),
-          );
-          div.remove();
-        } catch (error: unknown) {
-          console.error('Failed to delete event:', error);
-          alert('Failed to delete post. Please try again.');
-          deleteButton.disabled = false;
-          deleteButton.classList.remove('opacity-60', 'cursor-not-allowed');
-        }
-      },
+      }),
     );
-  }
+    div.remove();
+  };
 
   // Click anywhere on the card (except interactive elements) to navigate to the event page.
   if (eventPermalink) {
@@ -2073,65 +1918,6 @@ async function enrichMentionDisplayNames(
   }
 }
 
-async function deleteEventOnRelays(targetEvent: NostrEvent): Promise<void> {
-  const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
-  if (!storedPubkey || storedPubkey !== targetEvent.pubkey) {
-    throw new Error('You can only delete your own posts.');
-  }
-
-  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = withClientTag({
-    kind: 5,
-    pubkey: storedPubkey as PubkeyHex,
-    created_at: Math.floor(Date.now() / 1000),
-    tags: [['e', targetEvent.id]],
-    content: '',
-  });
-
-  const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
-
-  const relays: string[] = getRelays();
-  const publishPromises = relays.map(
-    async (relayUrl: string): Promise<void> => {
-      try {
-        const socket: WebSocket = createRelayWebSocket(relayUrl);
-        await new Promise<void>((resolve) => {
-          let settled: boolean = false;
-          const finish = (): void => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          };
-
-          const timeout = setTimeout(() => {
-            finish();
-          }, 5000);
-
-          socket.onopen = (): void => {
-            socket.send(JSON.stringify(['EVENT', signedEvent]));
-          };
-
-          socket.onmessage = (msg: MessageEvent): void => {
-            const arr: any[] = JSON.parse(msg.data);
-            if (arr[0] === 'OK') {
-              finish();
-            }
-          };
-
-          socket.onerror = (): void => {
-            finish();
-          };
-        });
-      } catch (e) {
-        console.warn(`Failed to publish delete event to ${relayUrl}:`, e);
-      }
-    },
-  );
-
-  await Promise.allSettled(publishPromises);
-}
-
 async function renderReferencedEventCards(
   eventRefs: string[],
   container: HTMLElement,
@@ -2220,13 +2006,40 @@ async function renderReferencedEventCards(
         }
       }
 
-      const referencedEvent: NostrEvent | null = await fetchEventWithRetry(
+      const fetchedReference: NostrEvent | null = await fetchEventWithRetry(
         eventId,
         relaysToUse,
         5,
       );
+      if (!fetchedReference) {
+        card.textContent = 'Failed to load referenced event.';
+        continue;
+      }
+
+      // A quoted repost shows the note it reposted, never its own content,
+      // which is that note as JSON. With no verified copy the target is
+      // fetched by id.
+      let referencedEvent: NostrEvent | null = fetchedReference;
+      const unwrappedReference = unwrapRepost(fetchedReference);
+      if (unwrappedReference.repostedBy) {
+        referencedEvent =
+          unwrappedReference.event ??
+          (unwrappedReference.targetId
+            ? await fetchEventWithRetry(
+                unwrappedReference.targetId,
+                relaysToUse,
+                5,
+              )
+            : null);
+      }
       if (!referencedEvent) {
         card.textContent = 'Failed to load referenced event.';
+        continue;
+      }
+      // Data, not words. This path is reached by fetching, so the guard at
+      // the top of renderEvent never saw it - the same rule applies here.
+      if (isMachineContent(referencedEvent.content)) {
+        card.textContent = 'Quoted note contains no readable text.';
         continue;
       }
 
@@ -2254,8 +2067,8 @@ async function renderReferencedEventCards(
         referencedContentWithUnicodeEmoji,
         referencedEvent.tags,
       );
-      const referencedContentWarning: ContentWarningInfo =
-        getContentWarningInfo(referencedEvent);
+      const referencedContentWarning: ContentWarning =
+        getContentWarning(referencedEvent);
       const referencedText: string =
         referencedContent.length > 180
           ? `${referencedContent.slice(0, 180)}...`
@@ -2279,7 +2092,7 @@ async function renderReferencedEventCards(
           />`;
 
       const referencedPreviewHtml: string = referencedContentWarning.hasWarning
-        ? `<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">${getContentWarningSummary(referencedContentWarning.reason)}. Open post to view.</div>`
+        ? `<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">⚠️ ${escapeHtmlAttribute(contentWarningSummary(referencedContentWarning))}. Open post to view.</div>`
         : `<div class="nox-post-text text-sm text-gray-800 whitespace-pre-wrap break-words">${referencedText || '(no content)'}</div>`;
 
       card.innerHTML = `
@@ -2301,18 +2114,14 @@ async function renderReferencedEventCards(
 }
 
 function renderOGPCard(ogpData: OGPResponse, container: HTMLElement): void {
-  const title: string =
-    ogpData.data['og:title'] || ogpData.data.title || 'No title';
-  const description: string =
-    ogpData.data['og:description'] || ogpData.data.description || '';
-  const siteName: string = ogpData.data['og:site_name'] || '';
-  const url: string | null = normalizeHttpUrl(ogpData.url);
-  const image: string | null = ogpData.data['og:image']
-    ? normalizeHttpUrl(ogpData.data['og:image'])
-    : null;
-  if (!url) {
+  // What the card says is decided by the shared describer, so the phone's
+  // card and this one agree about the same page.
+  const described: LinkCard | null = describeLink(ogpData);
+  if (!described) {
     return;
   }
+  const { url, title, description, image } = described;
+  const siteName: string = described.site;
 
   const card: HTMLDivElement = document.createElement('div');
   card.className =

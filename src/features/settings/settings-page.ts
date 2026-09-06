@@ -14,9 +14,9 @@ import {
   EVENT_CACHE_LIMIT,
   getEventCacheStats,
 } from '../../common/event-cache.js';
-import { getMutedPubkeys } from '../../common/mute-state.js';
+import { getMutedPubkeys, getMutedWords } from '../../common/mute-state.js';
 import type { SetActiveNavFn } from '../../common/types.js';
-import { unmuteUser } from '../moderation/moderation-actions.js';
+import { setMutedWords, unmuteUser } from '../moderation/moderation-actions.js';
 import {
   clearProfileCache,
   getProfileCacheStats,
@@ -114,6 +114,27 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
           <div id="muted-accounts-list" class="space-y-2"></div>
         </div>
 
+        <!-- Muted Words Section -->
+        <div class="bg-white border border-gray-200 rounded-lg p-4">
+          <h3 class="font-semibold text-gray-900 mb-1">Muted words</h3>
+          <p class="text-xs text-gray-600 mb-3">
+            Posts whose text contains one of these words are hidden. Whole words
+            only, so muting <span class="font-mono">ass</span> will not hide
+            <span class="font-mono">class</span>. Your mute list is private.
+          </p>
+          <form id="muted-word-form" class="flex gap-2 mb-3">
+            <input id="muted-word-input" type="text" maxlength="64"
+              placeholder="Add a word"
+              class="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2 text-sm">
+            <button type="submit"
+              class="flex-none rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+              Add
+            </button>
+          </form>
+          <div id="muted-words-list" class="flex flex-wrap gap-2"></div>
+          <p id="muted-words-status" class="mt-2 text-xs text-gray-500"></p>
+        </div>
+
         <!-- Timeline Cache Section -->
         <div class="bg-white border border-gray-200 rounded-lg p-4">
           <div class="flex items-center justify-between">
@@ -150,6 +171,7 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
   }
 
   renderMutedAccounts(options.getRelays);
+  wireMutedWords(options.getRelays);
 
   const energySavingToggle: HTMLInputElement | null = document.getElementById(
     'energy-saving-toggle',
@@ -336,4 +358,99 @@ function renderMutedAccounts(getRelays: () => string[]): void {
     row.appendChild(button);
     container.appendChild(row);
   }
+}
+
+/**
+ * The muted-word editor.
+ *
+ * Every change publishes the whole list, because kind:10000 is replaceable:
+ * a write that carried only the words would delete the muted accounts, and one
+ * that carried only the accounts would delete the words.
+ */
+function wireMutedWords(getRelays: () => string[]): void {
+  const form: HTMLFormElement | null = document.getElementById(
+    'muted-word-form',
+  ) as HTMLFormElement | null;
+  const input: HTMLInputElement | null = document.getElementById(
+    'muted-word-input',
+  ) as HTMLInputElement | null;
+  const list: HTMLElement | null = document.getElementById('muted-words-list');
+  const status: HTMLElement | null =
+    document.getElementById('muted-words-status');
+  if (!form || !input || !list) {
+    return;
+  }
+
+  const commit = async (words: string[]): Promise<void> => {
+    if (status) {
+      status.textContent = 'Saving…';
+    }
+    try {
+      await setMutedWords(words, getRelays());
+      if (status) {
+        status.textContent = '';
+      }
+    } catch (error: unknown) {
+      console.error('Failed to save muted words:', error);
+      if (status) {
+        // The word is muted locally either way; say so rather than implying
+        // nothing happened.
+        status.textContent =
+          'Muted on this device, but the list could not be published.';
+      }
+    }
+    render();
+  };
+
+  function render(): void {
+    if (!list) {
+      return;
+    }
+    const words: string[] = getMutedWords();
+    list.innerHTML = '';
+
+    if (words.length === 0) {
+      const empty: HTMLParagraphElement = document.createElement('p');
+      empty.className = 'text-xs text-gray-500';
+      empty.textContent = 'No muted words.';
+      list.appendChild(empty);
+      return;
+    }
+
+    for (const word of words) {
+      const chip: HTMLSpanElement = document.createElement('span');
+      chip.className =
+        'inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs';
+
+      const label: HTMLSpanElement = document.createElement('span');
+      // textContent, not innerHTML: this string came from a text field and is
+      // published to relays, so it comes back from them too.
+      label.textContent = word;
+
+      const remove: HTMLButtonElement = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'text-gray-500 hover:text-red-600';
+      remove.setAttribute('aria-label', `Unmute ${word}`);
+      remove.textContent = '×';
+      remove.addEventListener('click', (): void => {
+        void commit(getMutedWords().filter((w: string): boolean => w !== word));
+      });
+
+      chip.appendChild(label);
+      chip.appendChild(remove);
+      list.appendChild(chip);
+    }
+  }
+
+  form.addEventListener('submit', (event: SubmitEvent): void => {
+    event.preventDefault();
+    const word: string = input.value.trim();
+    if (!word) {
+      return;
+    }
+    input.value = '';
+    void commit([...getMutedWords(), word]);
+  });
+
+  render();
 }

@@ -205,6 +205,42 @@ export function clearSessionPrivateKey(): void {
 }
 
 /**
+ * The same sign-in, resolved only once the key is in the credential store.
+ *
+ * The phone has no extension and holds the key itself, so "signed in" must
+ * mean "stored", not "in memory until the app is killed". A store that
+ * refuses leaves nothing behind and rejects; the caller says so.
+ */
+export async function storeSessionPrivateKey(
+  rawKey: string,
+): Promise<PubkeyHex> {
+  const secretBytes: Uint8Array = parsePrivateKey(rawKey);
+  // Deriving the public key is also the check that the scalar is a valid
+  // key at all; it comes before anything is written, so a rejected key
+  // leaves nothing behind.
+  const pubkey: PubkeyHex = getPublicKey(secretBytes);
+  await writeSecret(PRIVATE_KEY_STORAGE_KEY, secretBytes);
+  sessionPrivateKey = secretBytes;
+  beginSignedInSession(pubkey);
+  return pubkey;
+}
+
+/**
+ * Ends the session only once the key is out of the credential store.
+ *
+ * Deleting first: a session ended in memory while the store still holds
+ * the key would come back signed in on the next launch, which is the
+ * opposite of what the person asked for. A store that refuses rejects
+ * and the session stands.
+ */
+export async function endSessionStored(): Promise<void> {
+  await deleteSecret(PRIVATE_KEY_STORAGE_KEY);
+  sessionPrivateKey = null;
+  kvRemove(SESSION_KIND_KEY);
+  kvRemove(VIEWER_KEY);
+}
+
+/**
  * Returns the active key as an nsec, for the backup prompt.
  *
  * Reads only the in-memory cache, so it never widens where the key is exposed.
@@ -225,9 +261,16 @@ export function getSessionPrivateKey(): Uint8Array | null {
     return sessionPrivateKey;
   }
 
-  // Natively the key lives in the credential store, which cannot be read
-  // synchronously; restoreSessionPrivateKey() populates the cache at startup.
-  if (isNativeRuntime()) {
+  // Where the key lives in a credential store it cannot be read
+  // synchronously, and restoreSessionPrivateKey() populates the cache at
+  // start-up instead. `isNativeRuntime()` answers that for Tauri; React
+  // Native is the same situation but is not Tauri, and is recognised by
+  // having no localStorage at all.
+  //
+  // Without the second test the code below would still return null, because
+  // the throw is caught - but by accident rather than on purpose, and an
+  // accident is not something the next reader can rely on.
+  if (isNativeRuntime() || typeof localStorage === 'undefined') {
     return null;
   }
 

@@ -1,7 +1,7 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { PubkeyHex } from '../types/nostr';
+import test from 'node:test';
 import { computeTimelineRemovalTargets } from '../src/common/deletion-targets.js';
+import type { PubkeyHex } from '../types/nostr';
 
 test('computeTimelineRemovalTargets includes global + user timeline always', () => {
   const author: PubkeyHex = 'a'.repeat(64) as PubkeyHex;

@@ -5,6 +5,9 @@ import {
   recordRelayFailure,
   recordRelaySuccess,
 } from '../features/relays/relays.js';
+import { askUser, canAsk } from './ask.js';
+import { acceptsEvent } from './event-filter.js';
+import { kvGet, kvSet } from './kv.js';
 import { getSessionPrivateKey } from './session.js';
 import { signWithSession } from './signer.js';
 
@@ -49,7 +52,7 @@ interface WindowWithNostr extends Window {
 
 function loadRelayAuthPermissions(): RelayAuthPermissions {
   try {
-    const raw: string | null = localStorage.getItem(RELAY_AUTH_PERMISSIONS_KEY);
+    const raw: string | null = kvGet(RELAY_AUTH_PERMISSIONS_KEY);
     if (!raw) {
       return {};
     }
@@ -73,10 +76,7 @@ function loadRelayAuthPermissions(): RelayAuthPermissions {
 
 function persistRelayAuthPermissions(permissions: RelayAuthPermissions): void {
   try {
-    localStorage.setItem(
-      RELAY_AUTH_PERMISSIONS_KEY,
-      JSON.stringify(permissions),
-    );
+    kvSet(RELAY_AUTH_PERMISSIONS_KEY, JSON.stringify(permissions));
   } catch (error: unknown) {
     console.warn('Failed to persist relay auth permissions:', error);
   }
@@ -87,7 +87,12 @@ function getRelayAuthPermission(relayUrl: string): RelayAuthPermission | null {
   return permissions[relayUrl] || null;
 }
 
-function setRelayAuthPermissionForRelays(
+/** Forgets every stored answer, so nothing granted earlier outlives the switch. */
+export function clearRelayAuthPermissions(): void {
+  persistRelayAuthPermissions({});
+}
+
+export function setRelayAuthPermissionForRelays(
   relayUrls: string[],
   permission: RelayAuthPermission,
 ): void {
@@ -178,11 +183,11 @@ function ensureRelayAuthAllowed(relayUrl: string): boolean {
     return false;
   }
 
-  if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
+  if (!canAsk()) {
     return false;
   }
 
-  const allowed: boolean = window.confirm(
+  const allowed: boolean = askUser(
     `Relay authentication is required.\n\nAllow signing auth challenges for all configured relays?`,
   );
   setRelayAuthPermissionForRelays(
@@ -435,7 +440,15 @@ export async function openRelaySubscription(
   const connection: SharedRelayConnection =
     await ensureSharedRelaySocket(relayUrl);
   const subId: string = `sub-${Math.random().toString(36).slice(2)}`;
-  connection.subscriptions.set(subId, subscription);
+  // Nothing a relay sends is passed on until it is shown to be a genuine
+  // event that answers this filter. Every caller assumes both.
+  const guarded: SharedRelaySubscription = {
+    ...subscription,
+    onEvent: (event: NostrEvent): void => {
+      if (acceptsEvent(filter, event)) subscription.onEvent?.(event);
+    },
+  };
+  connection.subscriptions.set(subId, guarded);
   connection.socket?.send(JSON.stringify(['REQ', subId, filter]));
 
   return (): void => {

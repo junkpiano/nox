@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "nox",
+    "slug": "nox",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "garden.nox.rn",
+      "associatedDomains": ["applinks:nox.garden"]
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "garden.nox.rn",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/npub1" },
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/nprofile1" },
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/note1" },
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/nevent1" },
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/t/" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": ["nox", "nostr", "web+nostr"],
+    "plugins": ["expo-status-bar", "expo-secure-store", "expo-sqlite"]
+  }
+}

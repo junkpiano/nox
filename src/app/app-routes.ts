@@ -43,9 +43,11 @@ import {
   seenEventIds,
   syncRelays,
 } from './app-state.js';
+import { clearNewPosts, stopNewPostsPolling } from './new-posts-row.js';
 
 type RouteDependencies = {
   startBackgroundFetch: (followedPubkeys: PubkeyHex[]) => void;
+  startGlobalBackgroundFetch: () => void;
 };
 
 let routeDependencies: RouteDependencies | null = null;
@@ -221,17 +223,11 @@ function escapeHtml(text: string): string {
 }
 
 function stopBackgroundFetch(): void {
-  if (appState.backgroundFetchInterval) {
-    clearInterval(appState.backgroundFetchInterval);
-    appState.backgroundFetchInterval = null;
-  }
+  stopNewPostsPolling();
 }
 
 function clearNewPostsNotification(): void {
-  const notification = document.getElementById('new-posts-notification');
-  if (notification) {
-    notification.remove();
-  }
+  clearNewPosts();
 }
 
 function resetNotificationsButtonState(): void {
@@ -960,11 +956,15 @@ export async function loadGlobalPage(
     if (restored.restored && isRouteActive()) {
       appState.untilTimestamp =
         restored.oldestTimestamp || Math.floor(Date.now() / 1000);
+      getRouteDependencies().startGlobalBackgroundFetch();
       return;
     }
   }
 
   if (output) {
+    // Started before the load rather than after it: the poll skips
+    // until there is something on screen to be newer than.
+    getRouteDependencies().startGlobalBackgroundFetch();
     const { loadGlobalTimeline } = await getGlobalTimelineModule();
     await loadGlobalTimeline(
       appState.relays,

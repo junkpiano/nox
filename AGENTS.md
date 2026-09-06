@@ -142,11 +142,14 @@ src/
    (`src/common/deletion-gate.ts`: one kind 5 query per batch, answers
    remembered), stored in IndexedDB
 5. `renderEvent()` generates HTML cards
+6. Every 30 seconds a poll asks for newer posts; they wait behind a
+   "N new posts" row at the top of the list until clicked (`new-posts-row.ts`,
+   rule shared with native in `src/common/new-posts.ts`)
 
 **Global timeline:**
 1. `loadGlobalTimeline()` subscribes to all kind 1 events via rx-nostr
 2. Author profiles fetched on-demand and cached in IndexedDB
-3. Background polling checks for new posts every 30 seconds
+3. Same 30-second poll and new-posts row as home
 
 **Event page (`/nevent1...` / `/note1...`):**
 1. Decode nevent with nip19, extract event ID + relay hints

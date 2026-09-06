@@ -2,6 +2,7 @@ import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import {
   fetchFollowList,
   fetchLatestFollowListEvent,
+  lookupFollowList,
 } from '../../common/events-queries.js';
 import { createMoreMenu } from '../../common/more-menu.js';
 import { isMuted } from '../../common/mute-state.js';
@@ -9,6 +10,7 @@ import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getSessionPrivateKey } from '../../common/session.js';
 import { canWrite, signWithSession } from '../../common/signer.js';
 import { recordRelayFailure } from '../relays/relays.js';
+import { nextFollowListTags } from './follow-list.js';
 
 interface FollowToggleOptions {
   getRelays: () => string[];
@@ -167,46 +169,32 @@ export async function setupFollowToggle(
       // legacy relay JSON in `content`.
       // Every relay gets its say here: the list published next replaces
       // whatever the slowest relay was holding.
-      const currentEvent: NostrEvent | null = await fetchLatestFollowListEvent(
+      const lookup = await lookupFollowList(
         storedPubkey as PubkeyHex,
         options.getRelays(),
         { waitForAll: true },
       );
+      const currentEvent: NostrEvent | null = lookup.event;
 
-      // A null result means every relay failed or returned nothing — we do NOT
-      // know the real follow list. Publishing here would broadcast a list built
-      // from scratch and wipe the user's follows network-wide. Abort instead.
-      if (!currentEvent) {
-        throw new Error(
-          'Could not load your current follow list from any relay; not modifying it to avoid wiping your follows.',
-        );
-      }
-
-      const existingTags: string[][] = currentEvent.tags;
-      const alreadyFollowing: boolean = existingTags.some(
-        (tag: string[]): boolean => tag[0] === 'p' && tag[1] === targetPubkey,
+      // The rules for editing a kind 3 without destroying it live in
+      // follow-list.ts, shared with the native app and covered by tests. A
+      // null event throws there, for the reason it always did: every relay
+      // failing looks exactly like "you follow nobody", and publishing the
+      // second reading would wipe the first one's follows network-wide.
+      const tags: string[][] = nextFollowListTags(
+        lookup,
+        targetPubkey,
+        !isFollowing,
       );
-
-      let tags: string[][];
-      if (isFollowing) {
-        // Unfollow: drop only the target's `p` tag, keep everything else intact.
-        tags = existingTags.filter(
-          (tag: string[]): boolean =>
-            !(tag[0] === 'p' && tag[1] === targetPubkey),
-        );
-      } else {
-        // Follow: append the target unless it's somehow already present.
-        tags = alreadyFollowing
-          ? existingTags
-          : [...existingTags, ['p', targetPubkey]];
-      }
 
       const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
         kind: 3,
         pubkey: storedPubkey as PubkeyHex,
         created_at: Math.floor(Date.now() / 1000),
         tags,
-        content: currentEvent.content,
+        // Carried over untouched: some clients still keep a relay list in here
+        // as JSON, and this one does not understand it well enough to rewrite.
+        content: currentEvent?.content ?? '',
       };
 
       const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
@@ -227,43 +215,6 @@ export async function setupFollowToggle(
   });
 }
 
-export async function publishEventToRelays(
-  event: NostrEvent,
-  relayList: string[],
-): Promise<void> {
-  const promises = relayList.map(async (relayUrl: string): Promise<void> => {
-    try {
-      const socket: WebSocket = createRelayWebSocket(relayUrl);
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          recordRelayFailure(relayUrl);
-          socket.close();
-          resolve();
-        }, 5000);
-
-        socket.onopen = (): void => {
-          socket.send(JSON.stringify(['EVENT', event]));
-        };
-
-        socket.onmessage = (msg: MessageEvent): void => {
-          const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'OK') {
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          }
-        };
-
-        socket.onerror = (): void => {
-          clearTimeout(timeout);
-          socket.close();
-          resolve();
-        };
-      });
-    } catch (e) {
-      console.warn(`Failed to publish event to ${relayUrl}:`, e);
-    }
-  });
-
-  await Promise.allSettled(promises);
-}
+// Moved to common/publish-event.ts, which does not import the DOM, and
+// re-exported so the eight modules importing it from here still work.
+export { publishEventToRelays } from '../../common/publish-event.js';

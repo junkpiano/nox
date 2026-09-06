@@ -37,9 +37,30 @@ export function detectPlatform(userAgent: string, isNative: boolean): Platform {
   return 'other';
 }
 
+/**
+ * Set by a runtime that knows the answer outright.
+ *
+ * React Native does. It has no user agent to sniff and is not Tauri, so the
+ * detection below would call an iPhone `web` and offer the wallet on exactly
+ * the platform whose store forbids it. A wrong answer here is not a cosmetic
+ * bug, so the runtime states the fact rather than leaving it to be inferred.
+ */
+let declared: Platform | null = null;
+
+export function setPlatform(platform: Platform): void {
+  declared = platform;
+}
+
 /** The platform this document is running on. */
 export function currentPlatform(): Platform {
-  return detectPlatform(navigator.userAgent, isNativeRuntime());
+  if (declared) {
+    return declared;
+  }
+  // Optional, because a user agent is a browser thing and this file is not
+  // only used in one.
+  const userAgent: string =
+    typeof navigator === 'undefined' ? '' : (navigator.userAgent ?? '');
+  return detectPlatform(userAgent, isNativeRuntime());
 }
 
 /**

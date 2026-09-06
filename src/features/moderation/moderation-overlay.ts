@@ -217,11 +217,19 @@ function showPostActions(
   eventId: string,
   name: string,
   options: ModerationOverlayOptions,
+  onDelete?: () => Promise<void>,
 ): void {
   const muted: boolean = isMuted(pubkey);
 
   const overlay: HTMLDivElement = createOverlay(`
     <div class="space-y-2">
+      ${
+        onDelete
+          ? `<button id="action-delete" type="button" class="w-full rounded bg-red-50 px-4 py-3 text-left font-semibold text-red-700 hover:bg-red-100">
+              Delete this post
+            </button>`
+          : ''
+      }
       <button id="action-mute" type="button" class="nox-muted-button w-full rounded px-4 py-3 text-left font-semibold">
         ${muted ? 'Unmute this account' : 'Mute this account'}
       </button>
@@ -233,6 +241,34 @@ function showPostActions(
       </button>
     </div>
   `);
+
+  const deleteButton = overlay.querySelector(
+    '#action-delete',
+  ) as HTMLButtonElement | null;
+  deleteButton?.addEventListener('click', (): void => {
+    void (async (): Promise<void> => {
+      // "Ask" rather than "delete": NIP-09 is a request. Relays may keep it,
+      // and copies other people hold are theirs.
+      const confirmed: boolean = window.confirm(
+        'Ask the relays to delete this post?\n\nThey are not obliged to, and ' +
+          'anyone who already has a copy keeps it.',
+      );
+      if (!confirmed || !onDelete) {
+        return;
+      }
+      deleteButton.disabled = true;
+      deleteButton.classList.add('opacity-60', 'cursor-not-allowed');
+      try {
+        await onDelete();
+        closeOverlay();
+      } catch (error: unknown) {
+        console.error('Failed to delete event:', error);
+        alert('Failed to delete post. Please try again.');
+        deleteButton.disabled = false;
+        deleteButton.classList.remove('opacity-60', 'cursor-not-allowed');
+      }
+    })();
+  });
 
   overlay
     .querySelector('#action-cancel')
@@ -261,8 +297,14 @@ export function setupModerationOverlay(
   window.addEventListener('request-post-actions', ((
     event: CustomEvent,
   ): void => {
-    const { pubkey, eventId, name } = event.detail;
-    showPostActions(pubkey as PubkeyHex, eventId, name ?? '', options);
+    const { pubkey, eventId, name, onDelete } = event.detail;
+    showPostActions(
+      pubkey as PubkeyHex,
+      eventId,
+      name ?? '',
+      options,
+      onDelete,
+    );
   }) as EventListener);
 
   window.addEventListener('request-report-content', ((

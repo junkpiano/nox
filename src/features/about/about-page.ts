@@ -1,5 +1,3 @@
-import type { SetActiveNavFn } from '../../common/types.js';
-
 /**
  * Where donations for nox go.
  *
@@ -7,7 +5,22 @@ import type { SetActiveNavFn } from '../../common/types.js';
  * behind it can be swapped without reprinting the address everywhere it has
  * already been published — including a shipped Android build.
  */
-const ZAP_ADDRESS: string = 'zap@nox.garden';
+import {
+  nipLabel,
+  nipUrl,
+  SUPPORTED_NIPS,
+  type SupportedNip,
+  ZAP_ADDRESS,
+} from '../../common/supported-nips.js';
+import type { SetActiveNavFn } from '../../common/types.js';
+
+/** The list the phone's About page draws from too. */
+function renderNipList(): string {
+  return SUPPORTED_NIPS.map(
+    (entry: SupportedNip): string =>
+      `<li><a href="${nipUrl(entry.nip)}" target="_blank" rel="noopener noreferrer" class="font-semibold text-sky-900 underline">${nipLabel(entry.nip)}</a>: ${entry.title}${entry.note ? ` <span class="text-xs text-sky-700">(${entry.note})</span>` : ''}</li>`,
+  ).join('\n          ');
+}
 
 interface AboutPageOptions {
   closeAllWebSockets: () => void;
@@ -105,15 +118,8 @@ export function loadAboutPage(options: AboutPageOptions): void {
 
       <section class="bg-sky-50 border border-sky-200 rounded-lg p-5">
         <h3 class="text-base font-bold text-sky-900 mb-3">Supported NIPs</h3>
-        <p class="mb-2 text-xs text-sky-800">
-          Based on implemented features in recent git history.
-        </p>
         <ul class="space-y-2 list-disc list-inside">
-          <li><span class="font-semibold">NIP-05:</span> identifier resolution for profiles (e.g. user@domain.com).</li>
-          <li><span class="font-semibold">NIP-07:</span> browser extension signing/auth flow support.</li>
-          <li><span class="font-semibold">NIP-30:</span> custom emoji tags in posts, reactions, and profile metadata.</li>
-          <li><span class="font-semibold">NIP-36:</span> content warning tags with hide/reveal behavior.</li>
-          <li><span class="font-semibold">NIP-65:</span> relay list import/publish for kind 10002 relay metadata.</li>
+          ${renderNipList()}
         </ul>
       </section>
 
