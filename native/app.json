@@ -9,7 +9,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "garden.nox.rn",
-      "associatedDomains": ["applinks:nox.garden", "applinks:www.nox.garden"]
+      "associatedDomains": ["applinks:nox.garden"]
     },
     "android": {
       "adaptiveIcon": {
@@ -25,8 +25,11 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/" },
-            { "scheme": "https", "host": "www.nox.garden", "pathPrefix": "/" }
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/npub1" },
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/nprofile1" },
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/note1" },
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/nevent1" },
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/t/" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }

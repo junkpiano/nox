@@ -109,7 +109,6 @@ const linking: LinkingOptions<RootStackParamList> = {
     'nostr:',
     'web+nostr:',
     'https://nox.garden',
-    'https://www.nox.garden',
   ],
   getStateFromPath: (path: string) => {
     const target = resolveNostrLink(path);
