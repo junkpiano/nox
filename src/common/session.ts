@@ -215,9 +215,12 @@ export async function storeSessionPrivateKey(
   rawKey: string,
 ): Promise<PubkeyHex> {
   const secretBytes: Uint8Array = parsePrivateKey(rawKey);
+  // Deriving the public key is also the check that the scalar is a valid
+  // key at all; it comes before anything is written, so a rejected key
+  // leaves nothing behind.
+  const pubkey: PubkeyHex = getPublicKey(secretBytes);
   await writeSecret(PRIVATE_KEY_STORAGE_KEY, secretBytes);
   sessionPrivateKey = secretBytes;
-  const pubkey: PubkeyHex = getPublicKey(secretBytes);
   beginSignedInSession(pubkey);
   return pubkey;
 }

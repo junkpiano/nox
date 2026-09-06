@@ -40,6 +40,9 @@ function utf8ToBytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
 
+/** Bumped by every clear, so a read from before it cannot land after it. */
+let generation: number = 0;
+
 function announceChange(): void {
   emitAppEvent('wallet-connection-changed');
 }
@@ -55,6 +58,10 @@ export async function loadWalletConnection(): Promise<NwcConnection | null> {
     return cached;
   }
 
+  // A read still out when the connection is cleared - the account changed
+  // while the store was being asked - must not bring the old secret back.
+  // Clearing bumps the generation; a read from before it lands nowhere.
+  const mine: number = generation;
   try {
     const meta = await getMetadata<StoredConnectionMeta>(META_KEY);
     if (!meta?.walletPubkey) {
@@ -70,6 +77,7 @@ export async function loadWalletConnection(): Promise<NwcConnection | null> {
       return null;
     }
 
+    if (mine !== generation) return cached;
     cached = {
       walletPubkey: meta.walletPubkey,
       relay: meta.relay,
@@ -80,6 +88,7 @@ export async function loadWalletConnection(): Promise<NwcConnection | null> {
     console.warn('[wallet] Failed to load the wallet connection:', error);
   }
 
+  if (mine !== generation) return cached;
   loaded = true;
   return cached;
 }
@@ -125,6 +134,7 @@ export async function getWalletAlias(): Promise<string | null> {
 
 /** Removes the connection. The wallet itself is untouched. */
 export async function clearWalletConnection(): Promise<void> {
+  generation += 1;
   cached = null;
   loaded = true;
   await deleteSecret(SECRET_KEY);
