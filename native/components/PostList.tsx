@@ -13,7 +13,7 @@ import { guardWrite, hasViewer } from '../lib/read-only';
  * holds every card in the DOM, and this does not.
  */
 
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -474,7 +474,9 @@ export default function PostList({
     (): TimelinePost[] =>
       posts.filter(
         (post: TimelinePost): boolean =>
-          !isMuted(post.pubkey) && !isMutedContent(post.content),
+          !isMuted(post.pubkey) &&
+          !(post.repostedBy && isMuted(post.repostedBy.pubkey)) &&
+          !isMutedContent(post.content),
       ),
     [posts, muteVersion],
   );
@@ -483,6 +485,17 @@ export default function PostList({
     visible.map((post: TimelinePost): string => post.id),
   );
   const list = useRef<FlatList<TimelinePost>>(null);
+  // The tab tapped again goes back to the top - but only the list that is
+  // on screen; the others keep their place.
+  const focused: boolean = useIsFocused();
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('scroll-to-top', (): void => {
+        if (focused)
+          list.current?.scrollToOffset({ offset: 0, animated: true });
+      }),
+    [focused],
+  );
 
   const showNew = (): void => {
     onShowNew?.();

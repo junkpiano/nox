@@ -87,6 +87,11 @@ function getRelayAuthPermission(relayUrl: string): RelayAuthPermission | null {
   return permissions[relayUrl] || null;
 }
 
+/** Forgets every stored answer, so nothing granted earlier outlives the switch. */
+export function clearRelayAuthPermissions(): void {
+  persistRelayAuthPermissions({});
+}
+
 export function setRelayAuthPermissionForRelays(
   relayUrls: string[],
   permission: RelayAuthPermission,

@@ -11,7 +11,7 @@
  * page, not a broken one.
  */
 
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -78,6 +78,7 @@ export default function Notifications() {
   useEffect(
     (): (() => void) =>
       onAppEvent('session-changed', (): void => {
+        loadGeneration.current += 1;
         setViewer(readViewer());
         setItems(null);
         setScoped(null);
@@ -106,14 +107,31 @@ export default function Notifications() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation<Nav>();
+  const list = useRef<FlatList<Notification>>(null);
+  const focused: boolean = useIsFocused();
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('scroll-to-top', (): void => {
+        if (focused)
+          list.current?.scrollToOffset({ offset: 0, animated: true });
+      }),
+    [focused],
+  );
   // Only the newest ask may draw: Following waits on a relay round trip,
   // and a tap back to All in that time must not be overwritten by it.
   const generation = useRef(0);
 
+  // Each load is numbered; a load still out when the account changes lands
+  // nothing. The scope generation below is the same idea for the filter.
+  const loadGeneration = useRef(0);
   const load = useCallback(async (): Promise<void> => {
     if (!viewer) return;
+    const mine: number = ++loadGeneration.current;
     try {
-      const result = await loadNotifications(viewer, setStage);
+      const result = await loadNotifications(viewer, (stage: string): void => {
+        if (mine === loadGeneration.current) setStage(stage);
+      });
+      if (mine !== loadGeneration.current) return;
       setItems(result.notifications);
       setStats(
         `${result.stats.events} from others / ${result.stats.relays} relays / ` +
@@ -121,7 +139,7 @@ export default function Notifications() {
       );
       setError(null);
     } catch (e: any) {
-      setError(String(e?.message ?? e));
+      if (mine === loadGeneration.current) setError(String(e?.message ?? e));
     }
   }, [viewer]);
 
@@ -237,6 +255,7 @@ export default function Notifications() {
       ) : null}
       {stats ? <Text style={styles.stats}>{stats}</Text> : null}
       <FlatList
+        ref={list}
         data={visible}
         keyExtractor={(item: Notification) => item.id}
         extraData={scoping}

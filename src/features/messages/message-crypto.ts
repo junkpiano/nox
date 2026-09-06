@@ -85,8 +85,15 @@ const NIP44_CHUNK_CHARS: number = 16000;
 
 function chunked(text: string): string[] {
   const parts: string[] = [];
-  for (let at = 0; at < text.length; at += NIP44_CHUNK_CHARS) {
-    parts.push(text.slice(at, at + NIP44_CHUNK_CHARS));
+  let at = 0;
+  while (at < text.length) {
+    let end: number = Math.min(text.length, at + NIP44_CHUNK_CHARS);
+    // A cut between the two halves of a surrogate pair would turn an emoji
+    // into two broken characters on the way back; the pair stays together.
+    const last: number = text.charCodeAt(end - 1);
+    if (end < text.length && last >= 0xd800 && last <= 0xdbff) end += 1;
+    parts.push(text.slice(at, end));
+    at = end;
   }
   return parts.length > 0 ? parts : [''];
 }

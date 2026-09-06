@@ -182,6 +182,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   // quote card cover such a post; opened directly - from a notification, a
   // link, a reply - the root was drawn in full. It is covered here too.
   const [revealed, setRevealed] = useState(false);
+  // The screen is reused for the next thread; a reveal given to one post is
+  // not given to the next.
+  useEffect((): void => {
+    setRevealed(false);
+  }, [eventId]);
   const [reposting, setReposting] = useState(false);
   const [draft, setDraft] = useState('');
   const [reporting, setReporting] = useState(false);

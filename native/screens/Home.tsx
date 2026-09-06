@@ -121,7 +121,7 @@ export default function Home({ active = true }: { active?: boolean }) {
         setOldestCreatedAt(result.oldestCreatedAt);
         setCacheKey(result.cacheKey);
         setStats(
-          `${result.stats.follows} follows / ${result.stats.events} events / ` +
+          `${result.stats.follows ?? '?'} follows / ${result.stats.events} events / ` +
             `${result.stats.profiles} profiles / ${result.stats.relays} relays / ` +
             `${(result.stats.ms / 1000).toFixed(1)}s` +
             (result.stats.muted > 0
@@ -179,6 +179,10 @@ export default function Home({ active = true }: { active?: boolean }) {
    */
   const onRefresh = useCallback(async (): Promise<void> => {
     if (!pubkey) return;
+    // A refresh is numbered like a load: one still out when the account
+    // changes must not merge the previous account's posts into this one's.
+    const mine: number = ++loadGeneration.current;
+    const live = (): boolean => mine === loadGeneration.current;
     setRefreshing(true);
     try {
       if (!filter || posts.length === 0) {
@@ -189,6 +193,7 @@ export default function Home({ active = true }: { active?: boolean }) {
         ...posts.map((post: TimelinePost): number => post.createdAt),
       );
       const fresh: TimelinePost[] = await loadNewerPosts(filter, newest + 1);
+      if (!live()) return;
       setPosts((previous: TimelinePost[]): TimelinePost[] =>
         mergeTimelinePosts(previous, fresh),
       );
@@ -196,7 +201,7 @@ export default function Home({ active = true }: { active?: boolean }) {
     } catch {
       // The posts on screen are still the posts on screen.
     } finally {
-      setRefreshing(false);
+      if (live()) setRefreshing(false);
     }
   }, [pubkey, filter, posts, load, forget]);
 
@@ -228,7 +233,7 @@ export default function Home({ active = true }: { active?: boolean }) {
         follows === 0
           ? 'You are not following anyone yet. Posts from people you follow appear here.'
           : follows === null
-            ? 'Nothing here yet.'
+            ? 'No follow list was found on your relays.'
             : 'No recent posts from the people you follow.'
       }
       pendingCount={pendingCount}

@@ -39,9 +39,9 @@ import {
   findDeletedIds,
   getCachedDeletionStatus,
 } from '../../src/common/deletion-gate';
-import { fetchFollowList } from '../../src/common/events-queries';
 import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
+import { fetchFollowSet } from '../../src/common/notification-filter';
 import { queryRelays } from '../../src/common/relay-query';
 import { isRepost, readRepost, unwrapRepost } from '../../src/common/repost';
 import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
@@ -121,7 +121,8 @@ export interface TimelineResult {
   /** Where this timeline lives in the cache; null for one that is not kept. */
   cacheKey: TimelineKey | null;
   stats: {
-    follows: number;
+    /** How many people the follow list named; null when no list was read. */
+    follows: number | null;
     events: number;
     profiles: number;
     relays: number;
@@ -233,7 +234,10 @@ export async function loadHomeTimeline(
   );
 
   onStage('follow list...');
-  const follows: PubkeyHex[] = await fetchFollowList(viewer, relays);
+  // The shared reader: silence from every relay is an error, and relays
+  // that answered without a list give null - neither is "follows nobody".
+  const followSet: Set<PubkeyHex> | null = await fetchFollowSet(viewer, relays);
+  const follows: PubkeyHex[] = followSet ? Array.from(followSet) : [];
   // Seeing your own posts in your own timeline is the web app's behaviour too.
   const authors: PubkeyHex[] = Array.from(new Set([viewer, ...follows])).slice(
     0,
@@ -260,7 +264,7 @@ export async function loadHomeTimeline(
     oldestCreatedAt: oldestOf(events),
     cacheKey,
     stats: {
-      follows: follows.length,
+      follows: followSet ? followSet.size : null,
       events: events.length,
       profiles: decorated.profileCount,
       relays: relays.length,
@@ -564,7 +568,7 @@ export async function loadHashtagTimeline(
     // A tag is a question the cache is not indexed to answer.
     cacheKey: null,
     stats: {
-      follows: 0,
+      follows: null,
       events: events.length,
       profiles: decorated.profileCount,
       relays: relays.length,
@@ -715,7 +719,7 @@ export async function loadGlobalTimeline(
     oldestCreatedAt: oldestOf(events),
     cacheKey,
     stats: {
-      follows: 0,
+      follows: null,
       events: events.length,
       profiles: decorated.profileCount,
       relays: relays.length,
