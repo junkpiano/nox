@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["XXXXXXXXXX.garden.nox.rn"],
+        "components": [
+          { "/": "/npub1*", "comment": "a person" },
+          { "/": "/nprofile1*", "comment": "a person, with relay hints" },
+          { "/": "/note1*", "comment": "a note" },
+          { "/": "/nevent1*", "comment": "a note, with relay hints" },
+          { "/": "/t/*", "comment": "a hashtag" }
+        ]
+      }
+    ]
+  }
+}
