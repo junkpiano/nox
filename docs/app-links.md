@@ -19,8 +19,12 @@ itself: a Netlify preview cannot vouch for anything.
 
 `assetlinks.json` names the package `garden.nox.rn` and the SHA-256 of the
 certificate the installed app is signed with. Android checks the file once,
-when the app is installed or updated, and only for links whose host the
-manifest names (`nox.garden`, `www.nox.garden`).
+when the app is installed or updated, and only for links whose host and
+path the manifest names: `nox.garden` under `/npub1`, `/nprofile1`,
+`/note1`, `/nevent1` and `/t/`. Any other path on the site stays in the
+browser, which is where the privacy policy and the terms belong. There is
+no `www.nox.garden`; it does not resolve, and a host that does not exist
+cannot vouch.
 
 The fingerprint in the file is the **debug keystore's**
 (`native/android/app/debug.keystore`). Both the debug and the release build
