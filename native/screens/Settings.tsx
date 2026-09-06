@@ -54,14 +54,13 @@ function Elsewhere() {
 
   const rows: Array<{
     label: string;
-    to: 'Wallet' | 'Relays' | 'Checks' | 'Likes' | 'About';
+    to: 'Wallet' | 'Relays' | 'Likes' | 'About';
   }> = [
     { label: '♡ Likes', to: 'Likes' },
     ...(hidesWallet()
       ? []
       : ([{ label: '⚡ Lightning wallet', to: 'Wallet' }] as const)),
     { label: '📡 Relays', to: 'Relays' },
-    { label: '🧪 Shared code', to: 'Checks' },
     { label: 'ℹ️ About nox', to: 'About' },
   ];
 
