@@ -6,6 +6,7 @@ import {
   recordRelaySuccess,
 } from '../features/relays/relays.js';
 import { askUser, canAsk } from './ask.js';
+import { acceptsEvent } from './event-filter.js';
 import { kvGet, kvSet } from './kv.js';
 import { getSessionPrivateKey } from './session.js';
 import { signWithSession } from './signer.js';
@@ -434,7 +435,15 @@ export async function openRelaySubscription(
   const connection: SharedRelayConnection =
     await ensureSharedRelaySocket(relayUrl);
   const subId: string = `sub-${Math.random().toString(36).slice(2)}`;
-  connection.subscriptions.set(subId, subscription);
+  // Nothing a relay sends is passed on until it is shown to be a genuine
+  // event that answers this filter. Every caller assumes both.
+  const guarded: SharedRelaySubscription = {
+    ...subscription,
+    onEvent: (event: NostrEvent): void => {
+      if (acceptsEvent(filter, event)) subscription.onEvent?.(event);
+    },
+  };
+  connection.subscriptions.set(subId, guarded);
   connection.socket?.send(JSON.stringify(['REQ', subId, filter]));
 
   return (): void => {
