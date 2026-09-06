@@ -31,6 +31,13 @@ browser, which is where the privacy policy and the terms belong. There is
 no `www.nox.garden`; it does not resolve, and a host that does not exist
 cannot vouch.
 
+The filter that ships is the one in the generated Android project,
+`native/android/`, which is `expo prebuild` output and not in git. The build
+script regenerates it only when the directory is missing, so after changing
+`android.intentFilters` in `native/app.json`, delete `native/android` (or run
+`npx expo prebuild --platform android --no-install` in `native/`) before
+building, or the old filter ships.
+
 The fingerprint in the file is the **debug keystore's**
 (`native/android/app/debug.keystore`). Both the debug and the release build
 type sign with it today, so it is the only certificate that exists. When a
