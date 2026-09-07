@@ -531,6 +531,9 @@ export async function decorateEvents(
   // carried every author and may have hit the cap on a large batch. Anyone
   // still standing who was cut off is asked about now - a small question,
   // and only when the cap actually bit.
+  const asked: Set<string> = new Set(
+    Array.from(new Set(allAuthors)).slice(0, MAX_AUTHORS),
+  );
   const missing: PubkeyHex[] = Array.from(
     new Set(
       live.flatMap((event: NostrEvent): PubkeyHex[] => {
@@ -540,9 +543,10 @@ export async function decorateEvents(
         const named: PubkeyHex[] = reposted
           ? [event.pubkey as PubkeyHex, reposted.pubkey as PubkeyHex]
           : [event.pubkey as PubkeyHex];
-        return named.filter(
-          (pubkey: PubkeyHex): boolean => !profiles.has(pubkey),
-        );
+        // Only those the cap cut off. Somebody with no kind 0 at all was
+        // asked about and simply has none; asking again would repeat a
+        // question that has already been answered with silence.
+        return named.filter((pubkey: PubkeyHex): boolean => !asked.has(pubkey));
       }),
     ),
   );
