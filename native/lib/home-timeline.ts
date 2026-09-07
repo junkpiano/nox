@@ -465,18 +465,52 @@ export async function decorateEvents(
   // rather than not at all, and asked about again with the next load.
   // Asked through the shared gate, so what is learned is remembered for the
   // session - the cached first paint of the next screen reads that memory.
-  let deleted: Set<string> = new Set();
-  if (options.deletions === 'remembered') {
-    for (const event of events) {
-      if (getCachedDeletionStatus(event.id) === true) deleted.add(event.id);
-    }
-  } else {
-    try {
-      deleted = await findDeletedIds(relays, events);
-    } catch (error: unknown) {
-      console.warn('[timeline] deletions could not be checked', error);
-    }
-  }
+  //
+  // Asked at the same time as the names below. They are independent
+  // questions - one says which posts to drop, the other what to call the
+  // people in them - and every relay query waits out a grace period for
+  // the slower relays, so asking them in turn paid that wait twice. The
+  // names of a post that turns out to be withdrawn are simply unused.
+  const deletionsAnswer: Promise<Set<string>> =
+    options.deletions === 'remembered'
+      ? Promise.resolve(
+          new Set(
+            events
+              .filter(
+                (event: NostrEvent): boolean =>
+                  getCachedDeletionStatus(event.id) === true,
+              )
+              .map((event: NostrEvent): string => event.id),
+          ),
+        )
+      : findDeletedIds(relays, events).catch((error: unknown): Set<string> => {
+          console.warn('[timeline] deletions could not be checked', error);
+          return new Set();
+        });
+
+  // Both the author and, for a repost, whoever passed it on: the card names
+  // them both and a missing name is a hex string on screen. Taken from
+  // every event rather than the survivors, because the question goes out
+  // before the withdrawals are known.
+  const allAuthors: PubkeyHex[] = events.flatMap(
+    (event: NostrEvent): PubkeyHex[] => {
+      const reposted: NostrEvent | null = isRepost(event)
+        ? readRepost(event).event
+        : null;
+      return reposted
+        ? [event.pubkey as PubkeyHex, reposted.pubkey as PubkeyHex]
+        : [event.pubkey as PubkeyHex];
+    },
+  );
+  const [deleted, profiles]: [Set<string>, Map<string, ProfileMeta>] =
+    await Promise.all([
+      deletionsAnswer,
+      fetchProfilesForPubkeys(
+        allAuthors,
+        relays,
+        options.profiles ?? 'cached-then-relays',
+      ),
+    ]);
   forgetWithdrawn(Array.from(deleted), options.cacheKey ?? null);
   // Machine output - a note whose whole body is a JSON object - is judged
   // on what would be shown, so a repost of a heartbeat goes with it.
@@ -491,24 +525,6 @@ export async function decorateEvents(
       if (filterMutedEvents(judged).length !== judged.length) return false;
       return withoutMachineContent([shown]).length === 1;
     },
-  );
-
-  // Both the author and, for a repost, whoever passed it on: the card names
-  // them both and a missing name is a hex string on screen.
-  const authors: PubkeyHex[] = live.flatMap(
-    (event: NostrEvent): PubkeyHex[] => {
-      const reposted: NostrEvent | null = isRepost(event)
-        ? readRepost(event).event
-        : null;
-      return reposted
-        ? [event.pubkey as PubkeyHex, reposted.pubkey as PubkeyHex]
-        : [event.pubkey as PubkeyHex];
-    },
-  );
-  const profiles: Map<string, ProfileMeta> = await fetchProfilesForPubkeys(
-    authors,
-    relays,
-    options.profiles ?? 'cached-then-relays',
   );
 
   const posts: TimelinePost[] = live
