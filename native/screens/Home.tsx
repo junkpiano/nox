@@ -112,6 +112,15 @@ export default function Home({ active = true }: { active?: boolean }) {
               setLoading(false);
               setRefreshing(true);
             },
+            // The relays have answered; the names and the withdrawal
+            // check have not. The posts go up now and are replaced when
+            // they are dressed.
+            onFetched: (posts: TimelinePost[]): void => {
+              if (!live()) return;
+              setPosts(posts);
+              setLoading(false);
+              setRefreshing(true);
+            },
           },
         );
         if (!live()) return;
