@@ -33,7 +33,10 @@ import {
   contentWarningSummary,
   getContentWarning,
 } from '../../src/common/content-warning';
-import { getCachedDeletionStatus } from '../../src/common/deletion-gate';
+import {
+  cacheDeletionStatus,
+  getCachedDeletionStatus,
+} from '../../src/common/deletion-gate';
 import {
   fetchRepliesForEvent,
   isEventDeleted,
@@ -285,6 +288,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           relays,
         );
         void withdrawal.then((gone: boolean): void => {
+          // Remembered for the session, so reopening this thread draws it
+          // as withdrawn from the first frame instead of showing the body
+          // again while the relays are asked - or leaving it up if they
+          // have gone quiet since.
+          if (gone) cacheDeletionStatus(root.id, true);
           if (cancelled || !gone) return;
           setData(
             (previous: ThreadData | null): ThreadData => ({
