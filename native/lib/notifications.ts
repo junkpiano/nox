@@ -6,13 +6,14 @@
  * reply to your own post is a conversation you are already having, not news.
  */
 
+import type { EmojiMap } from '../../src/common/content-segments';
 import { isMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { openRelaySubscription } from '../../src/common/relay-socket';
 import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
-import { pictureUrl } from './avatar';
+import { customEmojiOf, pictureUrl } from './avatar';
 
 const NOTIFICATION_KINDS: number[] = [1, 6, 7];
 const LIMIT: number = 200;
@@ -20,6 +21,9 @@ const TIMEOUT_MS: number = 9000;
 const MAX_AUTHORS: number = 300;
 
 export type NotificationKind = 'reaction' | 'repost' | 'reply';
+
+/** One empty map, shared: a name without emoji is the usual case. */
+const EMPTY_EMOJI: EmojiMap = new Map();
 
 export interface Notification {
   id: string;
@@ -31,6 +35,8 @@ export interface Notification {
   /** The event of yours this concerns, when the tags name one. */
   targetId: string | null;
   name: string;
+  /** NIP-30: the pictures the author put in their own name. */
+  emoji: EmojiMap;
   picture: string | null;
 }
 
@@ -146,8 +152,10 @@ export async function loadNotifications(
     authors,
   });
 
-  const names: Map<string, { name: string; picture: string | null }> =
-    new Map();
+  const names: Map<
+    string,
+    { name: string; emoji: EmojiMap; picture: string | null }
+  > = new Map();
   const at: Map<string, number> = new Map();
   for (const event of profileEvents) {
     const previous = at.get(event.pubkey);
@@ -156,6 +164,9 @@ export async function loadNotifications(
       const meta = JSON.parse(event.content);
       names.set(event.pubkey, {
         name: str(meta.display_name) || str(meta.name),
+        emoji: customEmojiOf(
+          event.tags.filter((tag: string[]): boolean => tag[0] === 'emoji'),
+        ),
         picture: pictureUrl(meta.picture),
       });
       at.set(event.pubkey, event.created_at);
@@ -183,6 +194,7 @@ export async function loadNotifications(
         content: unwrapRepost(event).event?.content ?? '',
         targetId: targetOf(event),
         name: str(meta?.name) || `${event.pubkey.slice(0, 8)}...`,
+        emoji: meta?.emoji ?? EMPTY_EMOJI,
         picture: meta?.picture ?? null,
       };
     });

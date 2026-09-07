@@ -46,6 +46,7 @@ import {
 } from '../lib/use-own-reactions';
 import { useSessionVersion } from '../lib/use-session-version';
 import { useUserStatuses } from '../lib/use-user-statuses';
+import EmojiText from './EmojiText';
 import PostBody from './PostBody';
 import PostMenu from './PostMenu';
 import QuoteCard from './QuoteCard';
@@ -96,13 +97,20 @@ export function PostRow({
       </Pressable>
       <View style={styles.rowBody}>
         <View style={styles.rowHead}>
-          <Text style={styles.name} numberOfLines={1} onPress={onOpenProfile}>
-            {post.name}
-          </Text>
+          <EmojiText
+            text={post.name}
+            emoji={post.nameEmoji}
+            style={styles.name}
+            numberOfLines={1}
+            onPress={onOpenProfile}
+          />
           {post.repostedBy ? (
-            <Text style={styles.badge} numberOfLines={1}>
-              ⇄ {post.repostedBy.name}
-            </Text>
+            <EmojiText
+              text={`⇄ ${post.repostedBy.name}`}
+              emoji={post.repostedBy.emoji}
+              style={styles.badge}
+              numberOfLines={1}
+            />
           ) : null}
           <Text style={styles.time} numberOfLines={1}>
             {timeAgo(post.createdAt)}

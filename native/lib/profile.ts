@@ -159,6 +159,14 @@ export async function loadProfile(
       (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
     )[0] ?? null;
   const meta: NostrProfile | null = profileJson(newest);
+  if (meta && newest) {
+    // The kind 0's emoji tags go into the cache with it. Without them this
+    // write would replace an entry that had them, and every card drawn
+    // afterwards would show the shortcodes again.
+    meta.emojiTags = newest.tags.filter(
+      (tag: string[]): boolean => tag[0] === 'emoji',
+    );
+  }
   if (meta) {
     storeProfile(pubkey, meta).catch((): void => {});
   }

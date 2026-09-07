@@ -44,6 +44,7 @@ import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import EmojiText from '../components/EmojiText';
 import PostBody from '../components/PostBody';
 import { PostRow } from '../components/PostList';
 import ReportSheet from '../components/ReportSheet';
@@ -51,6 +52,7 @@ import { customEmojiOf } from '../lib/avatar';
 import {
   decorateEvents,
   fetchProfilesForPubkeys,
+  type ProfileMeta,
   type TimelinePost,
 } from '../lib/home-timeline';
 import {
@@ -102,11 +104,7 @@ function Author({
   large?: boolean;
 }) {
   const navigation = useNavigation<Nav>();
-  const [meta, setMeta] = useState<{
-    name: string;
-    picture: string | null;
-    nip05: string | null;
-  } | null>(null);
+  const [meta, setMeta] = useState<ProfileMeta | null>(null);
 
   useEffect((): (() => void) => {
     let cancelled = false;
@@ -143,12 +141,12 @@ function Author({
         />
       )}
       <View style={styles.authorText}>
-        <Text
+        <EmojiText
+          text={meta?.name || `${pubkey.slice(0, 8)}...`}
+          emoji={meta?.emoji}
           style={[styles.authorName, large && styles.authorNameLarge]}
           numberOfLines={1}
-        >
-          {meta?.name || `${pubkey.slice(0, 8)}...`}
-        </Text>
+        />
         {meta?.nip05 ? (
           <Text style={styles.authorNip05} numberOfLines={1}>
             {meta.nip05}

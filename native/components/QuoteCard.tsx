@@ -38,6 +38,7 @@ import {
   fetchProfilesForPubkeys,
   type ProfileMeta,
 } from '../lib/home-timeline';
+import EmojiText from './EmojiText';
 import RichText from './RichText';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -133,9 +134,12 @@ export default function QuoteCard({ eventId, relays }: QuoteCardProps) {
       ) : (
         <View style={[styles.avatar, styles.avatarBlank]} />
       )}
-      <Text style={styles.name} numberOfLines={1}>
-        {author?.name || `${quoted.pubkey.slice(0, 8)}...`}
-      </Text>
+      <EmojiText
+        text={author?.name || `${quoted.pubkey.slice(0, 8)}...`}
+        emoji={author?.emoji}
+        style={styles.name}
+        numberOfLines={1}
+      />
     </View>
   );
 

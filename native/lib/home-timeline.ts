@@ -13,6 +13,7 @@
  */
 
 import { readClientName } from '../../src/common/client-tag';
+import type { EmojiMap } from '../../src/common/content-segments';
 import {
   type ContentWarning,
   getContentWarning,
@@ -47,7 +48,7 @@ import { isRepost, readRepost, unwrapRepost } from '../../src/common/repost';
 import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
-import { pictureUrl } from './avatar';
+import { customEmojiOf, pictureUrl } from './avatar';
 
 /** Kinds the home timeline shows. Mirrors `homeKinds` in the web app. */
 const HOME_KINDS: number[] = [1, 6];
@@ -72,6 +73,8 @@ export interface TimelinePost {
   content: string;
   kind: number;
   name: string;
+  /** NIP-30: the pictures the author put in their own name. */
+  nameEmoji: EmojiMap;
   picture: string | null;
   nip05: string | null;
   /** NIP-36, as the author set it. Never inferred from the text. */
@@ -96,7 +99,11 @@ export interface TimelinePost {
    * so a card that renders `content` shows a wall of `{"id":"..."}`. The row
    * carries the reposted event and says who passed it on.
    */
-  repostedBy: { pubkey: PubkeyHex; name: string } | null;
+  repostedBy: {
+    pubkey: PubkeyHex;
+    name: string;
+    emoji: EmojiMap;
+  } | null;
   /**
    * Set when a repost carried no readable copy of its target - only the `e`
    * tag. The card fetches it, the way it fetches a quote, instead of showing
@@ -136,6 +143,8 @@ export interface ProfileMeta {
   name: string;
   picture: string | null;
   nip05: string | null;
+  /** NIP-30: the pictures this person put in their own name. */
+  emoji: EmojiMap;
 }
 
 export interface LoadOptions {
@@ -351,6 +360,13 @@ export async function fetchProfilesForPubkeys(
     const previous: number | undefined = profileAt.get(event.pubkey);
     if (previous !== undefined && previous >= event.created_at) continue;
     const raw: NostrProfile | null = profileJson(event);
+    // The event's emoji tags travel with the parsed profile, so the cache
+    // keeps them and a name drawn tomorrow still has its pictures.
+    if (raw) {
+      raw.emojiTags = event.tags.filter(
+        (tag: string[]): boolean => tag[0] === 'emoji',
+      );
+    }
     const meta: ProfileMeta | null = raw ? metaFrom(raw) : null;
     if (!raw || !meta) continue;
     profiles.set(event.pubkey, meta);
@@ -377,16 +393,29 @@ function profileJson(event: NostrEvent): NostrProfile | null {
 }
 
 /** What the card needs from a profile, whichever way it arrived. */
+/** One empty map, shared: a name without emoji is the usual case. */
+const EMPTY_EMOJI: EmojiMap = new Map();
+
 /** A field somebody else wrote is a string only if it is one. */
 function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/**
+ * What the row needs from a profile.
+ *
+ * The emoji come from the kind 0's own `emoji` tags, kept on the parsed
+ * profile as `emojiTags` - the shape the web already stores - because a
+ * name is drawn long after its event has been forgotten.
+ */
 function metaFrom(meta: NostrProfile): ProfileMeta | null {
   return {
     name: str(meta.display_name) || str(meta.name),
     picture: pictureUrl(meta.picture),
     nip05: typeof meta.nip05 === 'string' ? meta.nip05 : null,
+    emoji: customEmojiOf(
+      Array.isArray(meta.emojiTags) ? (meta.emojiTags as string[][]) : [],
+    ),
   };
 }
 
@@ -506,6 +535,7 @@ export async function decorateEvents(
         content: reposted || !isRepost(event) ? shown.content : '',
         kind: shown.kind,
         name: meta?.name || `${shown.pubkey.slice(0, 8)}...`,
+        nameEmoji: meta?.emoji ?? EMPTY_EMOJI,
         picture: meta?.picture ?? null,
         nip05: meta?.nip05 ?? null,
         warning: getContentWarning(shown),
@@ -515,6 +545,7 @@ export async function decorateEvents(
           ? {
               pubkey: event.pubkey as PubkeyHex,
               name: sharer?.name || `${event.pubkey.slice(0, 8)}...`,
+              emoji: sharer?.emoji ?? EMPTY_EMOJI,
             }
           : null,
         repostTargetId:
