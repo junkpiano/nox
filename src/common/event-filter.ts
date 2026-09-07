@@ -13,7 +13,7 @@
  * does not know is ignored rather than failing everything.
  */
 
-import { getEventHash, verifyEvent } from 'nostr-tools';
+import { getEventHash, verifiedSymbol, verifyEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
 
 /**
@@ -107,10 +107,20 @@ export function acceptsEvent(
   if (!wellFormed(event)) return false;
   if (!matchesFilter(filter, event)) return false;
   try {
+    // An id is the hash of the signed fields. An event whose id is not
+    // that hash is refused before anything else is considered: it is the
+    // one check that makes the rest of this safe to reason about.
+    if (getEventHash(event) !== event.id) return false;
     // The same event from a second relay is a second object, and
     // nostr-tools remembers its work per object rather than per event.
-    if (verified.has(event.id) && getEventHash(event) === event.id) {
-      return true;
+    // The id having just been confirmed as this content's hash, a
+    // remembered id is a signature already checked against this content.
+    if (verified.has(event.id)) return true;
+    // nostr-tools writes that per-object memory onto the event, and a
+    // spread copies it, so an object built from a verified one arrives
+    // claiming to be verified. The claim is removed before asking.
+    if (verifiedSymbol in event) {
+      delete (event as { [verifiedSymbol]?: boolean })[verifiedSymbol];
     }
     if (!verifyEvent(event)) return false;
     rememberVerified(event.id);

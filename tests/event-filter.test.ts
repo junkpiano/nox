@@ -5,7 +5,12 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
+import {
+  finalizeEvent,
+  generateSecretKey,
+  getEventHash,
+  getPublicKey,
+} from 'nostr-tools';
 import { acceptsEvent, matchesFilter } from '../src/common/event-filter.js';
 import type { NostrEvent } from '../types/nostr';
 
@@ -71,7 +76,8 @@ test('filter: tag filters, since and until, and id prefixes', () => {
 });
 
 test('accepts: the same event from a second relay is not re-forged', () => {
-  const event = signed(me, 1);
+  // Its own event, so no earlier test can have remembered it already.
+  const event = signed(me, 1, [['t', 'second-delivery']]);
   const filter = { kinds: [1], authors: [ME] };
   assert.ok(acceptsEvent(filter, event));
   // A second delivery: a different object, the same content.
@@ -79,5 +85,24 @@ test('accepts: the same event from a second relay is not re-forged', () => {
   // An event borrowing that id with different content is still refused.
   assert.ok(
     !acceptsEvent(filter, { ...event, content: 'not what was signed' }),
+  );
+});
+
+test('accepts: an event cannot claim to have been verified already', () => {
+  // nostr-tools writes its answer onto the event object, and a spread
+  // carries that mark to a copy. A copy with different content, and its
+  // id recomputed so the hash matches, must still be refused - and must
+  // not leave that id behind as one that has been checked.
+  const event = signed(me, 1, [['t', 'copied-mark']]);
+  const filter = { kinds: [1], authors: [ME] };
+  assert.ok(acceptsEvent(filter, event));
+
+  const forged = { ...event, content: 'never signed' } as NostrEvent;
+  forged.id = getEventHash(forged);
+  assert.ok(!acceptsEvent(filter, forged), 'a forged copy is refused');
+  // And the wire delivery of that same content, with no mark at all.
+  assert.ok(
+    !acceptsEvent(filter, JSON.parse(JSON.stringify(forged))),
+    'the forged content is not remembered as verified',
   );
 });
