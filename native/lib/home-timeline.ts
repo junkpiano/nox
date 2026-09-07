@@ -527,6 +527,34 @@ export async function decorateEvents(
     },
   );
 
+  // The question above went out before the withdrawals were known, so it
+  // carried every author and may have hit the cap on a large batch. Anyone
+  // still standing who was cut off is asked about now - a small question,
+  // and only when the cap actually bit.
+  const missing: PubkeyHex[] = Array.from(
+    new Set(
+      live.flatMap((event: NostrEvent): PubkeyHex[] => {
+        const reposted: NostrEvent | null = isRepost(event)
+          ? readRepost(event).event
+          : null;
+        const named: PubkeyHex[] = reposted
+          ? [event.pubkey as PubkeyHex, reposted.pubkey as PubkeyHex]
+          : [event.pubkey as PubkeyHex];
+        return named.filter(
+          (pubkey: PubkeyHex): boolean => !profiles.has(pubkey),
+        );
+      }),
+    ),
+  );
+  if (missing.length > 0) {
+    const late: Map<string, ProfileMeta> = await fetchProfilesForPubkeys(
+      missing,
+      relays,
+      options.profiles ?? 'cached-then-relays',
+    );
+    for (const [pubkey, meta] of late) profiles.set(pubkey, meta);
+  }
+
   const posts: TimelinePost[] = live
     .slice()
     .sort((a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at)
