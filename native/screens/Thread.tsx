@@ -57,13 +57,17 @@ import {
   type TimelinePost,
 } from '../lib/home-timeline';
 import {
+  LIKE,
   likeEvent,
   NotSignedInError,
   replyToEvent,
   repostEvent,
 } from '../lib/interact';
 import { useOwnReactions } from '../lib/use-own-reactions';
-import { useReactionSummaries } from '../lib/use-reaction-summaries';
+import {
+  countOwnReaction,
+  useReactionSummaries,
+} from '../lib/use-reaction-summaries';
 import { useSessionVersion } from '../lib/use-session-version';
 import { useUserStatuses } from '../lib/use-user-statuses';
 
@@ -359,7 +363,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     await attempt(
       'reaction',
       () => likeEvent(root),
-      (by: PubkeyHex) => own.mark(root.id, 'like', by),
+      (by: PubkeyHex) => {
+        own.mark(root.id, 'like', by);
+        // The badge moves with the heart, as it does on a timeline card.
+        countOwnReaction(root.id, LIKE);
+      },
     );
     setLiking(false);
   };

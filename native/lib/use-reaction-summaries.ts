@@ -16,13 +16,48 @@ import { getRelays } from '../../src/features/relays/relays';
 /** How long a count is believed before that post is asked about again. */
 const TTL_MS: number = 5 * 60 * 1000;
 
+/**
+ * A count the app itself moved is worth less trust than one the relays
+ * gave: it knows an action happened, not who else had already been counted.
+ * So it is asked about again soon rather than believed for the full term.
+ */
+const OPTIMISTIC_TTL_MS: number = 20 * 1000;
+
+/**
+ * How many posts the book remembers. A timeline scrolled all evening would
+ * otherwise grow it without end; the ones asked about longest ago go first,
+ * and a post dropped from the book is simply asked about again.
+ */
+const MAX_REMEMBERED: number = 600;
+
 const known: Map<string, ReactionAggregate[]> = new Map();
 const askedAt: Map<string, number> = new Map();
 const pending: Map<string, Promise<void>> = new Map();
 const listeners: Set<() => void> = new Set();
 
+/**
+ * Every count the app moves itself is numbered, per post. A lookup that
+ * was already out when one happened leaves that post alone: the relays
+ * were asked before the like existed, so their answer is older than it.
+ */
+let edits: number = 0;
+const editedAt: Map<string, number> = new Map();
+
 function announce(): void {
   for (const listener of Array.from(listeners)) listener();
+}
+
+function evictIfCrowded(): void {
+  if (askedAt.size <= MAX_REMEMBERED) return;
+  const oldestFirst: string[] = Array.from(askedAt.entries())
+    .sort((a: [string, number], b: [string, number]): number => a[1] - b[1])
+    .map(([id]: [string, number]): string => id);
+  for (const id of oldestFirst.slice(0, askedAt.size - MAX_REMEMBERED)) {
+    if (pending.has(id)) continue;
+    askedAt.delete(id);
+    known.delete(id);
+    editedAt.delete(id);
+  }
 }
 
 async function ask(ids: string[]): Promise<void> {
@@ -35,11 +70,16 @@ async function ask(ids: string[]): Promise<void> {
   if (fresh.length === 0) return;
 
   for (const id of fresh) askedAt.set(id, now);
+  const startedAt: number = edits;
   const flight: Promise<void> = fetchReactionSummaries(fresh, getRelays())
     .then((found: Map<string, ReactionAggregate[]>): void => {
       // An answer replaces what was held, including with nothing: a
-      // reaction withdrawn elsewhere is not a reaction now.
-      for (const id of fresh) known.set(id, found.get(id) ?? []);
+      // reaction withdrawn elsewhere is not a reaction now. A post the app
+      // itself counted while the question was out keeps the app's answer.
+      for (const id of fresh) {
+        if ((editedAt.get(id) ?? 0) > startedAt) continue;
+        known.set(id, found.get(id) ?? []);
+      }
       announce();
     })
     .catch((): void => {
@@ -49,6 +89,7 @@ async function ask(ids: string[]): Promise<void> {
     })
     .finally((): void => {
       for (const id of fresh) pending.delete(id);
+      evictIfCrowded();
     });
   for (const id of fresh) pending.set(id, flight);
   await flight;
@@ -57,6 +98,10 @@ async function ask(ids: string[]): Promise<void> {
 /**
  * Records a reaction the app just made, so the count moves at once rather
  * than after the next ask.
+ *
+ * This counts an action, not a person: the book does not know whether the
+ * relays had already counted this viewer. So the post is asked about again
+ * shortly, and the relays' answer settles it.
  */
 export function countOwnReaction(eventId: string, content: string): void {
   const entries: ReactionAggregate[] = known.get(eventId) ?? [];
@@ -76,6 +121,8 @@ export function countOwnReaction(eventId: string, content: string): void {
       (a: ReactionAggregate, b: ReactionAggregate): number => b.count - a.count,
     ),
   );
+  editedAt.set(eventId, ++edits);
+  askedAt.set(eventId, Date.now() - TTL_MS + OPTIMISTIC_TTL_MS);
   announce();
 }
 

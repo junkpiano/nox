@@ -36,11 +36,18 @@ function getEmojiTagMap(tags: string[][]): Map<string, string> {
   return emojiMap;
 }
 
+/**
+ * The post a reaction is about.
+ *
+ * NIP-25: the *last* `e` tag is the one being reacted to. A reaction to a
+ * reply carries the root's tag as well, and reading the first one counted
+ * those reactions against the wrong post.
+ */
 export function getTargetEventId(event: NostrEvent): string | null {
-  const eTag: string[] | undefined = event.tags.find(
+  const eTags: string[][] = event.tags.filter(
     (tag: string[]): boolean => tag[0] === 'e' && Boolean(tag[1]),
   );
-  return eTag?.[1] || null;
+  return eTags[eTags.length - 1]?.[1] || null;
 }
 
 export function normalizeReaction(content: string | undefined): string {
@@ -52,9 +59,14 @@ export function getReactionAggregate(
   content: string | undefined,
   tags: string[][],
 ): ReactionAggregate {
+  // The event's own emoji tags are read before the built-in shortcodes,
+  // because a picture the author supplied beats a Unicode character that
+  // happens to share its name: `:smile:` with an `emoji` tag is theirs.
+  const raw: string = (content || '').trim();
+  const suppliedMatch: RegExpMatchArray | null = raw.match(/^:([a-z0-9_]+):$/i);
   const normalizedContent: string = normalizeReaction(content);
   const customMatch: RegExpMatchArray | null =
-    normalizedContent.match(/^:([a-z0-9_]+):$/i);
+    suppliedMatch ?? normalizedContent.match(/^:([a-z0-9_]+):$/i);
   const shortcodeMatch: string | undefined = customMatch?.[1];
   if (shortcodeMatch) {
     const shortcode: string = shortcodeMatch;

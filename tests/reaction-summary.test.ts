@@ -110,6 +110,29 @@ test('summary: an author withdrawing their own reaction removes it; somebody els
   );
 });
 
+test('summary: the last e tag is the post being reacted to', () => {
+  // NIP-25: a reaction to a reply carries the root's tag as well.
+  const summary = summariseReactions(POST, [
+    reaction(one, OTHER_POST, '🔥', [['e', POST]]),
+  ]);
+  assert.equal(summary[0]?.count, 1);
+  assert.deepEqual(
+    summariseReactions(OTHER_POST, [
+      reaction(two, OTHER_POST, '🔥', [['e', POST]]),
+    ]),
+    [],
+  );
+});
+
+test('summary: a supplied picture beats a built-in shortcode of the same name', () => {
+  const url = 'https://example.org/smile.png';
+  const summary = summariseReactions(POST, [
+    reaction(one, POST, ':smile:', [['emoji', 'smile', url]]),
+  ]);
+  assert.equal(summary[0]?.imageUrl, url);
+  assert.equal(summary[0]?.shortcode, 'smile');
+});
+
 test('summary: a custom emoji carries its picture', () => {
   const url = 'https://example.org/party.png';
   const summary = summariseReactions(POST, [
