@@ -9,7 +9,10 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { ReactionAggregate } from '../../src/common/reaction-interactions';
+import {
+  getReactionAggregate,
+  type ReactionAggregate,
+} from '../../src/common/reaction-interactions';
 import { fetchReactionSummaries } from '../../src/common/reaction-summary';
 import { getRelays } from '../../src/features/relays/relays';
 
@@ -148,16 +151,18 @@ function scheduleReconcile(): void {
  */
 export function countOwnReaction(eventId: string, content: string): void {
   const entries: ReactionAggregate[] = known.get(eventId) ?? [];
-  const key: string = `text:${content}`;
+  // Named the way a reaction from the relays would be, or a like made here
+  // would sit beside the likes already counted instead of joining them.
+  const mine: ReactionAggregate = getReactionAggregate(content, []);
   const existing: ReactionAggregate | undefined = entries.find(
-    (entry: ReactionAggregate): boolean => entry.key === key,
+    (entry: ReactionAggregate): boolean => entry.key === mine.key,
   );
   const next: ReactionAggregate[] = existing
     ? entries.map(
         (entry: ReactionAggregate): ReactionAggregate =>
-          entry.key === key ? { ...entry, count: entry.count + 1 } : entry,
+          entry.key === mine.key ? { ...entry, count: entry.count + 1 } : entry,
       )
-    : [...entries, { count: 1, key, content }];
+    : [...entries, mine];
   known.set(
     eventId,
     next.sort(
