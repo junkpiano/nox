@@ -11,10 +11,11 @@
 import { type ImagePolicy, loadableImageUrl } from './avatar.js';
 
 /** Exactly the NIP's alphabet. A colon or a space in a shortcode is not one. */
-const SHORTCODE: RegExp = /^[a-z0-9_]+$/i;
+// NIP-30: alphanumerics, hyphens and underscores.
+const SHORTCODE: RegExp = /^[a-z0-9_-]+$/i;
 
 /** Where the shortcodes are in a run of text. */
-export const SHORTCODE_IN_TEXT: RegExp = /:([a-z0-9_]+):/gi;
+export const SHORTCODE_IN_TEXT: RegExp = /:([a-z0-9_-]+):/gi;
 
 /**
  * The usable emoji on an event, by lowercased shortcode.

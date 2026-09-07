@@ -37,7 +37,8 @@ import { NotSignedInError, type PublishResult, publishSigned } from './publish';
  * means the same thing to most clients, but saying it explicitly leaves less
  * to interpretation.
  */
-const LIKE = '+';
+/** NIP-25: the symbol a like carries. Also what the count shows. */
+export const LIKE = '+';
 
 function requireKey(): Uint8Array {
   if (isReadOnlySession()) {

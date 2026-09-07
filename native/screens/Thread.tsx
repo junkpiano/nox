@@ -51,6 +51,7 @@ import type { RootStackParamList } from '../App';
 import EmojiText from '../components/EmojiText';
 import PostBody from '../components/PostBody';
 import { PostRow } from '../components/PostList';
+import ReactionSummary from '../components/ReactionSummary';
 import ReportSheet from '../components/ReportSheet';
 import { customEmojiOf } from '../lib/avatar';
 import {
@@ -60,12 +61,17 @@ import {
   type TimelinePost,
 } from '../lib/home-timeline';
 import {
+  LIKE,
   likeEvent,
   NotSignedInError,
   replyToEvent,
   repostEvent,
 } from '../lib/interact';
 import { useOwnReactions } from '../lib/use-own-reactions';
+import {
+  countOwnReaction,
+  useReactionSummaries,
+} from '../lib/use-reaction-summaries';
 import { useSessionVersion } from '../lib/use-session-version';
 import { useUserStatuses } from '../lib/use-user-statuses';
 
@@ -176,6 +182,12 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   // Whether you already liked or reposted this, from the shared book: the
   // relays are asked once, and a like made on a card shows here too.
   const own = useOwnReactions(
+    data?.root
+      ? [data.root.id, ...data.replies.map((reply): string => reply.id)]
+      : [],
+  );
+  // Who reacted, for the root and every reply on screen, in one question.
+  const reactions = useReactionSummaries(
     data?.root
       ? [data.root.id, ...data.replies.map((reply): string => reply.id)]
       : [],
@@ -404,7 +416,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     await attempt(
       'reaction',
       () => likeEvent(root),
-      (by: PubkeyHex) => own.mark(root.id, 'like', by),
+      (by: PubkeyHex) => {
+        own.mark(root.id, 'like', by);
+        // The badge moves with the heart, as it does on a timeline card.
+        countOwnReaction(root.id, LIKE);
+      },
     );
     setLiking(false);
   };
@@ -494,6 +510,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
               />
             )}
           </View>
+          {/* Who reacted, counted. Under the post and above the actions:
+              it is about the post, not about what you can do to it. */}
+          {data.deleted ? null : (
+            <ReactionSummary entries={reactions.get(root.id)} />
+          )}
           {hasViewer() && !data.deleted ? (
             <View style={[styles.actions, !canWrite() && styles.actionsOff]}>
               <View style={styles.actionRow}>
@@ -612,6 +633,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           post={item}
           status={statuses.get(item.pubkey) ?? null}
           own={own}
+          reactions={reactions.get(item.id)}
           onOpenThread={(): void =>
             navigation.push('Thread', { eventId: item.id })
           }
