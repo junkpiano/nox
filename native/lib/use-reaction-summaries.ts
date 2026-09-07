@@ -83,6 +83,9 @@ async function ask(ids: string[]): Promise<void> {
       for (const id of fresh) {
         if ((editedAt.get(id) ?? 0) > startedAt) continue;
         known.set(id, found.get(id) ?? []);
+        // This answer is about the post as it stands, so whatever the app
+        // counted for itself is settled.
+        unsettled.delete(id);
       }
       announce();
     })
@@ -111,18 +114,22 @@ const unsettled: Set<string> = new Set();
 let reconciler: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleReconcile(): void {
-  if (reconciler !== null) return;
+  if (reconciler !== null || unsettled.size === 0) return;
   reconciler = setTimeout((): void => {
     reconciler = null;
     const showing: Set<string> = new Set();
     for (const ids of mounted) for (const id of ids()) showing.add(id);
-    const settle: string[] = Array.from(unsettled).filter((id: string) =>
-      showing.has(id),
-    );
-    unsettled.clear();
+    // A post nobody is showing any more needs no settling; one that is
+    // still on screen stays on this list until an answer for it lands,
+    // so a lookup that was skipped, failed, or ignored as stale is tried
+    // again rather than forgotten.
+    for (const id of Array.from(unsettled)) {
+      if (!showing.has(id)) unsettled.delete(id);
+    }
+    const settle: string[] = Array.from(unsettled);
     if (settle.length > 0) {
       // The asked time was backdated when the count moved, so this asks.
-      void ask(settle);
+      void ask(settle).finally((): void => scheduleReconcile());
     }
   }, OPTIMISTIC_TTL_MS);
 }
