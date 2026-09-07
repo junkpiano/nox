@@ -465,18 +465,52 @@ export async function decorateEvents(
   // rather than not at all, and asked about again with the next load.
   // Asked through the shared gate, so what is learned is remembered for the
   // session - the cached first paint of the next screen reads that memory.
-  let deleted: Set<string> = new Set();
-  if (options.deletions === 'remembered') {
-    for (const event of events) {
-      if (getCachedDeletionStatus(event.id) === true) deleted.add(event.id);
-    }
-  } else {
-    try {
-      deleted = await findDeletedIds(relays, events);
-    } catch (error: unknown) {
-      console.warn('[timeline] deletions could not be checked', error);
-    }
-  }
+  //
+  // Asked at the same time as the names below. They are independent
+  // questions - one says which posts to drop, the other what to call the
+  // people in them - and every relay query waits out a grace period for
+  // the slower relays, so asking them in turn paid that wait twice. The
+  // names of a post that turns out to be withdrawn are simply unused.
+  const deletionsAnswer: Promise<Set<string>> =
+    options.deletions === 'remembered'
+      ? Promise.resolve(
+          new Set(
+            events
+              .filter(
+                (event: NostrEvent): boolean =>
+                  getCachedDeletionStatus(event.id) === true,
+              )
+              .map((event: NostrEvent): string => event.id),
+          ),
+        )
+      : findDeletedIds(relays, events).catch((error: unknown): Set<string> => {
+          console.warn('[timeline] deletions could not be checked', error);
+          return new Set();
+        });
+
+  // Both the author and, for a repost, whoever passed it on: the card names
+  // them both and a missing name is a hex string on screen. Taken from
+  // every event rather than the survivors, because the question goes out
+  // before the withdrawals are known.
+  const allAuthors: PubkeyHex[] = events.flatMap(
+    (event: NostrEvent): PubkeyHex[] => {
+      const reposted: NostrEvent | null = isRepost(event)
+        ? readRepost(event).event
+        : null;
+      return reposted
+        ? [event.pubkey as PubkeyHex, reposted.pubkey as PubkeyHex]
+        : [event.pubkey as PubkeyHex];
+    },
+  );
+  const [deleted, profiles]: [Set<string>, Map<string, ProfileMeta>] =
+    await Promise.all([
+      deletionsAnswer,
+      fetchProfilesForPubkeys(
+        allAuthors,
+        relays,
+        options.profiles ?? 'cached-then-relays',
+      ),
+    ]);
   forgetWithdrawn(Array.from(deleted), options.cacheKey ?? null);
   // Machine output - a note whose whole body is a JSON object - is judged
   // on what would be shown, so a repost of a heartbeat goes with it.
@@ -493,23 +527,37 @@ export async function decorateEvents(
     },
   );
 
-  // Both the author and, for a repost, whoever passed it on: the card names
-  // them both and a missing name is a hex string on screen.
-  const authors: PubkeyHex[] = live.flatMap(
-    (event: NostrEvent): PubkeyHex[] => {
-      const reposted: NostrEvent | null = isRepost(event)
-        ? readRepost(event).event
-        : null;
-      return reposted
-        ? [event.pubkey as PubkeyHex, reposted.pubkey as PubkeyHex]
-        : [event.pubkey as PubkeyHex];
-    },
+  // The question above went out before the withdrawals were known, so it
+  // carried every author and may have hit the cap on a large batch. Anyone
+  // still standing who was cut off is asked about now - a small question,
+  // and only when the cap actually bit.
+  const asked: Set<string> = new Set(
+    Array.from(new Set(allAuthors)).slice(0, MAX_AUTHORS),
   );
-  const profiles: Map<string, ProfileMeta> = await fetchProfilesForPubkeys(
-    authors,
-    relays,
-    options.profiles ?? 'cached-then-relays',
+  const missing: PubkeyHex[] = Array.from(
+    new Set(
+      live.flatMap((event: NostrEvent): PubkeyHex[] => {
+        const reposted: NostrEvent | null = isRepost(event)
+          ? readRepost(event).event
+          : null;
+        const named: PubkeyHex[] = reposted
+          ? [event.pubkey as PubkeyHex, reposted.pubkey as PubkeyHex]
+          : [event.pubkey as PubkeyHex];
+        // Only those the cap cut off. Somebody with no kind 0 at all was
+        // asked about and simply has none; asking again would repeat a
+        // question that has already been answered with silence.
+        return named.filter((pubkey: PubkeyHex): boolean => !asked.has(pubkey));
+      }),
+    ),
   );
+  if (missing.length > 0) {
+    const late: Map<string, ProfileMeta> = await fetchProfilesForPubkeys(
+      missing,
+      relays,
+      options.profiles ?? 'cached-then-relays',
+    );
+    for (const [pubkey, meta] of late) profiles.set(pubkey, meta);
+  }
 
   const posts: TimelinePost[] = live
     .slice()

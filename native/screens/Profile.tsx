@@ -510,11 +510,29 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
         if (cancelled) return;
         settled = true;
         setData(result);
+        // The posts as they are, from what is already known, before anyone
+        // is asked anything: the relays answered, and waiting on two more
+        // questions to draw a row that is already in hand reads as the app
+        // having stalled.
+        // Only until the full decoration lands. This one used what was
+        // already known, including a deletion snapshot; letting it arrive
+        // afterwards would put withdrawn posts back on screen.
+        let dressed = false;
+        void decorateEvents(getRelays(), result.posts, {
+          profiles: 'cached',
+          deletions: 'remembered',
+          cacheKey: result.cacheKey,
+        })
+          .then((quick): void => {
+            if (!cancelled && !dressed) setRows(quick.posts);
+          })
+          .catch((): void => {});
         void decorateEvents(getRelays(), result.posts, {
           cacheKey: result.cacheKey,
         })
           .then((decorated): void => {
             if (cancelled) return;
+            dressed = true;
             setRows(decorated.posts);
             setFilter(result.filter);
             setOldestCreatedAt(result.oldestCreatedAt);

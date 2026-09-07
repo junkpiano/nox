@@ -34,6 +34,10 @@ import {
   getContentWarning,
 } from '../../src/common/content-warning';
 import {
+  cacheDeletionStatus,
+  getCachedDeletionStatus,
+} from '../../src/common/deletion-gate';
+import {
   fetchRepliesForEvent,
   isEventDeleted,
 } from '../../src/common/events-queries';
@@ -164,6 +168,10 @@ function Author({
 export default function Thread({ route }: { route: ThreadRoute }) {
   const { eventId } = route.params;
   const [data, setData] = useState<ThreadData | null>(null);
+  // The replies are a second round trip. Until it answers, the heading says
+  // nothing rather than "No replies", which would be a claim the screen
+  // cannot make yet.
+  const [repliesLoading, setRepliesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Whether you already liked or reposted this, from the shared book: the
   // relays are asked once, and a like made on a card shows here too.
@@ -248,14 +256,55 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         }
         if (!root) {
           setData({ root: null, deleted: false, replies: [] });
+          setRepliesLoading(false);
           return;
         }
 
+        // The post goes up now. It is usually already in the cache - you
+        // tapped it in a list - and holding a spinner over it while two
+        // more questions go out is what made opening a post feel slow.
+        // What this session already learned about a withdrawal is applied
+        // at once, so a post known to be gone is never drawn as present;
+        // an answer from the relays replaces this a moment later.
+        // What this session already learned. A later query that finds no
+        // withdrawal does not undo it: `isEventDeleted` answers false for
+        // a timeout as well as for a post nobody withdrew, and a post
+        // known to be gone must not come back because a relay went quiet.
+        const remembered: boolean = getCachedDeletionStatus(root.id) === true;
+        setData({ root, deleted: remembered, replies: [] });
+        setRepliesLoading(true);
+
         // Replies and the deletion check run together: neither depends on the
         // other, and the thread is not readable until both have answered.
+        // Asked together, but applied as each answers: a withdrawal is
+        // about the post and should not wait on a reply's avatar.
+        const withdrawal: Promise<boolean> = isEventDeleted(
+          root.id,
+          root.pubkey as PubkeyHex,
+          relays,
+        );
+        const repliesAnswer: Promise<NostrEvent[]> = fetchRepliesForEvent(
+          root.id,
+          relays,
+        );
+        void withdrawal.then((gone: boolean): void => {
+          // Remembered for the session, so reopening this thread draws it
+          // as withdrawn from the first frame instead of showing the body
+          // again while the relays are asked - or leaving it up if they
+          // have gone quiet since.
+          if (gone) cacheDeletionStatus(root.id, true);
+          if (cancelled || !gone) return;
+          setData(
+            (previous: ThreadData | null): ThreadData => ({
+              root,
+              deleted: true,
+              replies: previous?.replies ?? [],
+            }),
+          );
+        });
         const [deleted, replies] = await Promise.all([
-          isEventDeleted(root.id, root.pubkey as PubkeyHex, relays),
-          fetchRepliesForEvent(root.id, relays),
+          withdrawal,
+          repliesAnswer,
         ]);
         if (cancelled) return;
 
@@ -273,14 +322,18 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         if (cancelled) return;
         setData({
           root,
-          deleted,
+          deleted: remembered || deleted,
           replies: [...decorated.posts].sort(
             (a: TimelinePost, b: TimelinePost): number =>
               a.createdAt - b.createdAt,
           ),
         });
+        setRepliesLoading(false);
       } catch (e: any) {
-        if (!cancelled) setError(String(e?.message ?? e));
+        if (!cancelled) {
+          setError(String(e?.message ?? e));
+          setRepliesLoading(false);
+        }
       }
     })();
 
@@ -537,9 +590,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           ) : null}
 
           <Text style={styles.replyHeading}>
-            {data.replies.length === 0
-              ? 'No replies'
-              : `${data.replies.length} ${data.replies.length === 1 ? 'reply' : 'replies'}`}
+            {repliesLoading
+              ? 'Replies…'
+              : data.replies.length === 0
+                ? 'No replies'
+                : `${data.replies.length} ${data.replies.length === 1 ? 'reply' : 'replies'}`}
           </Text>
         </View>
       }
