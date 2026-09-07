@@ -118,3 +118,18 @@ test('accepts: an event cannot claim to have been verified already', () => {
     'the forged content is not remembered as verified',
   );
 });
+
+test('accepts: a field that answers differently each time cannot slip past', () => {
+  // Everything is judged on one reading, so a getter cannot show one
+  // kind to the filter and another to whoever receives the event.
+  const event = signed(me, 7, [['t', 'shifting']]);
+  let reads = 0;
+  const shifting = {
+    ...event,
+    get kind(): number {
+      reads += 1;
+      return reads === 1 ? 1 : 7;
+    },
+  };
+  assert.ok(!acceptsEvent({ kinds: [1] }, shifting));
+});

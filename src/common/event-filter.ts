@@ -110,11 +110,11 @@ export function verifiedEvent(
   filter: Record<string, unknown>,
   event: unknown,
 ): NostrEvent | null {
+  // Read once, into an object of its own, before a single question is
+  // asked of it: nothing inherited, no getters that could answer one way
+  // here and another way later, and no mark claiming this has already
+  // been checked. Every judgement below is about this copy.
   if (!wellFormed(event)) return null;
-  if (!matchesFilter(filter, event)) return null;
-
-  // Read once, into an object of its own: nothing inherited, no getters,
-  // and no mark claiming this has already been checked.
   const plain: NostrEvent = {
     id: event.id,
     pubkey: event.pubkey,
@@ -124,6 +124,8 @@ export function verifiedEvent(
     content: event.content,
     sig: event.sig,
   } as NostrEvent;
+  if (!wellFormed(plain)) return null;
+  if (!matchesFilter(filter, plain)) return null;
 
   try {
     // An id is the hash of the signed fields. An event whose id is not
