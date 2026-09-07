@@ -27,6 +27,7 @@ import { kvGet } from '../../src/common/kv';
 import { getSessionPrivateKey } from '../../src/common/session';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import EmojiText from '../components/EmojiText';
 import type { ConversationRow } from '../lib/messages';
 import { loadConversations, resolveRecipient } from '../lib/messages';
 
@@ -188,9 +189,12 @@ export default function Messages() {
               )}
               <View style={styles.rowBody}>
                 <View style={styles.rowHead}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {item.name}
-                  </Text>
+                  <EmojiText
+                    text={item.name}
+                    emoji={item.emoji}
+                    style={styles.name}
+                    numberOfLines={1}
+                  />
                   <Text style={styles.meta}>{timeAgo(item.createdAt)}</Text>
                 </View>
                 <Text style={styles.preview} numberOfLines={2}>

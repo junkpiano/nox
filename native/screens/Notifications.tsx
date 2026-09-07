@@ -37,6 +37,7 @@ import {
 import { getRelays } from '../../src/features/relays/relays';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import EmojiText from '../components/EmojiText';
 import { loadNotifications, type Notification } from '../lib/notifications';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -301,7 +302,11 @@ export default function Notifications() {
             </Pressable>
             <View style={styles.rowBody}>
               <Text style={styles.line} numberOfLines={1}>
-                <Text style={styles.name}>{item.name}</Text>
+                <EmojiText
+                  text={item.name}
+                  emoji={item.emoji}
+                  style={styles.name}
+                />
                 <Text style={styles.verb}> {summarise(item)}</Text>
               </Text>
               {item.kind === 'reply' && item.content ? (

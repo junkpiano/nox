@@ -7,6 +7,7 @@
  * protocol layer has no business knowing about.
  */
 
+import type { EmojiMap } from '../../src/common/content-segments';
 import type {
   Conversation,
   StoredMessage,
@@ -29,6 +30,8 @@ import { fetchProfilesForPubkeys } from './home-timeline';
 export interface ConversationRow {
   peer: PubkeyHex;
   name: string;
+  /** NIP-30: the pictures this person put in their own name. */
+  emoji: EmojiMap;
   picture: string | null;
   preview: string;
   createdAt: number;
@@ -59,6 +62,7 @@ export async function loadConversations(): Promise<ConversationRow[]> {
     return {
       peer: conversation.peer,
       name: meta?.name || `${conversation.peer.slice(0, 8)}...`,
+      emoji: meta?.emoji ?? new Map(),
       picture: meta?.picture ?? null,
       preview: conversation.lastMessage.content,
       createdAt: conversation.lastMessage.createdAt,

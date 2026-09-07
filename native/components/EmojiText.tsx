@@ -17,7 +17,7 @@ import {
 import {
   type ContentSegment,
   type EmojiMap,
-  parseContentSegments,
+  parseEmojiSegments,
 } from '../../src/common/content-segments';
 
 /** An inline picture the height of the line, give or take. */
@@ -48,7 +48,7 @@ export default function EmojiText({
     );
   }
 
-  const segments: ContentSegment[] = parseContentSegments(text, emoji);
+  const segments: ContentSegment[] = parseEmojiSegments(text, emoji);
   const size: number = emojiSize(style);
 
   return (

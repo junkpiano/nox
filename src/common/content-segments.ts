@@ -126,6 +126,20 @@ function decodeEvent(
  * worth relying on: it means a renderer cannot silently drop part of what
  * somebody wrote by failing to handle a kind.
  */
+/**
+ * The shortcodes in a line that is only a line: a name, a label.
+ *
+ * Not `parseContentSegments`: that one finds URLs and mentions first and
+ * leaves their insides alone, which is right for a body and wrong here,
+ * where a name that looks like a link is still just a name.
+ */
+export function parseEmojiSegments(
+  text: string,
+  emoji?: EmojiMap,
+): ContentSegment[] {
+  return withCustomEmoji([{ kind: 'text', text }], emoji);
+}
+
 export function parseContentSegments(
   content: string,
   emoji?: EmojiMap,
