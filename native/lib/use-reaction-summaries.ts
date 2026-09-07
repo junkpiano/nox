@@ -48,11 +48,15 @@ function announce(): void {
 }
 
 function evictIfCrowded(): void {
-  if (askedAt.size <= MAX_REMEMBERED) return;
-  const oldestFirst: string[] = Array.from(askedAt.entries())
-    .sort((a: [string, number], b: [string, number]): number => a[1] - b[1])
-    .map(([id]: [string, number]): string => id);
-  for (const id of oldestFirst.slice(0, askedAt.size - MAX_REMEMBERED)) {
+  // Counted over what is held, not over what was asked: a failed lookup
+  // clears its asked time and would otherwise leave the post it was about
+  // invisible to this bound for good.
+  if (known.size <= MAX_REMEMBERED) return;
+  const oldestFirst: string[] = Array.from(known.keys()).sort(
+    (a: string, b: string): number =>
+      (askedAt.get(a) ?? 0) - (askedAt.get(b) ?? 0),
+  );
+  for (const id of oldestFirst.slice(0, known.size - MAX_REMEMBERED)) {
     if (pending.has(id)) continue;
     askedAt.delete(id);
     known.delete(id);
@@ -95,13 +99,41 @@ async function ask(ids: string[]): Promise<void> {
   await flight;
 }
 
+/** Screens currently drawing counts, so a reconciliation reaches them. */
+const mounted: Set<() => string[]> = new Set();
+
+/**
+ * Posts whose count the app moved itself and which are waiting to be
+ * settled by the relays. Checked on a timer, since nothing else would
+ * ask again while the same posts stay on screen.
+ */
+const unsettled: Set<string> = new Set();
+let reconciler: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleReconcile(): void {
+  if (reconciler !== null) return;
+  reconciler = setTimeout((): void => {
+    reconciler = null;
+    const showing: Set<string> = new Set();
+    for (const ids of mounted) for (const id of ids()) showing.add(id);
+    const settle: string[] = Array.from(unsettled).filter((id: string) =>
+      showing.has(id),
+    );
+    unsettled.clear();
+    if (settle.length > 0) {
+      // The asked time was backdated when the count moved, so this asks.
+      void ask(settle);
+    }
+  }, OPTIMISTIC_TTL_MS);
+}
+
 /**
  * Records a reaction the app just made, so the count moves at once rather
  * than after the next ask.
  *
  * This counts an action, not a person: the book does not know whether the
  * relays had already counted this viewer. So the post is asked about again
- * shortly, and the relays' answer settles it.
+ * once the reconciler fires, and the relays' answer settles it.
  */
 export function countOwnReaction(eventId: string, content: string): void {
   const entries: ReactionAggregate[] = known.get(eventId) ?? [];
@@ -122,7 +154,9 @@ export function countOwnReaction(eventId: string, content: string): void {
     ),
   );
   editedAt.set(eventId, ++edits);
-  askedAt.set(eventId, Date.now() - TTL_MS + OPTIMISTIC_TTL_MS);
+  askedAt.set(eventId, Date.now() - TTL_MS);
+  unsettled.add(eventId);
+  scheduleReconcile();
   announce();
 }
 
@@ -136,9 +170,13 @@ export function useReactionSummaries(
   useEffect((): (() => void) => {
     const listener = (): void => bump((n: number): number => n + 1);
     listeners.add(listener);
-    if (wanted) void ask(wanted.split(','));
+    // What this screen is showing, so a reconciliation knows where to look.
+    const showing = (): string[] => (wanted ? wanted.split(',') : []);
+    mounted.add(showing);
+    if (wanted) void ask(showing());
     return (): void => {
       listeners.delete(listener);
+      mounted.delete(showing);
     };
   }, [wanted]);
 
