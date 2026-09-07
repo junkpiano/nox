@@ -66,11 +66,17 @@ function evictIfCrowded(): void {
     (a: string, b: string): number =>
       (askedAt.get(a) ?? 0) - (askedAt.get(b) ?? 0),
   );
-  for (const id of oldestFirst.slice(0, known.size - MAX_REMEMBERED)) {
+  // Counted as they are actually dropped, not as they are considered: a
+  // list whose oldest entries are all on screen would otherwise free
+  // nothing and stay over the bound for good.
+  let over: number = known.size - MAX_REMEMBERED;
+  for (const id of oldestFirst) {
+    if (over <= 0) break;
     if (pending.has(id) || showing.has(id)) continue;
     askedAt.delete(id);
     known.delete(id);
     editedAt.delete(id);
+    over -= 1;
   }
 }
 
@@ -101,8 +107,14 @@ async function ask(ids: string[]): Promise<void> {
     })
     .catch((): void => {
       // Nobody answered. That is not knowledge about any of these, so they
-      // are asked again rather than shown as having none.
-      for (const id of fresh) askedAt.delete(id);
+      // are asked again rather than shown as having none - and something
+      // has to do the asking, since a screen showing the same posts will
+      // not call again on its own.
+      for (const id of fresh) {
+        askedAt.delete(id);
+        unsettled.add(id);
+      }
+      scheduleReconcile();
     })
     .finally((): void => {
       for (const id of fresh) pending.delete(id);
@@ -113,9 +125,9 @@ async function ask(ids: string[]): Promise<void> {
 }
 
 /**
- * Posts whose count the app moved itself and which are waiting to be
- * settled by the relays. Checked on a timer, since nothing else would
- * ask again while the same posts stay on screen.
+ * Posts still waiting for an answer: one whose count the app moved
+ * itself, or one whose lookup failed. Checked on a timer, since nothing
+ * else would ask again while the same posts stay on screen.
  */
 const unsettled: Set<string> = new Set();
 let reconciler: ReturnType<typeof setTimeout> | null = null;
