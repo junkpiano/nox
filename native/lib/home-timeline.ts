@@ -154,6 +154,13 @@ export interface LoadOptions {
    * the relays take. Not called when the cache is empty or too old.
    */
   onCached?: ((posts: TimelinePost[]) => void) | undefined;
+  /**
+   * Called with the posts the relays just sent, dressed from what is
+   * already known and without asking anyone anything. The names and the
+   * withdrawal check are two more round trips; the posts are in hand
+   * before them, and a screen that waits for them reads as stalled.
+   */
+  onFetched?: ((posts: TimelinePost[]) => void) | undefined;
 }
 
 /**
@@ -261,6 +268,19 @@ export async function loadHomeTimeline(
   });
   rememberTimeline(cacheKey, fetched);
   const events: NostrEvent[] = union(fetched, cachedEvents);
+
+  if (options.onFetched) {
+    try {
+      const quick: Decorated = await decorateEvents(relays, events, {
+        profiles: 'cached',
+        deletions: 'remembered',
+        cacheKey,
+      });
+      options.onFetched(quick.posts);
+    } catch (error: unknown) {
+      console.warn('[timeline] the first paint could not be dressed', error);
+    }
+  }
 
   onStage('profiles...');
   const decorated: Decorated = await decorateEvents(relays, events, {
