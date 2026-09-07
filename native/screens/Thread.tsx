@@ -164,6 +164,10 @@ function Author({
 export default function Thread({ route }: { route: ThreadRoute }) {
   const { eventId } = route.params;
   const [data, setData] = useState<ThreadData | null>(null);
+  // The replies are a second round trip. Until it answers, the heading says
+  // nothing rather than "No replies", which would be a claim the screen
+  // cannot make yet.
+  const [repliesLoading, setRepliesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Whether you already liked or reposted this, from the shared book: the
   // relays are asked once, and a like made on a card shows here too.
@@ -248,8 +252,16 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         }
         if (!root) {
           setData({ root: null, deleted: false, replies: [] });
+          setRepliesLoading(false);
           return;
         }
+
+        // The post goes up now. It is usually already in the cache - you
+        // tapped it in a list - and holding a spinner over it while two
+        // more questions go out is what made opening a post feel slow. A
+        // withdrawal, if the relays report one, replaces it a moment later.
+        setData({ root, deleted: false, replies: [] });
+        setRepliesLoading(true);
 
         // Replies and the deletion check run together: neither depends on the
         // other, and the thread is not readable until both have answered.
@@ -258,6 +270,9 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           fetchRepliesForEvent(root.id, relays),
         ]);
         if (cancelled) return;
+        // What the relays said about the post itself, before the replies
+        // are dressed: a withdrawal should not wait on somebody's avatar.
+        setData({ root, deleted, replies: [] });
 
         // Reached by a link or a notification, this screen bypasses the
         // timeline's filter, so it applies the same one - and then dresses
@@ -279,8 +294,12 @@ export default function Thread({ route }: { route: ThreadRoute }) {
               a.createdAt - b.createdAt,
           ),
         });
+        setRepliesLoading(false);
       } catch (e: any) {
-        if (!cancelled) setError(String(e?.message ?? e));
+        if (!cancelled) {
+          setError(String(e?.message ?? e));
+          setRepliesLoading(false);
+        }
       }
     })();
 
@@ -537,9 +556,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           ) : null}
 
           <Text style={styles.replyHeading}>
-            {data.replies.length === 0
-              ? 'No replies'
-              : `${data.replies.length} ${data.replies.length === 1 ? 'reply' : 'replies'}`}
+            {repliesLoading
+              ? 'Replies…'
+              : data.replies.length === 0
+                ? 'No replies'
+                : `${data.replies.length} ${data.replies.length === 1 ? 'reply' : 'replies'}`}
           </Text>
         </View>
       }
