@@ -263,6 +263,10 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         // What this session already learned about a withdrawal is applied
         // at once, so a post known to be gone is never drawn as present;
         // an answer from the relays replaces this a moment later.
+        // What this session already learned. A later query that finds no
+        // withdrawal does not undo it: `isEventDeleted` answers false for
+        // a timeout as well as for a post nobody withdrew, and a post
+        // known to be gone must not come back because a relay went quiet.
         const remembered: boolean = getCachedDeletionStatus(root.id) === true;
         setData({ root, deleted: remembered, replies: [] });
         setRepliesLoading(true);
@@ -310,7 +314,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
         if (cancelled) return;
         setData({
           root,
-          deleted,
+          deleted: remembered || deleted,
           replies: [...decorated.posts].sort(
             (a: TimelinePost, b: TimelinePost): number =>
               a.createdAt - b.createdAt,
