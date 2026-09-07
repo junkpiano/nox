@@ -100,6 +100,18 @@ test('accepts: an event cannot claim to have been verified already', () => {
   const forged = { ...event, content: 'never signed' } as NostrEvent;
   forged.id = getEventHash(forged);
   assert.ok(!acceptsEvent(filter, forged), 'a forged copy is refused');
+
+  // The mark can also be inherited rather than owned, which no amount of
+  // deleting own properties would remove.
+  const inherited = Object.create(event) as NostrEvent;
+  inherited.content = 'never signed either';
+  inherited.id = getEventHash(inherited);
+  inherited.sig = event.sig;
+  assert.ok(!acceptsEvent(filter, inherited), 'an inherited mark is refused');
+  assert.ok(
+    !acceptsEvent(filter, JSON.parse(JSON.stringify(inherited))),
+    'and that content is not remembered as verified',
+  );
   // And the wire delivery of that same content, with no mark at all.
   assert.ok(
     !acceptsEvent(filter, JSON.parse(JSON.stringify(forged))),

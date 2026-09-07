@@ -13,7 +13,7 @@
  * does not know is ignored rather than failing everything.
  */
 
-import { getEventHash, verifiedSymbol, verifyEvent } from 'nostr-tools';
+import { getEventHash, verifyEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
 
 /**
@@ -97,35 +97,56 @@ export function matchesFilter(
 }
 
 /**
- * Whether to let an event through: well formed, genuinely signed by the
- * key it names, and an answer to the question that was asked.
+ * The event, if it may be let through: well formed, an answer to the
+ * question that was asked, and genuinely signed by the key it names.
+ *
+ * Returns a plain copy of exactly the fields that were checked, and that
+ * copy is what the caller should pass on. An object from a relay is
+ * ordinarily JSON, but one built in this process can carry a prototype,
+ * a getter, or nostr-tools' own "already verified" mark, and then what
+ * was checked and what is used need not be the same thing.
  */
-export function acceptsEvent(
+export function verifiedEvent(
   filter: Record<string, unknown>,
   event: unknown,
-): event is NostrEvent {
-  if (!wellFormed(event)) return false;
-  if (!matchesFilter(filter, event)) return false;
+): NostrEvent | null {
+  if (!wellFormed(event)) return null;
+  if (!matchesFilter(filter, event)) return null;
+
+  // Read once, into an object of its own: nothing inherited, no getters,
+  // and no mark claiming this has already been checked.
+  const plain: NostrEvent = {
+    id: event.id,
+    pubkey: event.pubkey,
+    created_at: event.created_at,
+    kind: event.kind,
+    tags: event.tags.map((tag: string[]): string[] => [...tag]),
+    content: event.content,
+    sig: event.sig,
+  } as NostrEvent;
+
   try {
     // An id is the hash of the signed fields. An event whose id is not
     // that hash is refused before anything else is considered: it is the
-    // one check that makes the rest of this safe to reason about.
-    if (getEventHash(event) !== event.id) return false;
+    // check that makes remembering an id sound at all.
+    if (getEventHash(plain) !== plain.id) return null;
     // The same event from a second relay is a second object, and
     // nostr-tools remembers its work per object rather than per event.
     // The id having just been confirmed as this content's hash, a
     // remembered id is a signature already checked against this content.
-    if (verified.has(event.id)) return true;
-    // nostr-tools writes that per-object memory onto the event, and a
-    // spread copies it, so an object built from a verified one arrives
-    // claiming to be verified. The claim is removed before asking.
-    if (verifiedSymbol in event) {
-      delete (event as { [verifiedSymbol]?: boolean })[verifiedSymbol];
-    }
-    if (!verifyEvent(event)) return false;
-    rememberVerified(event.id);
-    return true;
+    if (verified.has(plain.id)) return plain;
+    if (!verifyEvent(plain)) return null;
+    rememberVerified(plain.id);
+    return plain;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Whether an event may be let through. Prefer `verifiedEvent`. */
+export function acceptsEvent(
+  filter: Record<string, unknown>,
+  event: unknown,
+): event is NostrEvent {
+  return verifiedEvent(filter, event) !== null;
 }
