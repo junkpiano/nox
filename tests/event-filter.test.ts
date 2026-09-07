@@ -69,3 +69,15 @@ test('filter: tag filters, since and until, and id prefixes', () => {
   // Keys the filter check does not know are not a reason to refuse.
   assert.ok(matchesFilter({ limit: 5, search: 'x' }, event));
 });
+
+test('accepts: the same event from a second relay is not re-forged', () => {
+  const event = signed(me, 1);
+  const filter = { kinds: [1], authors: [ME] };
+  assert.ok(acceptsEvent(filter, event));
+  // A second delivery: a different object, the same content.
+  assert.ok(acceptsEvent(filter, JSON.parse(JSON.stringify(event))));
+  // An event borrowing that id with different content is still refused.
+  assert.ok(
+    !acceptsEvent(filter, { ...event, content: 'not what was signed' }),
+  );
+});

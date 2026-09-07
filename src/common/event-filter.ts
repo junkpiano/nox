@@ -13,8 +13,32 @@
  * does not know is ignored rather than failing everything.
  */
 
-import { verifyEvent } from 'nostr-tools';
+import { getEventHash, verifyEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
+
+/**
+ * Events whose signature has been checked, by id.
+ *
+ * Every query fans out to every relay, so the same event arrives several
+ * times as several objects, and a signature check is the most expensive
+ * thing the app does on a phone. An id is the hash of the content, so an
+ * event whose id both matches its own content and is in here carries a
+ * signature that was already checked against exactly this content. The
+ * hash is recomputed each time - cheap - so a forgery cannot borrow an
+ * id it did not earn.
+ */
+const verified: Set<string> = new Set();
+
+/** Ids remembered. Old ones go when it fills; they are simply re-checked. */
+const MAX_VERIFIED: number = 5000;
+
+function rememberVerified(id: string): void {
+  if (verified.size >= MAX_VERIFIED) {
+    const oldest: string | undefined = verified.values().next().value;
+    if (oldest !== undefined) verified.delete(oldest);
+  }
+  verified.add(id);
+}
 
 function isStringArray(value: unknown): value is string[] {
   return (
@@ -83,7 +107,14 @@ export function acceptsEvent(
   if (!wellFormed(event)) return false;
   if (!matchesFilter(filter, event)) return false;
   try {
-    return verifyEvent(event);
+    // The same event from a second relay is a second object, and
+    // nostr-tools remembers its work per object rather than per event.
+    if (verified.has(event.id) && getEventHash(event) === event.id) {
+      return true;
+    }
+    if (!verifyEvent(event)) return false;
+    rememberVerified(event.id);
+    return true;
   } catch {
     return false;
   }
