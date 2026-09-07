@@ -5,7 +5,12 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
+import {
+  finalizeEvent,
+  generateSecretKey,
+  getEventHash,
+  getPublicKey,
+} from 'nostr-tools';
 import { acceptsEvent, matchesFilter } from '../src/common/event-filter.js';
 import type { NostrEvent } from '../types/nostr';
 
@@ -71,7 +76,8 @@ test('filter: tag filters, since and until, and id prefixes', () => {
 });
 
 test('accepts: the same event from a second relay is not re-forged', () => {
-  const event = signed(me, 1);
+  // Its own event, so no earlier test can have remembered it already.
+  const event = signed(me, 1, [['t', 'second-delivery']]);
   const filter = { kinds: [1], authors: [ME] };
   assert.ok(acceptsEvent(filter, event));
   // A second delivery: a different object, the same content.
@@ -80,4 +86,50 @@ test('accepts: the same event from a second relay is not re-forged', () => {
   assert.ok(
     !acceptsEvent(filter, { ...event, content: 'not what was signed' }),
   );
+});
+
+test('accepts: an event cannot claim to have been verified already', () => {
+  // nostr-tools writes its answer onto the event object, and a spread
+  // carries that mark to a copy. A copy with different content, and its
+  // id recomputed so the hash matches, must still be refused - and must
+  // not leave that id behind as one that has been checked.
+  const event = signed(me, 1, [['t', 'copied-mark']]);
+  const filter = { kinds: [1], authors: [ME] };
+  assert.ok(acceptsEvent(filter, event));
+
+  const forged = { ...event, content: 'never signed' } as NostrEvent;
+  forged.id = getEventHash(forged);
+  assert.ok(!acceptsEvent(filter, forged), 'a forged copy is refused');
+
+  // The mark can also be inherited rather than owned, which no amount of
+  // deleting own properties would remove.
+  const inherited = Object.create(event) as NostrEvent;
+  inherited.content = 'never signed either';
+  inherited.id = getEventHash(inherited);
+  inherited.sig = event.sig;
+  assert.ok(!acceptsEvent(filter, inherited), 'an inherited mark is refused');
+  assert.ok(
+    !acceptsEvent(filter, JSON.parse(JSON.stringify(inherited))),
+    'and that content is not remembered as verified',
+  );
+  // And the wire delivery of that same content, with no mark at all.
+  assert.ok(
+    !acceptsEvent(filter, JSON.parse(JSON.stringify(forged))),
+    'the forged content is not remembered as verified',
+  );
+});
+
+test('accepts: a field that answers differently each time cannot slip past', () => {
+  // Everything is judged on one reading, so a getter cannot show one
+  // kind to the filter and another to whoever receives the event.
+  const event = signed(me, 7, [['t', 'shifting']]);
+  let reads = 0;
+  const shifting = {
+    ...event,
+    get kind(): number {
+      reads += 1;
+      return reads === 1 ? 1 : 7;
+    },
+  };
+  assert.ok(!acceptsEvent({ kinds: [1] }, shifting));
 });

@@ -6,7 +6,7 @@ import {
   recordRelaySuccess,
 } from '../features/relays/relays.js';
 import { askUser, canAsk } from './ask.js';
-import { acceptsEvent } from './event-filter.js';
+import { verifiedEvent } from './event-filter.js';
 import { kvGet, kvSet } from './kv.js';
 import { getSessionPrivateKey } from './session.js';
 import { signWithSession } from './signer.js';
@@ -445,7 +445,11 @@ export async function openRelaySubscription(
   const guarded: SharedRelaySubscription = {
     ...subscription,
     onEvent: (event: NostrEvent): void => {
-      if (acceptsEvent(filter, event)) subscription.onEvent?.(event);
+      // The checked copy is what goes on, not the object the relay's
+      // JSON became: they are the same thing here, and where they might
+      // not be, the checked one is the one that was checked.
+      const checked: NostrEvent | null = verifiedEvent(filter, event);
+      if (checked) subscription.onEvent?.(checked);
     },
   };
   connection.subscriptions.set(subId, guarded);
