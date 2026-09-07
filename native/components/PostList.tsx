@@ -34,22 +34,33 @@ import { onAppEvent } from '../../src/common/app-events';
 import { contentWarningSummary } from '../../src/common/content-warning';
 import { isMuted, isMutedContent } from '../../src/common/mute-state';
 import { newPostsLabel } from '../../src/common/new-posts';
+import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 import type { UserStatus } from '../../src/features/profile/user-status';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import { customEmojiOf } from '../lib/avatar';
 import type { TimelinePost } from '../lib/home-timeline';
-import { likeEvent, NotSignedInError, repostEvent } from '../lib/interact';
+import {
+  LIKE,
+  likeEvent,
+  NotSignedInError,
+  repostEvent,
+} from '../lib/interact';
 import {
   type OwnReactionState,
   useOwnReactions,
 } from '../lib/use-own-reactions';
+import {
+  countOwnReaction,
+  useReactionSummaries,
+} from '../lib/use-reaction-summaries';
 import { useSessionVersion } from '../lib/use-session-version';
 import { useUserStatuses } from '../lib/use-user-statuses';
 import EmojiText from './EmojiText';
 import PostBody from './PostBody';
 import PostMenu from './PostMenu';
 import QuoteCard from './QuoteCard';
+import ReactionSummary from './ReactionSummary';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -57,6 +68,7 @@ export function PostRow({
   post,
   status = null,
   own,
+  reactions,
   onOpenThread,
   onOpenProfile,
 }: {
@@ -65,6 +77,8 @@ export function PostRow({
   status?: UserStatus | null;
   /** What you already did to the posts on this screen. */
   own: OwnReactionState;
+  /** Who reacted to this one, counted; absent while the relays are asked. */
+  reactions?: ReactionAggregate[] | undefined;
   onOpenThread: () => void;
   onOpenProfile: () => void;
 }) {
@@ -150,6 +164,7 @@ export function PostRow({
         {post.repostTargetId ? (
           <QuoteCard eventId={post.repostTargetId} />
         ) : null}
+        <ReactionSummary entries={reactions} compact />
         <Actions post={post} own={own} />
       </View>
     </View>
@@ -258,7 +273,11 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
           run(
             'like',
             () => likeEvent(post.event),
-            (by: PubkeyHex) => own.mark(post.id, 'like', by),
+            (by: PubkeyHex) => {
+              own.mark(post.id, 'like', by);
+              // The count moves with the heart rather than at the next ask.
+              countOwnReaction(post.id, LIKE);
+            },
           )
         }
       >
@@ -499,6 +518,10 @@ export default function PostList({
   const own = useOwnReactions(
     visible.map((post: TimelinePost): string => post.id),
   );
+  // Who reacted to the posts on screen, asked once for all of them.
+  const reactions = useReactionSummaries(
+    visible.map((post: TimelinePost): string => post.id),
+  );
   const list = useRef<FlatList<TimelinePost>>(null);
   // The tab tapped again goes back to the top - but only the list that is
   // on screen; the others keep their place.
@@ -541,7 +564,7 @@ export default function PostList({
           ref={list}
           data={visible}
           keyExtractor={(p: TimelinePost) => p.key}
-          extraData={{ sessionVersion, statuses, own }}
+          extraData={{ sessionVersion, statuses, own, reactions }}
           ListHeaderComponent={
             pendingCount > 0 ? (
               <NewPostsRow count={pendingCount} onPress={showNew} />
@@ -552,6 +575,7 @@ export default function PostList({
               post={item}
               status={statuses.get(item.pubkey) ?? null}
               own={own}
+              reactions={reactions.get(item.id)}
               onOpenThread={() =>
                 navigation.push('Thread', { eventId: item.id })
               }
