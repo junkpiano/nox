@@ -53,9 +53,26 @@ test('summary: the same symbol from two people is one row of two', () => {
   ]);
   assert.equal(summary.length, 1);
   assert.equal(summary[0]?.count, 2);
-  // NIP-25's "+" is kept as the author wrote it, the way the web shows it;
-  // only an empty content becomes a heart.
-  assert.equal(summary[0]?.content, '+');
+  // NIP-25 gives "+" and an empty content the same meaning.
+  assert.equal(summary[0]?.content, '❤');
+});
+
+test('summary: the two ways of saying "like" are one badge', () => {
+  const summary = summariseReactions(POST, [
+    reaction(one, POST, '+'),
+    reaction(two, POST, ''),
+  ]);
+  assert.equal(summary.length, 1);
+  assert.equal(summary[0]?.count, 2);
+});
+
+test('summary: a hyphenated shortcode keeps its picture', () => {
+  const url = 'https://example.org/party-parrot.gif';
+  const summary = summariseReactions(POST, [
+    reaction(one, POST, ':party-parrot:', [['emoji', 'party-parrot', url]]),
+  ]);
+  assert.equal(summary[0]?.imageUrl, url);
+  assert.equal(summary[0]?.shortcode, 'party-parrot');
 });
 
 test('summary: one person pressing twice is still one', () => {

@@ -43,6 +43,9 @@ const listeners: Set<() => void> = new Set();
 let edits: number = 0;
 const editedAt: Map<string, number> = new Map();
 
+/** Screens currently drawing counts, so a reconciliation reaches them. */
+const mounted: Set<() => string[]> = new Set();
+
 function announce(): void {
   for (const listener of Array.from(listeners)) listener();
 }
@@ -52,12 +55,16 @@ function evictIfCrowded(): void {
   // clears its asked time and would otherwise leave the post it was about
   // invisible to this bound for good.
   if (known.size <= MAX_REMEMBERED) return;
+  // What a screen is drawing stays: dropping it would empty a badge that
+  // is on screen, and nothing would ask again until the list changed.
+  const showing: Set<string> = new Set();
+  for (const ids of mounted) for (const id of ids()) showing.add(id);
   const oldestFirst: string[] = Array.from(known.keys()).sort(
     (a: string, b: string): number =>
       (askedAt.get(a) ?? 0) - (askedAt.get(b) ?? 0),
   );
   for (const id of oldestFirst.slice(0, known.size - MAX_REMEMBERED)) {
-    if (pending.has(id)) continue;
+    if (pending.has(id) || showing.has(id)) continue;
     askedAt.delete(id);
     known.delete(id);
     editedAt.delete(id);
@@ -101,9 +108,6 @@ async function ask(ids: string[]): Promise<void> {
   for (const id of fresh) pending.set(id, flight);
   await flight;
 }
-
-/** Screens currently drawing counts, so a reconciliation reaches them. */
-const mounted: Set<() => string[]> = new Set();
 
 /**
  * Posts whose count the app moved itself and which are waiting to be

@@ -50,9 +50,17 @@ export function getTargetEventId(event: NostrEvent): string | null {
   return eTags[eTags.length - 1]?.[1] || null;
 }
 
+/**
+ * The symbol a reaction stands for.
+ *
+ * NIP-25 gives "+" and an empty content the same meaning - a like - so
+ * they become the same symbol here. Otherwise one person liking a post
+ * from two clients would be counted twice and shown as two badges.
+ */
 export function normalizeReaction(content: string | undefined): string {
   const trimmed: string = replaceEmojiShortcodes(content || '').trim();
-  return trimmed ? trimmed : '❤';
+  if (!trimmed || trimmed === '+') return '❤';
+  return trimmed;
 }
 
 export function getReactionAggregate(
@@ -63,10 +71,11 @@ export function getReactionAggregate(
   // because a picture the author supplied beats a Unicode character that
   // happens to share its name: `:smile:` with an `emoji` tag is theirs.
   const raw: string = (content || '').trim();
-  const suppliedMatch: RegExpMatchArray | null = raw.match(/^:([a-z0-9_]+):$/i);
+  const suppliedMatch: RegExpMatchArray | null =
+    raw.match(/^:([a-z0-9_-]+):$/i);
   const normalizedContent: string = normalizeReaction(content);
   const customMatch: RegExpMatchArray | null =
-    suppliedMatch ?? normalizedContent.match(/^:([a-z0-9_]+):$/i);
+    suppliedMatch ?? normalizedContent.match(/^:([a-z0-9_-]+):$/i);
   const shortcodeMatch: string | undefined = customMatch?.[1];
   if (shortcodeMatch) {
     const shortcode: string = shortcodeMatch;

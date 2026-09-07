@@ -12,8 +12,20 @@
  */
 
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { loadableImageUrl } from '../../src/common/avatar';
 import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 import { REACTION_SUMMARY_LIMIT } from '../../src/common/reaction-summary';
+
+/**
+ * The most a symbol may be.
+ *
+ * A reaction's content is whatever a stranger signed: usually one emoji,
+ * but nothing stops a paragraph, and a badge is not a place to read one.
+ */
+const MAX_SYMBOL_CHARS: number = 12;
+
+/** Pictures load over https, like every other image the phone draws. */
+const PHONE_IMAGES = { secureOnly: true } as const;
 
 /**
  * What to draw for a symbol.
@@ -25,7 +37,11 @@ import { REACTION_SUMMARY_LIMIT } from '../../src/common/reaction-summary';
 function symbolFor(content: string): string {
   if (content === '+') return '♥';
   if (content === '-') return '👎';
-  return content;
+  // Cut to what a badge can hold, on one line: the rest is not a symbol.
+  const oneLine: string = content.replace(/\s+/g, ' ').trim();
+  return oneLine.length > MAX_SYMBOL_CHARS
+    ? `${oneLine.slice(0, MAX_SYMBOL_CHARS)}…`
+    : oneLine;
 }
 
 export default function ReactionSummary({
@@ -42,20 +58,32 @@ export default function ReactionSummary({
     <View style={[styles.row, compact && styles.rowCompact]}>
       {entries
         .slice(0, REACTION_SUMMARY_LIMIT)
-        .map((entry: ReactionAggregate) => (
-          <View key={entry.key} style={styles.badge}>
-            {entry.imageUrl ? (
-              <Image
-                source={{ uri: entry.imageUrl }}
-                style={styles.emojiImage}
-                accessibilityLabel={entry.shortcode ?? ''}
-              />
-            ) : (
-              <Text style={styles.emoji}>{symbolFor(entry.content)}</Text>
-            )}
-            <Text style={styles.count}>{entry.count}</Text>
-          </View>
-        ))}
+        .map((entry: ReactionAggregate) => {
+          // A picture the author supplied is drawn only if it is one the
+          // phone will load; otherwise the shortcode stands in for it,
+          // which is better than an empty box.
+          const picture: string | null = entry.imageUrl
+            ? loadableImageUrl(entry.imageUrl, PHONE_IMAGES)
+            : null;
+          return (
+            <View key={entry.key} style={styles.badge}>
+              {picture ? (
+                <Image
+                  source={{ uri: picture }}
+                  style={styles.emojiImage}
+                  accessibilityLabel={entry.shortcode ?? ''}
+                />
+              ) : (
+                <Text style={styles.emoji} numberOfLines={1}>
+                  {symbolFor(
+                    entry.shortcode ? `:${entry.shortcode}:` : entry.content,
+                  )}
+                </Text>
+              )}
+              <Text style={styles.count}>{entry.count}</Text>
+            </View>
+          );
+        })}
     </View>
   );
 }
@@ -80,7 +108,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 4,
   },
-  emoji: { fontSize: 13, color: '#e8eeff' },
+  emoji: { fontSize: 13, color: '#e8eeff', maxWidth: 140 },
   emojiImage: { width: 16, height: 16 },
   count: { fontSize: 12, color: '#8ea0c0', fontWeight: '700' },
 });
