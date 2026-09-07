@@ -33,6 +33,7 @@ import {
   contentWarningSummary,
   getContentWarning,
 } from '../../src/common/content-warning';
+import { getCachedDeletionStatus } from '../../src/common/deletion-gate';
 import {
   fetchRepliesForEvent,
   isEventDeleted,
@@ -258,21 +259,42 @@ export default function Thread({ route }: { route: ThreadRoute }) {
 
         // The post goes up now. It is usually already in the cache - you
         // tapped it in a list - and holding a spinner over it while two
-        // more questions go out is what made opening a post feel slow. A
-        // withdrawal, if the relays report one, replaces it a moment later.
-        setData({ root, deleted: false, replies: [] });
+        // more questions go out is what made opening a post feel slow.
+        // What this session already learned about a withdrawal is applied
+        // at once, so a post known to be gone is never drawn as present;
+        // an answer from the relays replaces this a moment later.
+        const remembered: boolean = getCachedDeletionStatus(root.id) === true;
+        setData({ root, deleted: remembered, replies: [] });
         setRepliesLoading(true);
 
         // Replies and the deletion check run together: neither depends on the
         // other, and the thread is not readable until both have answered.
+        // Asked together, but applied as each answers: a withdrawal is
+        // about the post and should not wait on a reply's avatar.
+        const withdrawal: Promise<boolean> = isEventDeleted(
+          root.id,
+          root.pubkey as PubkeyHex,
+          relays,
+        );
+        const repliesAnswer: Promise<NostrEvent[]> = fetchRepliesForEvent(
+          root.id,
+          relays,
+        );
+        void withdrawal.then((gone: boolean): void => {
+          if (cancelled || !gone) return;
+          setData(
+            (previous: ThreadData | null): ThreadData => ({
+              root,
+              deleted: true,
+              replies: previous?.replies ?? [],
+            }),
+          );
+        });
         const [deleted, replies] = await Promise.all([
-          isEventDeleted(root.id, root.pubkey as PubkeyHex, relays),
-          fetchRepliesForEvent(root.id, relays),
+          withdrawal,
+          repliesAnswer,
         ]);
         if (cancelled) return;
-        // What the relays said about the post itself, before the replies
-        // are dressed: a withdrawal should not wait on somebody's avatar.
-        setData({ root, deleted, replies: [] });
 
         // Reached by a link or a notification, this screen bypasses the
         // timeline's filter, so it applies the same one - and then dresses
