@@ -7,6 +7,7 @@
  */
 
 import type { PubkeyHex } from '../../../types/nostr';
+import { kvGet } from '../../common/kv.js';
 import { isMuted } from '../../common/mute-state.js';
 import { muteUser, reportContent, unmuteUser } from './moderation-actions.js';
 import type { ReportType } from './report.js';
@@ -220,6 +221,9 @@ function showPostActions(
   onDelete?: () => Promise<void>,
 ): void {
   const muted: boolean = isMuted(pubkey);
+  // Muting yourself is meaningless and reporting yourself is noise for relay
+  // operators, so a sheet opened on your own post offers only the deletion.
+  const own: boolean = Boolean(onDelete) && pubkey === kvGet('nostr_pubkey');
 
   const overlay: HTMLDivElement = createOverlay(`
     <div class="space-y-2">
@@ -230,12 +234,16 @@ function showPostActions(
             </button>`
           : ''
       }
-      <button id="action-mute" type="button" class="nox-muted-button w-full rounded px-4 py-3 text-left font-semibold">
+      ${
+        own
+          ? ''
+          : `<button id="action-mute" type="button" class="nox-muted-button w-full rounded px-4 py-3 text-left font-semibold">
         ${muted ? 'Unmute this account' : 'Mute this account'}
       </button>
       <button id="action-report" type="button" class="nox-muted-button w-full rounded px-4 py-3 text-left font-semibold">
         Report this post
-      </button>
+      </button>`
+      }
       <button id="action-cancel" type="button" class="nox-muted-button w-full rounded px-4 py-3 font-semibold">
         Cancel
       </button>
