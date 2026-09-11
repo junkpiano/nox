@@ -92,16 +92,18 @@ export function PostRow({
   const [revealed, setRevealed] = useState(false);
 
   /*
-   * The row is not one big button.
+   * The whole row opens the post, and the parts that mean something else
+   * say so first.
    *
-   * It was, and the picture inside it could not be tapped: a Pressable inside
-   * a Pressable does not reliably win the touch, so tapping an image opened
-   * the thread instead of the picture. Each part now owns its own target -
-   * the face and the name go to the person, the words go to the thread, the
-   * picture opens itself, and the actions act.
+   * Only the words used to carry it, which left the time, the address, the
+   * status line and every piece of empty space doing nothing - and an
+   * image-only post with no way in at all. A touch goes to the innermost
+   * thing that claims it, so the face and the name still go to the person,
+   * a picture still opens itself, and the actions still act; what is left
+   * over now opens the post instead of nothing.
    */
   return (
-    <View style={styles.row}>
+    <Pressable style={styles.row} onPress={onOpenThread}>
       <Pressable onPress={onOpenProfile} hitSlop={6}>
         {post.picture ? (
           <Image source={{ uri: post.picture }} style={styles.avatar} />
@@ -167,7 +169,7 @@ export function PostRow({
         <ReactionSummary entries={reactions} compact />
         <Actions post={post} own={own} />
       </View>
-    </View>
+    </Pressable>
   );
 }
 
