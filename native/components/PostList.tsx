@@ -101,9 +101,14 @@ export function PostRow({
    * thing that claims it, so the face and the name still go to the person,
    * a picture still opens itself, and the actions still act; what is left
    * over now opens the post instead of nothing.
+   *
+   * `accessible={false}` because a pressable is one element to a screen
+   * reader, and the row's children are exactly what a screen reader needs
+   * to reach one at a time. It keeps the reader on the same path it had
+   * before: the post's own words, which open the post when activated.
    */
   return (
-    <Pressable style={styles.row} onPress={onOpenThread}>
+    <Pressable style={styles.row} onPress={onOpenThread} accessible={false}>
       <Pressable onPress={onOpenProfile} hitSlop={6}>
         {post.picture ? (
           <Image source={{ uri: post.picture }} style={styles.avatar} />
