@@ -95,19 +95,29 @@ export default function ImageViewer({
   const gestureStart = useRef({ distance: 0, scale: 1, x: 0, y: 0 });
   const lastTap = useRef(0);
   const gesture = useRef<Gesture>('undecided');
+  // Each opening is its own session, so a throw still in the air cannot close
+  // the picture that opened after it.
+  const session = useRef(0);
   // The responder is built once, so it reads the picture count and the screen
   // through a ref rather than closing over the first render's values.
-  const frame = useRef({ width: 0, count: 0 });
+  const frame = useRef({ width: 0, height: 0, count: 0 });
 
   useEffect((): void => {
     if (index !== null) {
       setCurrent(index);
       // A viewer opened again starts where it opens, not where the last
-      // gesture left it: the values outlive the closed state.
+      // gesture left it: the values outlive the closed state. Opening is
+      // where they are put back, because a picture thrown off the screen has
+      // to stay thrown until it is gone.
+      session.current += 1;
       swipeX.setValue(0);
       dismissY.setValue(0);
+      scale.setValue(1);
+      translateX.setValue(0);
+      translateY.setValue(0);
+      committed.current = { scale: 1, x: 0, y: 0 };
     }
-  }, [index, swipeX, dismissY]);
+  }, [index, swipeX, dismissY, scale, translateX, translateY]);
 
   const reset = (): void => {
     committed.current = { scale: 1, x: 0, y: 0 };
@@ -184,10 +194,29 @@ export default function ImageViewer({
   };
 
   const close = (): void => {
-    swipeX.setValue(0);
-    dismissY.setValue(0);
-    reset();
     onClose();
+  };
+
+  /**
+   * Let a picture that was thrown go on falling. Putting it back to the middle
+   * first showed it whole for a moment before the screen faded, which reads as
+   * the app catching it and then dropping it anyway. It leaves the way it was
+   * sent, and the ground is already gone by the time it is off the screen.
+   */
+  const throwOut = (direction: 1 | -1, height: number): void => {
+    const thrown: number = session.current;
+    Animated.timing(dismissY, {
+      toValue: direction * height,
+      duration: 160,
+      useNativeDriver: true,
+    }).start((): void => {
+      // Interrupted counts as dismissed - the picture is off the screen
+      // either way - unless another one has opened since, which is the one
+      // case where closing would take away something nobody threw.
+      if (session.current === thrown) {
+        onClose();
+      }
+    });
   };
 
   const responder: PanResponderInstance = useRef(
@@ -263,7 +292,7 @@ export default function ImageViewer({
       },
 
       onPanResponderRelease: (_event, move): void => {
-        const { width, count } = frame.current;
+        const { width, height, count } = frame.current;
 
         if (gesture.current === 'swipe') {
           gesture.current = 'undecided';
@@ -290,7 +319,7 @@ export default function ImageViewer({
             Math.abs(move.dy) > DISMISS_DISTANCE ||
             Math.abs(move.vy) > DISMISS_VELOCITY;
           if (letGo) {
-            close();
+            throwOut(move.dy < 0 ? -1 : 1, height);
           } else {
             Animated.spring(dismissY, {
               toValue: 0,
@@ -345,7 +374,7 @@ export default function ImageViewer({
 
   const url: string | undefined = urls[current];
   const { width, height } = Dimensions.get('window');
-  frame.current = { width, count: urls.length };
+  frame.current = { width, height, count: urls.length };
 
   return (
     <Modal
