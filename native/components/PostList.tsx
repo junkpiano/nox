@@ -126,12 +126,12 @@ export function PostRow({
             onPress={onOpenProfile}
           />
           {post.repostedBy ? (
-            <EmojiText
-              text={`⇄ ${post.repostedBy.name}`}
-              emoji={post.repostedBy.emoji}
-              style={styles.badge}
-              numberOfLines={1}
-            />
+            // What the mark says is that the post was passed on. Whose hands
+            // it came through is a second name in a row that already carries
+            // one, and it was read as the author's.
+            <Text style={styles.badge} numberOfLines={1}>
+              ⇄ Repost
+            </Text>
           ) : null}
           <Text style={styles.time} numberOfLines={1}>
             {timeAgo(post.createdAt)}
