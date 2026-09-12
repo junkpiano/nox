@@ -109,7 +109,7 @@ export function PostRow({
    */
   return (
     <Pressable style={styles.row} onPress={onOpenThread} accessible={false}>
-      <Pressable onPress={onOpenProfile} hitSlop={6}>
+      <Pressable onPress={onOpenProfile} hitSlop={6} style={styles.avatarTap}>
         {post.picture ? (
           <Image source={{ uri: post.picture }} style={styles.avatar} />
         ) : (
@@ -636,6 +636,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#25406e',
   },
   avatarBlank: { opacity: 0.5 },
+  // The row stretches its children: without this the face's button is as tall
+  // as the whole post, and the column beside a picture or a quoted card opens
+  // the person rather than the post. It is the face that means the person, not
+  // the space under it.
+  avatarTap: { alignSelf: 'flex-start' },
   rowBody: { flex: 1 },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { color: '#e8eeff', fontWeight: '700', fontSize: 14, flexShrink: 1 },

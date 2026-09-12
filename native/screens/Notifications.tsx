@@ -293,6 +293,7 @@ export default function Notifications() {
                 navigation.navigate('Profile', { pubkey: item.pubkey })
               }
               hitSlop={6}
+              style={styles.avatarTap}
             >
               {item.picture ? (
                 <Image source={{ uri: item.picture }} style={styles.avatar} />
@@ -374,6 +375,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#25406e',
   },
   avatarBlank: { opacity: 0.5 },
+  // The row stretches its children: without this the face's button is as tall
+  // as the whole notification, and a long reply leaves a column beside it that
+  // opens the person rather than the post.
+  avatarTap: { alignSelf: 'flex-start' },
   rowBody: { flex: 1 },
   line: { fontSize: 14 },
   name: { color: '#e8eeff', fontWeight: '700' },
