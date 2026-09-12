@@ -10,15 +10,20 @@
  * again.
  *
  * The interactions are the ones people try without being told: pinch to zoom,
- * drag to move while zoomed, double-tap to toggle, tap to close, and arrows
- * when a post carried more than one picture.
+ * drag to move while zoomed, double-tap to toggle, tap to close, drag sideways
+ * for the next picture, drag down to put it away, and arrows when a post
+ * carried more than one picture.
+ *
+ * A drag is answered while the finger is still down - the picture moves with
+ * it, and on the way down the ground fades so what is behind is already
+ * visible before you let go. A gesture that only reports its verdict at the
+ * end is one you have to learn; this one shows the way out as you take it.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
-  Image,
   Modal,
   PanResponder,
   type PanResponderInstance,
@@ -32,6 +37,19 @@ const MAX_SCALE = 4;
 const DOUBLE_TAP_SCALE = 2.5;
 /** Two taps further apart than this are two taps, not a double tap. */
 const DOUBLE_TAP_MS = 280;
+/** Past a quarter of the screen, a sideways drag means the next picture. */
+const SWIPE_COMMIT_RATIO = 0.25;
+/** Or a flick, which is the same intention with less distance. */
+const FLICK_VELOCITY = 0.35;
+/** How far down the picture goes before letting go puts it away. */
+const DISMISS_DISTANCE = 110;
+const DISMISS_VELOCITY = 0.8;
+/** The ground is fully faded by the time the picture is this far down. */
+const DISMISS_FADE_DISTANCE = 320;
+/** A drag has to mean one axis or the other before either answers it. */
+const AXIS_LOCK = 8;
+
+type Gesture = 'undecided' | 'pinch' | 'pan' | 'swipe' | 'dismiss';
 
 function distance(touches: Array<{ pageX: number; pageY: number }>): number {
   const [a, b] = touches;
@@ -59,18 +77,37 @@ export default function ImageViewer({
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
 
+  // Kept apart from the pan above, which belongs to a zoomed picture: these
+  // two carry the unzoomed gestures, so the fade can be read off the drag
+  // without a zoomed pan dimming the screen.
+  const swipeX = useRef(new Animated.Value(0)).current;
+  const dismissY = useRef(new Animated.Value(0)).current;
+  const backdrop = dismissY.interpolate({
+    inputRange: [-DISMISS_FADE_DISTANCE, 0, DISMISS_FADE_DISTANCE],
+    outputRange: [0, 1, 0],
+    extrapolate: 'clamp',
+  });
+
   // Read back synchronously inside the responder, which cannot await a
   // listener. `Animated.Value` has no public getter, so the last committed
   // values are kept alongside.
   const committed = useRef({ scale: 1, x: 0, y: 0 });
   const gestureStart = useRef({ distance: 0, scale: 1, x: 0, y: 0 });
   const lastTap = useRef(0);
+  const gesture = useRef<Gesture>('undecided');
+  // The responder is built once, so it reads the picture count and the screen
+  // through a ref rather than closing over the first render's values.
+  const frame = useRef({ width: 0, count: 0 });
 
   useEffect((): void => {
     if (index !== null) {
       setCurrent(index);
+      // A viewer opened again starts where it opens, not where the last
+      // gesture left it: the values outlive the closed state.
+      swipeX.setValue(0);
+      dismissY.setValue(0);
     }
-  }, [index]);
+  }, [index, swipeX, dismissY]);
 
   const reset = (): void => {
     committed.current = { scale: 1, x: 0, y: 0 };
@@ -95,18 +132,77 @@ export default function ImageViewer({
     setCurrent(next);
   };
 
+  /**
+   * Carry the picture the rest of the way out and bring the next one in from
+   * the edge the finger was heading for. One picture is on screen at a time,
+   * so the arrival is the same value swung to the far side and released.
+   */
+  const slideTo = (direction: 1 | -1, width: number, count: number): void => {
+    Animated.timing(swipeX, {
+      toValue: -direction * width,
+      duration: 140,
+      useNativeDriver: true,
+    }).start(({ finished }): void => {
+      // A drag, a close or a reopen stops this animation by writing the value
+      // from under it. Advancing anyway would show a picture nobody asked for.
+      if (!finished) {
+        return;
+      }
+      reset();
+      setCurrent(
+        (shown: number): number => (shown + direction + count) % count,
+      );
+      swipeX.setValue(direction * width);
+      Animated.spring(swipeX, {
+        toValue: 0,
+        bounciness: 0,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  /**
+   * Put a half-finished drag back. A second finger arriving means the gesture
+   * became a pinch, and a terminated responder means the system took the
+   * touch: in both cases nothing is left to answer the drag, and a picture
+   * left off-centre with the ground half faded is an app that looks stuck.
+   */
+  const settleDrag = (): void => {
+    gesture.current = 'undecided';
+    Animated.parallel([
+      Animated.spring(swipeX, {
+        toValue: 0,
+        bounciness: 0,
+        useNativeDriver: true,
+      }),
+      Animated.spring(dismissY, {
+        toValue: 0,
+        bounciness: 0,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const close = (): void => {
+    swipeX.setValue(0);
+    dismissY.setValue(0);
+    reset();
+    onClose();
+  };
+
   const responder: PanResponderInstance = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: (): boolean => true,
-      onMoveShouldSetPanResponder: (_event, gesture): boolean =>
+      onMoveShouldSetPanResponder: (_event, move): boolean =>
         // A zoomed picture claims the drag; an unzoomed one lets a tap
         // through so closing still works.
         committed.current.scale > 1 ||
-        Math.abs(gesture.dx) > 4 ||
-        Math.abs(gesture.dy) > 4,
+        Math.abs(move.dx) > 4 ||
+        Math.abs(move.dy) > 4,
 
       onPanResponderGrant: (event): void => {
         const touches = event.nativeEvent.touches;
+        gesture.current = touches.length >= 2 ? 'pinch' : 'undecided';
         gestureStart.current = {
           distance: touches.length >= 2 ? distance(touches) : 0,
           scale: committed.current.scale,
@@ -115,10 +211,14 @@ export default function ImageViewer({
         };
       },
 
-      onPanResponderMove: (event, gesture): void => {
+      onPanResponderMove: (event, move): void => {
         const touches = event.nativeEvent.touches;
 
         if (touches.length >= 2) {
+          if (gesture.current === 'swipe' || gesture.current === 'dismiss') {
+            settleDrag();
+          }
+          gesture.current = 'pinch';
           const started: number = gestureStart.current.distance;
           const now: number = distance(touches);
           if (started > 0 && now > 0) {
@@ -133,18 +233,76 @@ export default function ImageViewer({
         }
 
         if (committed.current.scale > 1) {
-          const x: number = gestureStart.current.x + gesture.dx;
-          const y: number = gestureStart.current.y + gesture.dy;
+          gesture.current = 'pan';
+          const x: number = gestureStart.current.x + move.dx;
+          const y: number = gestureStart.current.y + move.dy;
           committed.current.x = x;
           committed.current.y = y;
           translateX.setValue(x);
           translateY.setValue(y);
+          return;
+        }
+
+        // Unzoomed, the first decisive direction owns the rest of the drag.
+        // Without the lock a picture would slide sideways and downwards at
+        // once and answer to whichever axis the finger last favoured.
+        if (gesture.current === 'undecided') {
+          if (Math.abs(move.dx) > AXIS_LOCK || Math.abs(move.dy) > AXIS_LOCK) {
+            gesture.current =
+              Math.abs(move.dx) > Math.abs(move.dy) ? 'swipe' : 'dismiss';
+          } else {
+            return;
+          }
+        }
+
+        if (gesture.current === 'swipe') {
+          swipeX.setValue(move.dx);
+        } else if (gesture.current === 'dismiss') {
+          dismissY.setValue(move.dy);
         }
       },
 
-      onPanResponderRelease: (_event, gesture): void => {
-        const moved: boolean =
-          Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6;
+      onPanResponderRelease: (_event, move): void => {
+        const { width, count } = frame.current;
+
+        if (gesture.current === 'swipe') {
+          gesture.current = 'undecided';
+          const committedSwipe: boolean =
+            Math.abs(move.dx) > width * SWIPE_COMMIT_RATIO ||
+            Math.abs(move.vx) > FLICK_VELOCITY;
+          if (committedSwipe && count > 1) {
+            slideTo(move.dx < 0 ? 1 : -1, width, count);
+          } else {
+            // A single picture has nowhere to go, and a drag that stopped
+            // short said so: it returns rather than reporting an error.
+            Animated.spring(swipeX, {
+              toValue: 0,
+              bounciness: 0,
+              useNativeDriver: true,
+            }).start();
+          }
+          return;
+        }
+
+        if (gesture.current === 'dismiss') {
+          gesture.current = 'undecided';
+          const letGo: boolean =
+            Math.abs(move.dy) > DISMISS_DISTANCE ||
+            Math.abs(move.vy) > DISMISS_VELOCITY;
+          if (letGo) {
+            close();
+          } else {
+            Animated.spring(dismissY, {
+              toValue: 0,
+              bounciness: 0,
+              useNativeDriver: true,
+            }).start();
+          }
+          return;
+        }
+
+        gesture.current = 'undecided';
+        const moved: boolean = Math.abs(move.dx) > 6 || Math.abs(move.dy) > 6;
 
         if (!moved) {
           const now: number = Date.now();
@@ -174,6 +332,10 @@ export default function ImageViewer({
           reset();
         }
       },
+
+      onPanResponderTerminate: (): void => {
+        settleDrag();
+      },
     }),
   ).current;
 
@@ -183,15 +345,20 @@ export default function ImageViewer({
 
   const url: string | undefined = urls[current];
   const { width, height } = Dimensions.get('window');
+  frame.current = { width, count: urls.length };
 
   return (
     <Modal
       visible
-      transparent={false}
+      transparent
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={close}
       statusBarTranslucent
     >
+      <Animated.View
+        style={[styles.backdrop, { opacity: backdrop }]}
+        pointerEvents="none"
+      />
       <View style={styles.screen} {...responder.panHandlers}>
         {url ? (
           <Animated.Image
@@ -200,15 +367,24 @@ export default function ImageViewer({
             style={[
               { width, height },
               {
-                transform: [{ translateX }, { translateY }, { scale }],
+                transform: [
+                  { translateX },
+                  { translateY },
+                  { translateX: swipeX },
+                  { translateY: dismissY },
+                  { scale },
+                ],
               },
             ]}
           />
         ) : null}
       </View>
 
-      <View style={styles.chrome} pointerEvents="box-none">
-        <Pressable onPress={onClose} hitSlop={16} style={styles.close}>
+      <Animated.View
+        style={[styles.chrome, { opacity: backdrop }]}
+        pointerEvents="box-none"
+      >
+        <Pressable onPress={close} hitSlop={16} style={styles.close}>
           <Text style={styles.closeText}>✕</Text>
         </Pressable>
 
@@ -235,15 +411,24 @@ export default function ImageViewer({
             </Pressable>
           </View>
         ) : null}
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  // The ground is its own layer so a drag downwards can fade it and reveal the
+  // timeline underneath, which is what says the picture is being put away.
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000',
+  },
   screen: {
     flex: 1,
-    backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',
   },
