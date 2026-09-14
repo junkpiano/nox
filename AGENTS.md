@@ -355,6 +355,7 @@ import { renderEvent } from '../common/event-render.js';
 | 13 | Seal (NIP-59, inside a gift wrap) |
 | 14 | Chat message (NIP-17, never signed or published directly) |
 | 1059 | Gift wrap (NIP-59, the only public part of a DM) |
+| 1111 | Comment (NIP-22, read only, shown in threads) |
 | 1984 | Report (NIP-56) |
 | 10000 | Mute list (NIP-51, entries encrypted to self) |
 | 10002 | Relay list metadata (NIP-65) |
@@ -363,7 +364,7 @@ import { renderEvent } from '../common/event-render.js';
 | 23194/23195 | Wallet request / response (NIP-47) |
 
 **Supported NIPs:** NIP-01, NIP-02, NIP-05, NIP-07, NIP-10 (reply threading),
-NIP-17 (private messages), NIP-19, NIP-25 (reactions), NIP-30 (custom emoji),
+NIP-17 (private messages), NIP-19, NIP-22 (comments, read only), NIP-25 (reactions), NIP-30 (custom emoji),
 NIP-36 (content warnings), NIP-38 (user status, read only), NIP-42 (AUTH),
 NIP-44 (encryption), NIP-47 (wallet connect), NIP-51 (mute list), NIP-56
 (reports), NIP-57 (zaps), NIP-59 (gift

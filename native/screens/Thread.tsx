@@ -307,7 +307,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           relays,
         );
         const repliesAnswer: Promise<NostrEvent[]> = fetchRepliesForEvent(
-          root.id,
+          root,
           relays,
         );
         void withdrawal.then((gone: boolean): void => {

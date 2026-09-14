@@ -5,6 +5,7 @@ import { promiseAny, RelayMissError } from './promise-utils.js';
 import { fanOut, type RelayReport } from './relay-fanout.js';
 import { clearRelayTimeout, setRelayTimeout } from './relay-schedule.js';
 import { openRelaySubscription } from './relay-socket.js';
+import { descendantsOf, threadRootOf } from './reply-target.js';
 
 const FOLLOW_LIST_MAX_FUTURE_SKEW_SECONDS: number = 5 * 60;
 /** A relay silent for this long is recorded as failing and given up on. */
@@ -415,40 +416,94 @@ export async function isEventDeleted(
   });
 }
 
+/** NIP-22: a comment, on a note or on anything else with an id. */
+export const COMMENT_KIND: number = 1111;
+
+/**
+ * The filters that find a note's replies.
+ *
+ * A kind 1 reply names the note in an `e` tag however deep it sits, because
+ * NIP-10 repeats the root on every reply. A NIP-22 comment answering the
+ * note directly does too. A comment on a comment does not: its `e` points at
+ * the comment it answers, and the note is named only in an `E` tag - so it
+ * takes a second filter, or a conversation held in comments shows its first
+ * level and nothing under it.
+ */
+export function replyFilters(eventId: string): Record<string, unknown>[] {
+  return [
+    { kinds: [1, COMMENT_KIND], '#e': [eventId], limit: 200 },
+    { kinds: [COMMENT_KIND], '#E': [eventId], limit: 200 },
+  ];
+}
+
+/**
+ * Every reply under an event, at any depth.
+ *
+ * Opened partway down a conversation, the replies below this event need not
+ * name it: a reply to a reply names its own parent and the conversation's
+ * root, not every event in between. So the conversation is asked for too,
+ * and of that only what descends from this event is kept. What names this
+ * event directly is kept as it always was.
+ */
 export async function fetchRepliesForEvent(
-  eventId: string,
+  event: NostrEvent,
   relays: string[],
 ): Promise<NostrEvent[]> {
   if (relays.length === 0) {
     return [];
   }
 
-  const results: Map<string, NostrEvent> = new Map();
+  const direct: Map<string, NostrEvent> = new Map();
+  const conversation: Map<string, NostrEvent> = new Map();
+  const scope: string | null = threadRootOf(event);
+  const filters: {
+    filter: Record<string, unknown>;
+    into: Map<string, NostrEvent>;
+  }[] = [
+    ...replyFilters(event.id).map((filter: Record<string, unknown>) => ({
+      filter,
+      into: direct,
+    })),
+    ...(scope
+      ? replyFilters(scope).map((filter: Record<string, unknown>) => ({
+          filter,
+          into: conversation,
+        }))
+      : []),
+  ];
 
-  const promises = relays.map(async (relayUrl: string): Promise<void> => {
-    try {
-      await new Promise<void>((resolve) => {
-        let settled: boolean = false;
-        let unsubscribe: (() => void) | null = null;
-        const finish = (): void => {
-          if (settled) return;
-          settled = true;
-          clearRelayTimeout(timeout);
-          unsubscribe?.();
-          resolve();
-        };
+  const asks = relays.flatMap((relayUrl: string) =>
+    filters.map(({ filter, into }) => ({ relayUrl, filter, into })),
+  );
+  // One relay is one relay: counted as failing once, whichever of its
+  // questions went unanswered, and not once per question.
+  const failed: Set<string> = new Set();
 
-        const timeout = setRelayTimeout(() => {
-          recordRelayFailure(relayUrl);
-          finish();
-        }, 5000);
+  const promises = asks.map(
+    async ({ relayUrl, filter, into }): Promise<void> => {
+      try {
+        await new Promise<void>((resolve) => {
+          let settled: boolean = false;
+          let unsubscribe: (() => void) | null = null;
+          const finish = (): void => {
+            if (settled) return;
+            settled = true;
+            clearRelayTimeout(timeout);
+            unsubscribe?.();
+            resolve();
+          };
 
-        void openRelaySubscription(
-          relayUrl,
-          { kinds: [1], '#e': [eventId], limit: 200 },
-          {
-            onEvent: (event: NostrEvent): void => {
-              results.set(event.id, event);
+          const timeout = setRelayTimeout(() => {
+            if (!failed.has(relayUrl)) {
+              failed.add(relayUrl);
+              recordRelayFailure(relayUrl);
+            }
+            finish();
+          }, 5000);
+
+          void openRelaySubscription(relayUrl, filter, {
+            onEvent: (reply: NostrEvent): void => {
+              into.set(reply.id, reply);
             },
             onEose: (): void => {
               finish();
@@ -456,23 +511,30 @@ export async function fetchRepliesForEvent(
             onClosed: (): void => {
               finish();
             },
-          },
-        )
-          .then((nextUnsubscribe: () => void): void => {
-            unsubscribe = nextUnsubscribe;
           })
-          .catch((): void => {
-            finish();
-          });
-      });
-    } catch (e) {
-      console.warn(`Failed to fetch replies from ${relayUrl}:`, e);
-    }
-  });
+            .then((nextUnsubscribe: () => void): void => {
+              unsubscribe = nextUnsubscribe;
+            })
+            .catch((): void => {
+              finish();
+            });
+        });
+      } catch (e) {
+        console.warn(`Failed to fetch replies from ${relayUrl}:`, e);
+      }
+    },
+  );
 
   await Promise.allSettled(promises);
 
-  const events: NostrEvent[] = Array.from(results.values());
+  const kept: Map<string, NostrEvent> = new Map(direct);
+  for (const reply of descendantsOf(event.id, [
+    ...direct.values(),
+    ...conversation.values(),
+  ])) {
+    kept.set(reply.id, reply);
+  }
+  const events: NostrEvent[] = Array.from(kept.values());
   events.sort(
     (a: NostrEvent, b: NostrEvent): number => a.created_at - b.created_at,
   );

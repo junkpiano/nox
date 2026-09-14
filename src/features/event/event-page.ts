@@ -444,10 +444,7 @@ async function renderReplyTree(
   // Check if route is still active before fetching
   if (!isRouteActive()) return;
 
-  const fetched: NostrEvent[] = await fetchRepliesForEvent(
-    rootEvent.id,
-    relays,
-  );
+  const fetched: NostrEvent[] = await fetchRepliesForEvent(rootEvent, relays);
   // A reply its author withdrew is not part of the conversation. Asked
   // once for the whole thread before any of it is drawn.
   const withdrawn: Set<string> = await findDeletedIds(relays, fetched);

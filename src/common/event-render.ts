@@ -56,6 +56,7 @@ import {
 } from './referenced-event.js';
 import { createRelayWebSocket } from './relay-socket.js';
 import { repostTags } from './reply-tags.js';
+import { eTagMarker } from './reply-target.js';
 import { unwrapRepost } from './repost.js';
 import { canWrite, signWithSession } from './signer.js';
 import { openZapComposer } from './zap.js';
@@ -538,7 +539,7 @@ function resolveParentAuthorPubkey(event: NostrEvent): PubkeyHex | null {
 }
 
 export function getTagMarker(tag: string[]): string {
-  return (tag[3] || '').trim().toLowerCase();
+  return eTagMarker(tag);
 }
 
 function getTagRelayHints(tag: string[]): string[] {

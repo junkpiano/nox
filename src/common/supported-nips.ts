@@ -29,6 +29,7 @@ export const SUPPORTED_NIPS: readonly SupportedNip[] = [
   { nip: 17, title: 'Private messages' },
   { nip: 18, title: 'Reposts' },
   { nip: 19, title: 'npub, note, nevent and nprofile links' },
+  { nip: 22, title: 'Comments', note: 'read only, in threads' },
   { nip: 25, title: 'Reactions' },
   { nip: 30, title: 'Custom emoji', note: 'web only' },
   { nip: 36, title: 'Content warnings, reading and writing' },
