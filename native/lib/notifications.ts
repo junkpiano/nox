@@ -14,7 +14,7 @@ import {
   setRelayTimeout,
 } from '../../src/common/relay-schedule';
 import { openRelaySubscription } from '../../src/common/relay-socket';
-import { unwrapRepost } from '../../src/common/repost';
+import { checkRepostNotes, unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { customEmojiOf, pictureUrl } from './avatar';
@@ -179,6 +179,7 @@ export async function loadNotifications(
     }
   }
 
+  await checkRepostNotes(fromOthers);
   const notifications: Notification[] = fromOthers
     // A JSON blob that happens to p-tag you is not a reply, whatever kind
     // it claims. The timeline hides these and so does this.

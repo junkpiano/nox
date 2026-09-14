@@ -10,8 +10,15 @@ import {
   generateSecretKey,
   getEventHash,
   getPublicKey,
+  verifiedSymbol,
+  verifyEvent,
 } from 'nostr-tools';
-import { acceptsEvent, matchesFilter } from '../src/common/event-filter.js';
+import {
+  acceptsEvent,
+  hasGenuineSignature,
+  matchesFilter,
+  verifiedEvent,
+} from '../src/common/event-filter.js';
 import type { NostrEvent } from '../types/nostr';
 
 const me = generateSecretKey();
@@ -132,4 +139,44 @@ test('accepts: a field that answers differently each time cannot slip past', () 
     },
   };
   assert.ok(!acceptsEvent({ kinds: [1] }, shifting));
+});
+
+function markOf(event: unknown): unknown {
+  return (event as Record<symbol, unknown>)[verifiedSymbol];
+}
+
+test('accepts: the copy passed on says it was checked, so no reader checks it again', () => {
+  const event = signed(me, 7, [['t', 'passed-on']]);
+  const filter = { kinds: [7], authors: [ME] };
+  const first = verifiedEvent(filter, event);
+  assert.ok(first);
+  assert.equal(markOf(first), true);
+  // A second delivery takes the remembered path, which used to hand on an
+  // unmarked copy - and every reader then paid for the signature again.
+  const second = verifiedEvent(filter, JSON.parse(JSON.stringify(event)));
+  assert.ok(second);
+  assert.equal(markOf(second), true);
+  assert.ok(verifyEvent(second));
+});
+
+test('genuine signature: a note read out of a repost, remembered for its own content only', () => {
+  const note = signed(me, 1, [['t', 'inside-a-repost']]);
+  assert.ok(hasGenuineSignature(note));
+  // Parsed again, as every pass over a timeline does.
+  assert.ok(hasGenuineSignature(JSON.parse(JSON.stringify(note))));
+  const edited = {
+    ...note,
+    content: 'words the author never wrote',
+  } as NostrEvent;
+  assert.ok(!hasGenuineSignature(edited), 'the old id does not vouch for it');
+  edited.id = getEventHash(edited);
+  assert.ok(!hasGenuineSignature(edited), 'nor does a recomputed one');
+});
+
+test('genuine signature: a mark carried on the object is not believed', () => {
+  const note = signed(me, 1, [['t', 'carried-mark']]);
+  const forged = { ...note, content: 'never signed' } as NostrEvent;
+  forged.id = getEventHash(forged);
+  (forged as unknown as Record<symbol, unknown>)[verifiedSymbol] = true;
+  assert.ok(!hasGenuineSignature(forged));
 });

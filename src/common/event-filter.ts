@@ -13,7 +13,7 @@
  * does not know is ignored rather than failing everything.
  */
 
-import { getEventHash, verifyEvent } from 'nostr-tools';
+import { getEventHash, verifiedSymbol, verifyEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
 
 /**
@@ -38,6 +38,51 @@ function rememberVerified(id: string): void {
     if (oldest !== undefined) verified.delete(oldest);
   }
   verified.add(id);
+}
+
+/**
+ * Says so on the copy, in the words nostr-tools reads.
+ *
+ * The reaction counts, the follow list and statuses each check a signature
+ * again before believing an event, because each is also handed events from
+ * elsewhere. For a copy made here the answer is already known, and asking
+ * again cost tens of milliseconds an event on a phone, in loops over
+ * hundreds of them. The copy is this module's own object, so the mark says
+ * only what was checked.
+ */
+function markVerified(event: NostrEvent): NostrEvent {
+  (event as NostrEvent & { [verifiedSymbol]?: boolean })[verifiedSymbol] = true;
+  return event;
+}
+
+/**
+ * Whether an event read out of another event's content is genuinely signed.
+ *
+ * A repost carries its note as JSON, parsed afresh every time a screen reads
+ * it, so nostr-tools' memory - kept per object - never helped and the same
+ * note was checked on every pass over a timeline. The judgement is made on a
+ * copy read once, with its id recomputed, so a remembered answer is reused
+ * only for exactly the content it was given for.
+ */
+export function hasGenuineSignature(event: NostrEvent): boolean {
+  try {
+    const plain: NostrEvent = {
+      id: event.id,
+      pubkey: event.pubkey,
+      created_at: event.created_at,
+      kind: event.kind,
+      tags: event.tags,
+      content: event.content,
+      sig: event.sig,
+    } as NostrEvent;
+    if (getEventHash(plain) !== plain.id) return false;
+    if (verified.has(plain.id)) return true;
+    if (!verifyEvent(plain)) return false;
+    rememberVerified(plain.id);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -136,10 +181,10 @@ export function verifiedEvent(
     // nostr-tools remembers its work per object rather than per event.
     // The id having just been confirmed as this content's hash, a
     // remembered id is a signature already checked against this content.
-    if (verified.has(plain.id)) return plain;
+    if (verified.has(plain.id)) return markVerified(plain);
     if (!verifyEvent(plain)) return null;
     rememberVerified(plain.id);
-    return plain;
+    return markVerified(plain);
   } catch {
     return null;
   }
