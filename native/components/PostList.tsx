@@ -15,7 +15,7 @@ import { guardWrite, hasViewer } from '../lib/read-only';
 
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -64,7 +64,7 @@ import ReactionSummary from './ReactionSummary';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-export function PostRow({
+function PostRowBody({
   post,
   status = null,
   own,
@@ -79,8 +79,9 @@ export function PostRow({
   own: OwnReactionState;
   /** Who reacted to this one, counted; absent while the relays are asked. */
   reactions?: ReactionAggregate[] | undefined;
-  onOpenThread: () => void;
-  onOpenProfile: () => void;
+  /** Handed the row's post, so one handler can serve every row. */
+  onOpenThread: (post: TimelinePost) => void;
+  onOpenProfile: (post: TimelinePost) => void;
 }) {
   /**
    * NIP-36: the author asked for this not to be shown unasked.
@@ -90,6 +91,8 @@ export function PostRow({
    * asked.
    */
   const [revealed, setRevealed] = useState(false);
+  const openThread = (): void => onOpenThread(post);
+  const openProfile = (): void => onOpenProfile(post);
 
   /*
    * The whole row opens the post, and the parts that mean something else
@@ -108,8 +111,8 @@ export function PostRow({
    * before: the post's own words, which open the post when activated.
    */
   return (
-    <Pressable style={styles.row} onPress={onOpenThread} accessible={false}>
-      <Pressable onPress={onOpenProfile} hitSlop={6} style={styles.avatarTap}>
+    <Pressable style={styles.row} onPress={openThread} accessible={false}>
+      <Pressable onPress={openProfile} hitSlop={6} style={styles.avatarTap}>
         {post.picture ? (
           <Image source={{ uri: post.picture }} style={styles.avatar} />
         ) : (
@@ -123,7 +126,7 @@ export function PostRow({
             emoji={post.nameEmoji}
             style={styles.name}
             numberOfLines={1}
-            onPress={onOpenProfile}
+            onPress={openProfile}
           />
           {post.repostedBy ? (
             // What the mark says is that the post was passed on. Whose hands
@@ -164,7 +167,7 @@ export function PostRow({
             textStyle={styles.content}
             linkStyle={styles.link}
             numberOfLines={12}
-            onPressText={onOpenThread}
+            onPressText={openThread}
             emoji={customEmojiOf(post.event.tags)}
           />
         )}
@@ -177,6 +180,17 @@ export function PostRow({
     </Pressable>
   );
 }
+
+/**
+ * Drawn again only when something about this row changed.
+ *
+ * Every answer about the screen - a reaction count, a status, a like - draws
+ * the list again, and each mounted row went with it: about a tenth of a second
+ * on a phone, several times while a timeline loads, with a tap waiting behind
+ * each. An unchanged row now gets the same props, so a shallow comparison
+ * skips it.
+ */
+export const PostRow = memo(PostRowBody);
 
 /**
  * Like, repost and reply, on the card.
@@ -495,6 +509,18 @@ export default function PostList({
   active = true,
 }: PostListProps) {
   const navigation = useNavigation<Nav>();
+  // One handler for every row, so a row whose post did not change is not
+  // drawn again just because the list was.
+  const openThread = useCallback(
+    (post: TimelinePost): void =>
+      navigation.push('Thread', { eventId: post.id }),
+    [navigation],
+  );
+  const openProfile = useCallback(
+    (post: TimelinePost): void =>
+      navigation.push('Profile', { pubkey: post.pubkey }),
+    [navigation],
+  );
   // Rows decide whether to draw their action row from the session key, and
   // FlatList only re-renders rows when the data or this changes.
   const sessionVersion = useSessionVersion();
@@ -583,14 +609,8 @@ export default function PostList({
               status={statuses.get(item.pubkey) ?? null}
               own={own}
               reactions={reactions.get(item.id)}
-              onOpenThread={() =>
-                navigation.push('Thread', { eventId: item.id })
-              }
-              onOpenProfile={() =>
-                navigation.push('Profile', {
-                  pubkey: item.pubkey as PubkeyHex,
-                })
-              }
+              onOpenThread={openThread}
+              onOpenProfile={openProfile}
             />
           )}
           // Room for the compose button to sit over, so the last card can be

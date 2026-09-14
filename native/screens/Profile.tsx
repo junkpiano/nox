@@ -13,7 +13,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { nip19 } from 'nostr-tools';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -481,6 +481,17 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   }, [data?.profile.name, navigation]);
   const statuses = useUserStatuses(rows);
   const own = useOwnReactions(rows.map((row: TimelinePost): string => row.id));
+  // One handler for every row, so an unchanged row is not drawn again.
+  const openThread = useCallback(
+    (post: TimelinePost): void =>
+      navigation.push('Thread', { eventId: post.id }),
+    [navigation],
+  );
+  const openProfile = useCallback(
+    (post: TimelinePost): void =>
+      navigation.push('Profile', { pubkey: post.pubkey }),
+    [navigation],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -587,10 +598,8 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
           post={item}
           status={statuses.get(item.pubkey) ?? null}
           own={own}
-          onOpenThread={() => navigation.push('Thread', { eventId: item.id })}
-          onOpenProfile={() =>
-            navigation.push('Profile', { pubkey: item.pubkey })
-          }
+          onOpenThread={openThread}
+          onOpenProfile={openProfile}
         />
       )}
     />
