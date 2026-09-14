@@ -16,6 +16,12 @@
  * to answer or give up on its own.
  */
 
+import {
+  clearRelayTimeout,
+  type RelayTimeout,
+  setRelayTimeout,
+} from './relay-schedule.js';
+
 export interface RelayReport {
   /** The relay sent EOSE: it has said everything it has. */
   answered(): void;
@@ -61,7 +67,9 @@ export function fanOut(
     const finished: Set<string> = new Set();
     const answered: string[] = [];
     let settled: boolean = false;
-    let grace: ReturnType<typeof setTimeout> | null = null;
+    // A relay timer, so an answer that arrived inside the grace is counted
+    // even when it is still waiting to be read.
+    let grace: RelayTimeout | null = null;
 
     const stopQuietly = (stop: () => void): void => {
       try {
@@ -74,7 +82,7 @@ export function fanOut(
     const finish = (): void => {
       if (settled) return;
       settled = true;
-      if (grace !== null) clearTimeout(grace);
+      if (grace !== null) clearRelayTimeout(grace);
       for (const stop of stops.values()) stopQuietly(stop);
       stops.clear();
       resolve({ answered: [...answered] });
@@ -101,7 +109,7 @@ export function fanOut(
           return;
         }
         if (grace === null && options.stragglerGraceMs !== undefined) {
-          grace = setTimeout(finish, options.stragglerGraceMs);
+          grace = setRelayTimeout(finish, options.stragglerGraceMs);
         }
       },
       gaveUp: (): void => {

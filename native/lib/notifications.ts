@@ -9,6 +9,10 @@
 import type { EmojiMap } from '../../src/common/content-segments';
 import { isMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
+import {
+  clearRelayTimeout,
+  setRelayTimeout,
+} from '../../src/common/relay-schedule';
 import { openRelaySubscription } from '../../src/common/relay-socket';
 import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
@@ -63,7 +67,7 @@ function queryRelays(
     const finish = (): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearRelayTimeout(timer);
       for (const stop of stops) {
         try {
           stop();
@@ -74,7 +78,7 @@ function queryRelays(
       resolve(Array.from(byId.values()));
     };
 
-    const timer = setTimeout(finish, TIMEOUT_MS);
+    const timer = setRelayTimeout(finish, TIMEOUT_MS);
     const oneDone = (): void => {
       done += 1;
       if (done >= relays.length) finish();

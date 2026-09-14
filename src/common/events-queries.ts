@@ -3,6 +3,7 @@ import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { recordRelayFailure } from '../features/relays/relays.js';
 import { promiseAny, RelayMissError } from './promise-utils.js';
 import { fanOut, type RelayReport } from './relay-fanout.js';
+import { clearRelayTimeout, setRelayTimeout } from './relay-schedule.js';
 import { openRelaySubscription } from './relay-socket.js';
 
 const FOLLOW_LIST_MAX_FUTURE_SKEW_SECONDS: number = 5 * 60;
@@ -71,7 +72,7 @@ export async function lookupFollowList(
   await fanOut(
     relays,
     (relayUrl: string, report: RelayReport): Promise<() => void> => {
-      const timeout = setTimeout((): void => {
+      const timeout = setRelayTimeout((): void => {
         recordRelayFailure(relayUrl);
         report.gaveUp();
       }, FOLLOW_LIST_RELAY_TIMEOUT_MS);
@@ -141,12 +142,12 @@ export async function lookupFollowList(
         },
       )
         .then((unsubscribe: () => void): (() => void) => (): void => {
-          clearTimeout(timeout);
+          clearRelayTimeout(timeout);
           unsubscribe();
         })
         .catch((error: unknown): never => {
           console.error(`WebSocket error [${relayUrl}]`, error);
-          clearTimeout(timeout);
+          clearRelayTimeout(timeout);
           throw error;
         });
     },
@@ -226,12 +227,12 @@ async function fetchEventFromRelay(
     const finish = (event: NostrEvent | null): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
+      clearRelayTimeout(timeout);
       unsubscribe?.();
       resolve(event);
     };
 
-    const timeout = setTimeout((): void => {
+    const timeout = setRelayTimeout((): void => {
       recordRelayFailure(relayUrl);
       finish(null);
     }, timeoutMs);
@@ -319,12 +320,12 @@ export async function isEventDeleted(
           const finish = (value: boolean): void => {
             if (settled) return;
             settled = true;
-            clearTimeout(timeout);
+            clearRelayTimeout(timeout);
             unsubscribe?.();
             resolve(value);
           };
 
-          const timeout = setTimeout((): void => {
+          const timeout = setRelayTimeout((): void => {
             recordRelayFailure(relayUrl);
             finish(false);
           }, perRelayTimeoutMs);
@@ -379,11 +380,11 @@ export async function isEventDeleted(
     const finish = (value: boolean): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(overallTimeout);
+      clearRelayTimeout(overallTimeout);
       resolve(value);
     };
 
-    const overallTimeout = setTimeout((): void => {
+    const overallTimeout = setRelayTimeout((): void => {
       finish(false);
     }, overallTimeoutMs);
 
@@ -432,12 +433,12 @@ export async function fetchRepliesForEvent(
         const finish = (): void => {
           if (settled) return;
           settled = true;
-          clearTimeout(timeout);
+          clearRelayTimeout(timeout);
           unsubscribe?.();
           resolve();
         };
 
-        const timeout = setTimeout(() => {
+        const timeout = setRelayTimeout(() => {
           recordRelayFailure(relayUrl);
           finish();
         }, 5000);

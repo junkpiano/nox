@@ -8,6 +8,7 @@ import {
 import { askUser, canAsk } from './ask.js';
 import { verifiedEvent } from './event-filter.js';
 import { kvGet, kvSet } from './kv.js';
+import { enqueueRelayWork } from './relay-schedule.js';
 import { getSessionPrivateKey } from './session.js';
 import { signWithSession } from './signer.js';
 
@@ -342,28 +343,38 @@ function attachSharedRelayListeners(connection: SharedRelayConnection): void {
       return;
     }
 
-    const subscription: SharedRelaySubscription | undefined =
-      connection.subscriptions.get(subId);
-    if (!subscription) {
+    if (type !== 'EVENT' && type !== 'EOSE' && type !== 'CLOSED') {
       return;
     }
-
-    if (type === 'EVENT' && parsedMessage[2]) {
-      subscription.onEvent?.(parsedMessage[2] as NostrEvent);
+    if (!connection.subscriptions.has(subId)) {
       return;
     }
+    const payload: unknown = parsedMessage[2];
 
-    if (type === 'EOSE') {
-      subscription.onEose?.();
-      return;
-    }
-
-    if (type === 'CLOSED') {
-      subscription.onClosed?.(
-        typeof parsedMessage[2] === 'string' ? parsedMessage[2] : '',
-      );
+    // Delivered in turn rather than here. An event has its signature checked
+    // on the way to its reader - tens of milliseconds on a phone - and a
+    // burst of them handled inside this listener held the thread for
+    // seconds, with a tap on a post waiting behind them. The subscription is
+    // looked up again when the turn comes, so one its reader has stopped
+    // gets nothing more, as it would have if each message were handled on
+    // arrival.
+    enqueueRelayWork((): void => {
+      const subscription: SharedRelaySubscription | undefined =
+        connection.subscriptions.get(subId);
+      if (!subscription) {
+        return;
+      }
+      if (type === 'EVENT') {
+        if (payload) subscription.onEvent?.(payload as NostrEvent);
+        return;
+      }
+      if (type === 'EOSE') {
+        subscription.onEose?.();
+        return;
+      }
+      subscription.onClosed?.(typeof payload === 'string' ? payload : '');
       cleanupSharedSubscription(connection, subId);
-    }
+    });
   });
 
   socket.addEventListener('open', (): void => {
@@ -377,7 +388,14 @@ function attachSharedRelayListeners(connection: SharedRelayConnection): void {
   socket.addEventListener('close', (): void => {
     connection.socket = null;
     connection.openPromise = null;
-    connection.subscriptions.clear();
+    // What this socket sent before closing may still be waiting its turn, so
+    // its subscriptions are let go in turn as well. Only these ones: a reader
+    // can open a new socket to the same relay before then, and those
+    // subscriptions are not this socket's to clear.
+    const closing: string[] = Array.from(connection.subscriptions.keys());
+    enqueueRelayWork((): void => {
+      for (const subId of closing) connection.subscriptions.delete(subId);
+    });
   });
 }
 
