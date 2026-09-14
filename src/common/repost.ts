@@ -19,8 +19,9 @@
  * believing.
  */
 
-import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
+import { hasGenuineSignature } from './event-filter.js';
+import { nextTask } from './promise-utils.js';
 
 /** kind 6 is a repost; kind 16 is a generic repost of a non-kind-1 event. */
 export const REPOST_KINDS: ReadonlySet<number> = new Set([6, 16]);
@@ -60,25 +61,39 @@ function taggedEventId(event: NostrEvent): string | null {
 /**
  * Whether an embedded copy can be shown under its author's name.
  *
- * `verifyEvent` checks that the id is the hash of the content and that the
- * signature is the author's - so neither the words nor the attribution were
- * changed by whoever wrapped it. The `e` tag check closes the other gap: a
- * genuine old note of the author's, embedded in a repost that claims to be
- * of something else.
+ * The signature check confirms that the id is the hash of the content and
+ * that the signature is the author's - so neither the words nor the
+ * attribution were changed by whoever wrapped it. It is remembered by id,
+ * because every pass over a timeline parses the copy again. The `e` tag
+ * check closes the other gap: a genuine old note of the author's, embedded
+ * in a repost that claims to be of something else.
  */
 function isGenuineCopy(copy: NostrEvent, taggedId: string | null): boolean {
   if (taggedId && copy.id !== taggedId) {
     return false;
   }
-  try {
-    return verifyEvent(copy);
-  } catch {
-    return false;
-  }
+  return hasGenuineSignature(copy);
 }
 
 export function isRepost(event: NostrEvent): boolean {
   return REPOST_KINDS.has(event.kind);
+}
+
+/**
+ * Checks the notes inside a batch's reposts before a screen reads them.
+ *
+ * A list is read in several passes, each parsing a repost's note afresh, and
+ * the first reading checks its signature - tens of milliseconds a note on a
+ * phone, inside one loop, during which nothing on screen can be tapped.
+ * Taken one note per turn here instead, between relay traffic and taps; the
+ * passes that follow find each answer remembered.
+ */
+export async function checkRepostNotes(events: NostrEvent[]): Promise<void> {
+  for (const event of events) {
+    if (!isRepost(event)) continue;
+    await nextTask();
+    readRepost(event);
+  }
 }
 
 /**

@@ -16,7 +16,7 @@ import { guardWrite, hasViewer, signInPrompt } from '../lib/read-only';
 import type { RouteProp } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -237,6 +237,17 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(0);
   const navigation = useNavigation<Nav>();
+  // One handler for every reply, so an unchanged reply is not drawn again.
+  const openThread = useCallback(
+    (post: TimelinePost): void =>
+      navigation.push('Thread', { eventId: post.id }),
+    [navigation],
+  );
+  const openProfile = useCallback(
+    (post: TimelinePost): void =>
+      navigation.push('Profile', { pubkey: post.pubkey }),
+    [navigation],
+  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `sent` is the trigger, not a read
   useEffect(() => {
@@ -634,12 +645,8 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           status={statuses.get(item.pubkey) ?? null}
           own={own}
           reactions={reactions.get(item.id)}
-          onOpenThread={(): void =>
-            navigation.push('Thread', { eventId: item.id })
-          }
-          onOpenProfile={(): void =>
-            navigation.push('Profile', { pubkey: item.pubkey })
-          }
+          onOpenThread={openThread}
+          onOpenProfile={openProfile}
         />
       )}
     />

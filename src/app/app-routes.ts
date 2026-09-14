@@ -7,6 +7,7 @@ import {
 import { setActiveNav } from '../common/navigation.js';
 import { isNip05Identifier, resolveNip05 } from '../common/nip05.js';
 import { hidesWallet } from '../common/platform.js';
+import { setRelayTimeout } from '../common/relay-schedule.js';
 import {
   clearSessionPrivateKey,
   isReadOnlySession,
@@ -998,7 +999,9 @@ async function startApp(
     await Promise.race([
       startAppCore(npub, isStillActive),
       new Promise<void>((_, reject) => {
-        setTimeout(() => {
+        // A relay timer, so a profile that arrived in time is not beaten by
+        // the deadline while it is still waiting to be read.
+        setRelayTimeout(() => {
           didTimeout = true;
           reject(new Error('Profile loading timed out'));
         }, 15000);
@@ -1051,7 +1054,7 @@ async function startAppCore(
     appState.profile = await Promise.race([
       fetchProfile(pubkeyHex, appState.relays),
       new Promise<null>((resolve) => {
-        setTimeout(() => resolve(null), 10000);
+        setRelayTimeout(() => resolve(null), 10000);
       }),
     ]);
     if (!appState.profile) {

@@ -7,7 +7,7 @@
  * and tells every screen when a like made on one of them lands.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   createReactionBook,
   type OwnReactions,
@@ -79,14 +79,24 @@ export function useOwnReactions(ids: ReadonlyArray<string>): OwnReactionState {
     };
   }, [wanted, sessionVersion]);
 
-  return {
-    liked: state.liked,
-    reposted: state.reposted,
-    mark: (id: string, reaction: Reaction, by: PubkeyHex): void => {
+  const mark = useCallback(
+    (id: string, reaction: Reaction, by: PubkeyHex): void => {
       const me: PubkeyHex | null = viewer();
       if (!me || me !== by || !canWrite()) return;
       book.mark(me, id, reaction);
       announce();
     },
-  };
+    [],
+  );
+
+  // The same object until something in it changes. A row takes it as a
+  // prop, and a new one on every render drew every row again.
+  return useMemo(
+    (): OwnReactionState => ({
+      liked: state.liked,
+      reposted: state.reposted,
+      mark,
+    }),
+    [state, mark],
+  );
 }

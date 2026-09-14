@@ -40,6 +40,20 @@ export const promiseAny: PromiseAnyFunction = (
       });
     };
 
+/**
+ * Resolves on a later turn of the event loop, behind anything already waiting.
+ *
+ * Awaiting a promise that is already settled does not hand the thread back:
+ * its continuation runs before input is looked at, so a loop awaiting
+ * expensive work holds the thread for all of it. Awaiting this between items
+ * lets a tap in.
+ */
+export function nextTask(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 export class RelayMissError extends Error {
   constructor() {
     super('Relay query returned no result');

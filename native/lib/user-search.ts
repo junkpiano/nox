@@ -11,6 +11,10 @@
  */
 
 import { fetchFollowList } from '../../src/common/events-queries';
+import {
+  clearRelayTimeout,
+  setRelayTimeout,
+} from '../../src/common/relay-schedule';
 import { openRelaySubscription } from '../../src/common/relay-socket';
 import { getRelays } from '../../src/features/relays/relays';
 import {
@@ -47,7 +51,7 @@ function searchRelays(query: string): Promise<UserSearchResult[]> {
     const finish = (): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearRelayTimeout(timer);
       for (const stop of stops) {
         try {
           stop();
@@ -58,7 +62,7 @@ function searchRelays(query: string): Promise<UserSearchResult[]> {
       resolve(Array.from(byPubkey.values()));
     };
 
-    const timer = setTimeout(finish, TIMEOUT_MS);
+    const timer = setRelayTimeout(finish, TIMEOUT_MS);
     const oneDone = (): void => {
       done += 1;
       if (done >= SEARCH_RELAYS.length) finish();

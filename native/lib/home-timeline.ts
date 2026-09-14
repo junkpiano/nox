@@ -44,7 +44,12 @@ import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { fetchFollowSet } from '../../src/common/notification-filter';
 import { queryRelays } from '../../src/common/relay-query';
-import { isRepost, readRepost, unwrapRepost } from '../../src/common/repost';
+import {
+  checkRepostNotes,
+  isRepost,
+  readRepost,
+  unwrapRepost,
+} from '../../src/common/repost';
 import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
@@ -507,6 +512,8 @@ export async function decorateEvents(
           console.warn('[timeline] deletions could not be checked', error);
           return new Set();
         });
+
+  await checkRepostNotes(events);
 
   // Both the author and, for a repost, whoever passed it on: the card names
   // them both and a missing name is a hex string on screen. Taken from

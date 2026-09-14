@@ -9,8 +9,12 @@
 import type { EmojiMap } from '../../src/common/content-segments';
 import { isMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
+import {
+  clearRelayTimeout,
+  setRelayTimeout,
+} from '../../src/common/relay-schedule';
 import { openRelaySubscription } from '../../src/common/relay-socket';
-import { unwrapRepost } from '../../src/common/repost';
+import { checkRepostNotes, unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { customEmojiOf, pictureUrl } from './avatar';
@@ -63,7 +67,7 @@ function queryRelays(
     const finish = (): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearRelayTimeout(timer);
       for (const stop of stops) {
         try {
           stop();
@@ -74,7 +78,7 @@ function queryRelays(
       resolve(Array.from(byId.values()));
     };
 
-    const timer = setTimeout(finish, TIMEOUT_MS);
+    const timer = setRelayTimeout(finish, TIMEOUT_MS);
     const oneDone = (): void => {
       done += 1;
       if (done >= relays.length) finish();
@@ -175,6 +179,7 @@ export async function loadNotifications(
     }
   }
 
+  await checkRepostNotes(fromOthers);
   const notifications: Notification[] = fromOthers
     // A JSON blob that happens to p-tag you is not a reply, whatever kind
     // it claims. The timeline hides these and so does this.

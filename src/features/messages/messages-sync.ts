@@ -7,6 +7,7 @@
  */
 
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
+import { nextTask } from '../../common/promise-utils.js';
 import { publishEventToRelays } from '../../common/publish-event.js';
 import { openRelaySubscription } from '../../common/relay-socket.js';
 import {
@@ -27,14 +28,36 @@ const LOOKBACK_SECONDS: number = 60 * 60 * 24 * 30;
 
 let activeUnsubscribers: Array<() => void> = [];
 
-/** Decrypts in the background so a batch cannot block the UI thread. */
+/**
+ * Which sync is the current one.
+ *
+ * A batch opens its wraps one task at a time, so the account can change
+ * between two of them. A batch belonging to a sync that has since been
+ * stopped writes nothing: otherwise the messages it had already opened
+ * would land in the next person's store.
+ */
+let generation: number = 0;
+
+/**
+ * Opens a batch of wraps, one per turn.
+ *
+ * Each wrap takes two decryptions with a key agreement apiece - over a tenth
+ * of a second on a phone. Awaiting them in a plain loop never let the thread
+ * go, because the continuations run back to back: a backfill of a dozen
+ * wraps held it for well over a second, with a tap on the timeline waiting.
+ * Waiting for a turn before each wrap hands the thread back in between.
+ */
 async function ingest(
   wraps: NostrEvent[],
   viewerPubkey: PubkeyHex,
+  startedIn: number,
 ): Promise<void> {
   const rumors: ChatRumor[] = [];
   for (const wrap of wraps) {
+    await nextTask();
+    if (startedIn !== generation) return;
     const rumor: ChatRumor | null = await unwrapChatMessage(wrap);
+    if (startedIn !== generation) return;
     if (rumor) {
       rumors.push(rumor);
     }
@@ -55,6 +78,7 @@ export async function startMessageSync(
   relays: string[],
 ): Promise<() => void> {
   stopMessageSync();
+  const current: number = generation;
 
   // Listen wherever we advertised, or messages sent correctly by other
   // clients would land on relays this one never reads.
@@ -79,7 +103,7 @@ export async function startMessageSync(
     flushTimer = setTimeout((): void => {
       flushTimer = null;
       const batch: NostrEvent[] = pending.splice(0, pending.length);
-      void ingest(batch, viewerPubkey);
+      void ingest(batch, viewerPubkey, current);
     }, 250);
   };
 
@@ -114,6 +138,7 @@ export async function startMessageSync(
 }
 
 export function stopMessageSync(): void {
+  generation += 1;
   for (const unsubscribe of activeUnsubscribers) {
     try {
       unsubscribe();

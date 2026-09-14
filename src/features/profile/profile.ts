@@ -13,6 +13,10 @@ import { loadableOnThisPage } from '../../common/avatar-dom.js';
 import { storeProfile } from '../../common/db/index.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
 import { fetchFollowSet } from '../../common/notification-filter.js';
+import {
+  clearRelayTimeout,
+  setRelayTimeout,
+} from '../../common/relay-schedule.js';
 import { openRelaySubscription } from '../../common/relay-socket.js';
 import { signWithSession } from '../../common/signer.js';
 import { openZapComposer } from '../../common/zap.js';
@@ -396,12 +400,12 @@ export async function fetchProfile(
                 const finish = (value: NostrProfile | null): void => {
                   if (settled) return;
                   settled = true;
-                  clearTimeout(timeout);
+                  clearRelayTimeout(timeout);
                   unsubscribe?.();
                   resolve(value);
                 };
 
-                const timeout = setTimeout((): void => {
+                const timeout = setRelayTimeout((): void => {
                   recordRelayFailure(relayUrl);
                   finish(null);
                 }, 5000);

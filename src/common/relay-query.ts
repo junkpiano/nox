@@ -17,6 +17,7 @@
 
 import type { NostrEvent } from '../../types/nostr';
 import { fanOut, type RelayReport } from './relay-fanout.js';
+import { clearRelayTimeout, setRelayTimeout } from './relay-schedule.js';
 import { openRelaySubscription } from './relay-socket.js';
 
 /** A relay silent for this long is given up on. */
@@ -62,7 +63,11 @@ export async function queryRelaysDetailed(
   const outcome = await fanOut(
     relays,
     (relayUrl: string, report: RelayReport): Promise<() => void> => {
-      const timeout = setTimeout((): void => report.gaveUp(), QUERY_TIMEOUT_MS);
+      // Ordered with the relay's traffic, so what arrived in time is kept.
+      const timeout = setRelayTimeout(
+        (): void => report.gaveUp(),
+        QUERY_TIMEOUT_MS,
+      );
       return open(relayUrl, filter, {
         onEvent: (event: NostrEvent): void => {
           if (!byId.has(event.id)) byId.set(event.id, event);
@@ -71,11 +76,11 @@ export async function queryRelaysDetailed(
         onClosed: (): void => report.gaveUp(),
       })
         .then((stop: () => void): (() => void) => (): void => {
-          clearTimeout(timeout);
+          clearRelayTimeout(timeout);
           stop();
         })
         .catch((error: unknown): never => {
-          clearTimeout(timeout);
+          clearRelayTimeout(timeout);
           throw error;
         });
     },
