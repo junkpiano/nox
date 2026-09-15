@@ -12,8 +12,9 @@ import { guardWrite, signInPrompt } from '../lib/read-only';
 import type { RouteProp } from '@react-navigation/native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as Clipboard from 'expo-clipboard';
 import { nip19 } from 'nostr-tools';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -293,6 +294,28 @@ function Header({ profile }: { profile: ProfileData }) {
   // is decoration on a profile, and not finding one is not an error.
   const status: UserStatus | null = useUserStatus(profile.pubkey);
   const [bioOpen, setBioOpen] = useState(false);
+  // The key is long and unreadable, and people want it to paste elsewhere.
+  // The whole of it goes to the clipboard, not the shortened form on screen.
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    (): (() => void) => (): void => {
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+  const copyNpub = async (): Promise<void> => {
+    try {
+      await Clipboard.setStringAsync(npub);
+      setCopied(true);
+      // A second tap starts the two seconds again; the first tap's timer
+      // would otherwise take the confirmation away almost at once.
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout((): void => setCopied(false), 2000);
+    } catch {
+      // Nothing to say; the key is still on screen.
+    }
+  };
   // Whether the bio runs past the fold is measured, not guessed: the first
   // layout is unbounded and reports its line count, and only a bio that
   // rendered longer than the fold gets one. Counting characters would fold
@@ -351,7 +374,18 @@ function Header({ profile }: { profile: ProfileData }) {
           {profile.nip05 ? (
             <Text style={styles.nip05}>{profile.nip05}</Text>
           ) : (
-            <Text style={styles.npub}>{`${npub.slice(0, 20)}...`}</Text>
+            <Pressable
+              onPress={(): void => {
+                void copyNpub();
+              }}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Copy public key"
+            >
+              <Text style={styles.npub}>
+                {copied ? 'Copied' : `${npub.slice(0, 20)}...`}
+              </Text>
+            </Pressable>
           )}
           {profile.website ? (
             <Pressable
