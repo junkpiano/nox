@@ -27,12 +27,31 @@
     0 0 0 1px rgba(137, 168, 255, 0.1), 0 18px 60px rgba(0, 0, 0, 0.34);
 }
 
+/*
+ * The ground is a layer the size of the screen, not of the page.
+ *
+ * It used to be the body's background, and a background is measured against
+ * the box it belongs to - a box as tall as the page. The same gradient was
+ * stretched down a long timeline and squeezed into a short post, so the two
+ * showed different colours and did not look like the same app. Moving it to
+ * the root is not enough either: the root's background is painted across the
+ * whole canvas, but it is still measured against the root's box, which grows
+ * with the page just the same.
+ *
+ * So it is drawn on a layer fixed to the viewport, the way the grid and the
+ * glow above it already are. Behind that layer sits a flat colour, which is
+ * what shows if a page is pulled past its end.
+ */
 html {
-  background: var(--nox-bg-0);
+  background-color: var(--nox-bg-0);
 }
 
-body.theme-nox {
-  min-height: 100vh;
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
   background:
     radial-gradient(
       circle at top left,
@@ -50,6 +69,10 @@ body.theme-nox {
       transparent 38%
     ),
     linear-gradient(180deg, #060916 0%, #091124 38%, #040713 100%);
+}
+
+body.theme-nox {
+  min-height: 100vh;
   color: var(--nox-text);
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
 }
@@ -841,6 +864,12 @@ body.theme-nox textarea {
 .theme-nox .hover\:bg-rose-50:hover,
 .theme-nox .hover\:bg-red-50:hover {
   background: rgba(93, 31, 63, 0.78) !important;
+}
+
+/* Logging out is the one thing in the drawer that warns, and the warning
+   was the light theme's pink. */
+.theme-nox .hover\:bg-red-100:hover {
+  background: rgba(88, 24, 55, 0.64) !important;
 }
 
 .theme-nox .hover\:bg-blue-50:hover {

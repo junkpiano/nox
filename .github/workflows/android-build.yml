@@ -32,7 +32,13 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # Asking for no packages: the action's default list still names `tools`,
+      # which Google has withdrawn from the SDK repository, and sdkmanager
+      # exits non-zero on a package it cannot find. The runner image already
+      # carries platform-tools, and the NDK is installed on the next step.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - name: Install the NDK
         run: |

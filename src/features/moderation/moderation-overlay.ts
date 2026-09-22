@@ -229,7 +229,7 @@ function showPostActions(
     <div class="space-y-2">
       ${
         onDelete
-          ? `<button id="action-delete" type="button" class="w-full rounded bg-red-50 px-4 py-3 text-left font-semibold text-red-700 hover:bg-red-100">
+          ? `<button id="action-delete" type="button" class="nox-danger-button w-full rounded px-4 py-3 text-left font-semibold">
               Delete this post
             </button>`
           : ''
