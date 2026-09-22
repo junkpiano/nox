@@ -866,6 +866,12 @@ body.theme-nox textarea {
   background: rgba(93, 31, 63, 0.78) !important;
 }
 
+/* Logging out is the one thing in the drawer that warns, and the warning
+   was the light theme's pink. */
+.theme-nox .hover\:bg-red-100:hover {
+  background: rgba(88, 24, 55, 0.64) !important;
+}
+
 .theme-nox .hover\:bg-blue-50:hover {
   background: rgba(23, 61, 89, 0.8) !important;
 }
