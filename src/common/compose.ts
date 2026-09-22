@@ -68,6 +68,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   }
   let isSubmitting: boolean = false;
   let selectedImageFile: File | null = null;
+  let previewObjectUrl: string | null = null;
 
   const updateContentWarningReasonState = (): void => {
     const enabled: boolean = contentWarningToggle.checked;
@@ -92,12 +93,63 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
     if (imageInput) {
       imageInput.value = '';
     }
+    if (previewObjectUrl) {
+      URL.revokeObjectURL(previewObjectUrl);
+      previewObjectUrl = null;
+    }
     if (imagePreview) {
       imagePreview.style.display = 'none';
     }
     if (imagePreviewImg) {
       imagePreviewImg.src = '';
     }
+  };
+
+  /**
+   * One image at a time, whichever way it arrived: the file picker, or a
+   * paste. Attaching a second one replaces the first, so the preview is
+   * always what will be posted.
+   */
+  const attachImageFile = (file: File): void => {
+    if (!imagePreview || !imagePreviewImg) {
+      return;
+    }
+    if (previewObjectUrl) {
+      URL.revokeObjectURL(previewObjectUrl);
+    }
+    // The picker keeps the last file it handed over, and selecting that same
+    // file again fires no change event - so a pasted image would survive a
+    // re-pick of the earlier one and get posted instead.
+    if (imageInput) {
+      imageInput.value = '';
+    }
+    selectedImageFile = file;
+    previewObjectUrl = URL.createObjectURL(file);
+    imagePreviewImg.src = previewObjectUrl;
+    imagePreview.style.display = '';
+  };
+
+  /**
+   * The image on a clipboard, if it is carrying one.
+   *
+   * Bytes win over the other flavours the same copy left behind. Safari
+   * hands over an image's address as text beside the image itself, and a
+   * post composer is not where someone pastes an image meaning its URL.
+   */
+  const clipboardImage = (data: DataTransfer | null): File | null => {
+    if (!data) {
+      return null;
+    }
+    for (const item of Array.from(data.items ?? [])) {
+      if (item.kind !== 'file' || !item.type.startsWith('image/')) {
+        continue;
+      }
+      const file: File | null = item.getAsFile();
+      if (file) {
+        return file;
+      }
+    }
+    return null;
   };
 
   const closeOverlay = (): void => {
@@ -155,12 +207,25 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
       if (!file) {
         return;
       }
-      selectedImageFile = file;
-      const objectUrl: string = URL.createObjectURL(file);
-      imagePreviewImg.src = objectUrl;
-      imagePreview.style.display = '';
+      attachImageFile(file);
     });
   }
+
+  // On the document rather than the textarea: a paste with nothing focused
+  // is delivered to the body, which is above the overlay and never sees an
+  // event bubbling out of it. The open composer is what makes it ours.
+  document.addEventListener('paste', (event: ClipboardEvent): void => {
+    if (overlay.style.display === 'none') {
+      return;
+    }
+    const file: File | null = clipboardImage(event.clipboardData);
+    if (!file) {
+      return;
+    }
+    // Otherwise the browser also drops the file's name into the text.
+    event.preventDefault();
+    attachImageFile(file);
+  });
 
   if (imageRemoveBtn) {
     imageRemoveBtn.addEventListener('click', (): void => {
