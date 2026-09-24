@@ -1283,13 +1283,16 @@ main {
     display: none;
   }
 
-  /* Tailwind's px-4 on the header and main is what keeps rows off the edges.
-     Full bleed means full bleed; the safe-area insets already keep content
-     clear of the cutout. */
-  .nox-header > div,
+  /* Full bleed means full bleed for main; the rows carry their own margin.
+     The header's menu button has none, so it keeps the rows' gutter. */
   main {
     padding-left: 0;
     padding-right: 0;
+  }
+
+  .nox-header > div {
+    padding-left: calc(1rem + var(--nox-safe-left));
+    padding-right: calc(1rem + var(--nox-safe-right));
   }
 }
 
@@ -2091,6 +2094,10 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   }
   .nox-profile-body {
     padding: 0 1rem 0.5rem;
+  }
+  /* Mounted beside the body, not in it, so it needs the same inset. */
+  .nox-profile-tabs {
+    margin-left: 1rem;
   }
 }
 
