@@ -58,7 +58,16 @@ export type EmojiMap = ReadonlyMap<string, string>;
  * ran first would have to know to leave it alone.
  */
 const PATTERN =
-  /nostr:(npub1[0-9a-z]+|nprofile1[0-9a-z]+|note1[0-9a-z]+|nevent1[0-9a-z]+)|(https?:\/\/[^\s<]+)|(?:^|[^\p{L}\p{N}_/])#([\p{L}\p{N}_]+)/giu;
+  /nostr:(npub1[0-9a-z]+|nprofile1[0-9a-z]+|note1[0-9a-z]+|nevent1[0-9a-z]+|naddr1[0-9a-z]+)|(https?:\/\/[^\s<]+)|(?:^|[^\p{L}\p{N}_/])#([\p{L}\p{N}_]+)/giu;
+
+/**
+ * Where an `naddr` opens. nox has no screen for addressable events - articles,
+ * app handlers, calendars - so they go to a viewer that has one, rather than
+ * staying text nobody can follow.
+ */
+export function naddrViewerUrl(naddr: string): string {
+  return `https://njump.me/${naddr.toLowerCase()}`;
+}
 
 /** Trailing punctuation is sentence, not URL. */
 function trimUrlTail(url: string): string {
@@ -216,6 +225,13 @@ function parseReferences(content: string): ContentSegment[] {
           kind: 'mention',
           text: whole,
           pubkey: decodeMention(reference),
+        });
+      } else if (lower.startsWith('naddr1')) {
+        segments.push({
+          kind: 'url',
+          text: whole,
+          url: naddrViewerUrl(lower),
+          media: null,
         });
       } else {
         const quoted = decodeEvent(reference);

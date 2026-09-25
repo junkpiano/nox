@@ -256,3 +256,15 @@ test('partition: a hint that is not a relay URL is dropped', () => {
   assert.ok(quoted && quoted.kind === 'event');
   assert.deepEqual(quoted.relays, []);
 });
+
+test('partition: an naddr becomes a link to a viewer that can show it', () => {
+  const naddr: string =
+    'naddr1qqxnzd3exuensv3cxsenqd35qy88wumn8ghj7mn0wvhxcmmv9upzp93q84nzwm3jzn4f8dk83fthc0y6wfulnmn72xez7wuvzajr4qvuqvzqqqru7ch8pglq';
+  const segments = parseContentSegments(`see nostr:${naddr}`);
+  assert.deepEqual(segments[1], {
+    kind: 'url',
+    text: `nostr:${naddr}`,
+    url: `https://njump.me/${naddr}`,
+    media: null,
+  });
+});

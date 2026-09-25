@@ -21,6 +21,7 @@ import {
 import { avatarErrorAttribute, fallbackAvatarUrl } from './avatar.js';
 import { loadableOnThisPage, setAvatar } from './avatar-dom.js';
 import { readClientName, withClientTag } from './client-tag.js';
+import { naddrViewerUrl } from './content-segments.js';
 import {
   type ContentWarning,
   contentWarningSummary,
@@ -1270,9 +1271,13 @@ export function renderEvent(
   const isEnergySavingMode: boolean =
     localStorage.getItem('energy_saving_mode') === 'true';
 
+  // `naddr` in the same pass as URLs, so one inside a URL stays part of it.
   const contentWithLinks: string = contentWithMentions.replace(
-    /(https?:\/\/[^\s]+)/g,
-    (url: string): string => {
+    /(https?:\/\/[^\s]+)|nostr:(naddr1[0-9a-z]+)/g,
+    (url: string, _http: string | undefined, naddr?: string): string => {
+      if (naddr) {
+        return `<a href="${naddrViewerUrl(naddr)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline">${url.slice(0, 24)}…</a>`;
+      }
       const safeUrl: string | null = normalizeHttpUrl(url);
       if (!safeUrl) {
         return url;
