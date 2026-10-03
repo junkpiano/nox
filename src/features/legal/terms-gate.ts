@@ -17,6 +17,7 @@
 
 import privacyMarkdown from '../../../docs/privacy-policy.md?raw';
 import termsMarkdown from '../../../docs/terms-of-use.md?raw';
+import { escapeHtml } from '../../common/escape-html.js';
 import {
   acceptTerms,
   hasAcceptedTerms,
@@ -26,12 +27,6 @@ import {
 import { renderMarkdown } from './render-markdown.js';
 
 const GATE_ID: string = 'terms-gate';
-
-function escapeHtml(value: string): string {
-  const holder: HTMLDivElement = document.createElement('div');
-  holder.textContent = value;
-  return holder.innerHTML;
-}
 
 /**
  * Resolves once the terms have been accepted, immediately if they already

@@ -214,7 +214,3 @@ export async function setupFollowToggle(
     }
   });
 }
-
-// Moved to common/publish-event.ts, which does not import the DOM, and
-// re-exported so the eight modules importing it from here still work.
-export { publishEventToRelays } from '../../common/publish-event.js';

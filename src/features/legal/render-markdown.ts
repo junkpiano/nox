@@ -1,3 +1,5 @@
+import { escapeHtml } from '../../common/escape-html.js';
+
 /**
  * A deliberately small Markdown renderer for the two legal documents.
  *
@@ -10,14 +12,6 @@
  * nor variable - and thirty kilobytes of parser for two static pages is a poor
  * trade right after a pass spent removing weight.
  */
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 /** Bold, inline code and links, applied after escaping. */
 function renderInline(text: string): string {

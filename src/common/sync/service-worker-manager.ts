@@ -2,23 +2,6 @@ import type { PubkeyHex } from '../../../types/nostr.js';
 import { isNativeRuntime } from '../native-http.js';
 
 let serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
-let syncConfig: {
-  userPubkey?: PubkeyHex;
-  followedPubkeys?: PubkeyHex[];
-  syncGlobal?: boolean;
-} | null = null;
-
-export interface ServiceWorkerManager {
-  register: () => Promise<boolean>;
-  startPeriodicSync: (config: {
-    userPubkey?: PubkeyHex;
-    followedPubkeys?: PubkeyHex[];
-    syncGlobal?: boolean;
-  }) => Promise<void>;
-  stopPeriodicSync: () => Promise<void>;
-  isSupported: () => boolean;
-  getRegistration: () => ServiceWorkerRegistration | null;
-}
 
 /**
  * Registers the service worker
@@ -111,8 +94,6 @@ export async function startPeriodicSync(config: {
     return;
   }
 
-  syncConfig = config;
-
   // Send sync config to service worker
   await sendMessage({
     type: 'START_PERIODIC_SYNC',
@@ -129,8 +110,6 @@ export async function stopPeriodicSync(): Promise<void> {
   if (!serviceWorkerRegistration) {
     return;
   }
-
-  syncConfig = null;
 
   await sendMessage({
     type: 'STOP_PERIODIC_SYNC',
@@ -191,62 +170,3 @@ function handleServiceWorkerMessage(event: MessageEvent): void {
     console.log('[ServiceWorkerManager] Sync result:', payload);
   }
 }
-
-/**
- * Checks if service workers are supported and usable in this runtime
- */
-export function isServiceWorkerSupported(): boolean {
-  return !isNativeRuntime() && 'serviceWorker' in navigator;
-}
-
-/**
- * Gets the current service worker registration
- */
-export function getServiceWorkerRegistration(): ServiceWorkerRegistration | null {
-  return serviceWorkerRegistration;
-}
-
-/**
- * Unregisters the service worker
- */
-export async function unregisterServiceWorker(): Promise<boolean> {
-  if (!serviceWorkerRegistration) {
-    return false;
-  }
-
-  try {
-    const success = await serviceWorkerRegistration.unregister();
-    if (success) {
-      serviceWorkerRegistration = null;
-      syncConfig = null;
-      console.log('[ServiceWorkerManager] Service worker unregistered');
-    }
-    return success;
-  } catch (error) {
-    console.error(
-      '[ServiceWorkerManager] Failed to unregister service worker:',
-      error,
-    );
-    return false;
-  }
-}
-
-/**
- * Gets the current sync configuration
- */
-export function getSyncConfig(): {
-  userPubkey?: PubkeyHex;
-  followedPubkeys?: PubkeyHex[];
-  syncGlobal?: boolean;
-} | null {
-  return syncConfig;
-}
-
-// Export as default object for convenience
-export const serviceWorkerManager: ServiceWorkerManager = {
-  register: registerServiceWorker,
-  startPeriodicSync,
-  stopPeriodicSync,
-  isSupported: isServiceWorkerSupported,
-  getRegistration: getServiceWorkerRegistration,
-};

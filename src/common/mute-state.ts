@@ -45,11 +45,6 @@ function persist(): void {
   } satisfies CachedMuteList);
 }
 
-/** The whole list, for anything that has to publish it back. */
-export function getMuteEntries(): MuteEntries {
-  return entries;
-}
-
 export function getMutedWords(): string[] {
   return entries.words;
 }

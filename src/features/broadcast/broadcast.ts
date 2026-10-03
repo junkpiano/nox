@@ -1,6 +1,6 @@
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { getEventsByAuthor } from '../../common/db/index.js';
-import { publishEventToRelays } from '../profile/follow.js';
+import { publishEventToRelays } from '../../common/publish-event.js';
 
 export interface BroadcastProgress {
   total: number;

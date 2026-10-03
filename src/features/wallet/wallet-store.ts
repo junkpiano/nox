@@ -93,15 +93,6 @@ export async function loadWalletConnection(): Promise<NwcConnection | null> {
   return cached;
 }
 
-/**
- * Whether a wallet is connected, without touching storage.
- *
- * Only meaningful after loadWalletConnection() has run at startup.
- */
-export function hasWalletConnection(): boolean {
-  return cached !== null;
-}
-
 export function getWalletConnection(): NwcConnection | null {
   return cached;
 }
