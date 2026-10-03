@@ -9,7 +9,10 @@
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { nextTask } from '../../common/promise-utils.js';
 import { publishEventToRelays } from '../../common/publish-event.js';
-import { openRelaySubscription } from '../../common/relay-socket.js';
+import {
+  openRelaySubscription,
+  setOwnDmRelaysForAuth,
+} from '../../common/relay-socket.js';
 import {
   fetchDmRelayList,
   fetchNip65ReadRelays,
@@ -83,6 +86,11 @@ export async function startMessageSync(
   // Listen wherever we advertised, or messages sent correctly by other
   // clients would land on relays this one never reads.
   const ownDmRelays: string[] = await fetchDmRelayList(viewerPubkey, relays);
+  // A lookup that outlived its sync - a logout, another account - belongs to
+  // someone who is no longer here.
+  if (current !== generation) return (): void => {};
+  // Before subscribing: these are the relays most likely to want AUTH.
+  setOwnDmRelaysForAuth(ownDmRelays);
   const listenRelays: string[] = Array.from(
     new Set([...relays, ...ownDmRelays]),
   );
@@ -139,6 +147,7 @@ export async function startMessageSync(
 
 export function stopMessageSync(): void {
   generation += 1;
+  setOwnDmRelaysForAuth([]);
   for (const unsubscribe of activeUnsubscribers) {
     try {
       unsubscribe();
