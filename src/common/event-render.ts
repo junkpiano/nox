@@ -20,6 +20,7 @@ import {
 } from '../utils/utils.js';
 import { avatarErrorAttribute, fallbackAvatarUrl } from './avatar.js';
 import { loadableOnThisPage, setAvatar } from './avatar-dom.js';
+import { setCapped } from './capped-map.js';
 import { readClientName, withClientTag } from './client-tag.js';
 import { naddrViewerUrl } from './content-segments.js';
 import {
@@ -74,6 +75,8 @@ const reactionCache: Map<
   Promise<Map<string, ReactionAggregate>>
 > = new Map();
 const reactionEventsCache: Map<string, Promise<NostrEvent[]>> = new Map();
+/** Posts whose reactions are remembered; the event page asks for one at a time. */
+const MAX_REACTION_MEMO: number = 500;
 const optimisticReactionEvents: Map<
   string,
   Map<string, NostrEvent>
@@ -305,7 +308,7 @@ async function fetchReactions(
     return counts;
   })();
 
-  reactionCache.set(eventId, request);
+  setCapped(reactionCache, eventId, request, MAX_REACTION_MEMO);
   return request;
 }
 
@@ -348,7 +351,7 @@ async function fetchReactionEvents(
     );
   })();
 
-  reactionEventsCache.set(eventId, request);
+  setCapped(reactionEventsCache, eventId, request, MAX_REACTION_MEMO);
   return request;
 }
 
@@ -1182,25 +1185,26 @@ export function renderEvent(
   // the slot exists to fill.
   void showVerifiedNip05(div, pubkey as PubkeyHex, renderProfile);
 
-  // Insert event in sorted order by timestamp (newest first)
-  const existingEvents: HTMLElement[] = Array.from(
-    output.querySelectorAll('.event-container'),
-  );
-  let inserted: boolean = false;
-
-  for (const existingEvent of existingEvents) {
-    const existingTimestamp: number = parseInt(
-      existingEvent.dataset.timestamp || '0',
-      10,
-    );
-    if (event.created_at > existingTimestamp) {
-      output.insertBefore(div, existingEvent);
-      inserted = true;
-      break;
-    }
-  }
-
-  if (!inserted) {
+  // Newest first. Cached and batched renders already arrive in order, so
+  // nearly every card is older than the last one drawn: that is checked
+  // before the list is walked, or a long timeline costs a walk per card.
+  const newerThan = (card: HTMLElement): boolean =>
+    event.created_at > parseInt(card.dataset.timestamp || '0', 10);
+  const lastChild: Element | null = output.lastElementChild;
+  const lastCard: HTMLElement | null =
+    lastChild instanceof HTMLElement &&
+    lastChild.classList.contains('event-container')
+      ? lastChild
+      : null;
+  const before: HTMLElement | undefined =
+    lastCard && !newerThan(lastCard)
+      ? undefined
+      : Array.from(
+          output.querySelectorAll<HTMLElement>('.event-container'),
+        ).find(newerThan);
+  if (before) {
+    output.insertBefore(div, before);
+  } else {
     output.appendChild(div);
   }
   if (parentEventId) {

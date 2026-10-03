@@ -25,6 +25,7 @@ import { bech32 } from '@scure/base';
 import { nip57 } from 'nostr-tools';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
 import { crossOriginFetch } from './native-http.js';
+import { isPublicWebUrl } from './url-safety.js';
 
 export interface ZapPayInfo {
   callback: string;
@@ -101,6 +102,11 @@ export async function fetchZapPayInfo(
   const lnurl: string | null = resolveLnurl(profile);
   if (!lnurl) {
     throw new Error('Recipient does not have a Lightning address configured.');
+  }
+  // The address is theirs to choose; where it may point is not. On native
+  // the fetch is made from Rust, which no browser rule keeps off the LAN.
+  if (!isPublicWebUrl(lnurl)) {
+    throw new Error('Lightning address points somewhere this app will not go.');
   }
 
   const response: Response = await crossOriginFetch(lnurl);
@@ -338,6 +344,9 @@ export async function requestZapInvoice(
   const zapRequestJson: string = JSON.stringify(signed);
 
   const callbackUrl: URL = new URL(payInfo.callback);
+  if (!isPublicWebUrl(callbackUrl.toString())) {
+    throw new Error('Zap endpoint points somewhere this app will not go.');
+  }
   callbackUrl.searchParams.set('amount', amountMsats.toString());
   callbackUrl.searchParams.set('nostr', zapRequestJson);
   if (comment && commentAllowed > 0) {
