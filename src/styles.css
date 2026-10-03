@@ -1168,9 +1168,17 @@ main {
     padding-right: calc(1rem + var(--nox-safe-right));
   }
 
-  /* A pill: the gutter goes outside its border, not inside. */
+  /* A pill: the gutter goes outside its border, not inside. It sits right
+     under the header bar, which has no margin of its own here, and the list
+     below already pads its first row. */
   #nostr-output > .nox-segment {
-    margin-left: calc(1rem + var(--nox-safe-left));
+    margin: 0.75rem 0 0.5rem calc(1rem + var(--nox-safe-left));
+  }
+
+  /* `.theme-nox #nostr-output > * + *` spaces the desktop panel, and outranks
+     the plain reset above. Under a switch, the switch's margin is the gap. */
+  .theme-nox #nostr-output > .nox-segment ~ * {
+    margin-top: 0;
   }
 
   /* Sits above the tab bar rather than on top of it. */
