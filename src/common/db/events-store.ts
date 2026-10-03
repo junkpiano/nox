@@ -127,11 +127,17 @@ export async function getEvents(eventIds: string[]): Promise<NostrEvent[]> {
     const now = Date.now();
     const events: NostrEvent[] = [];
 
-    for (const id of eventIds) {
-      const record = await requestToPromise<CachedEvent | undefined>(
-        store.get(id),
-      );
+    // Issued together: fifty gets in one transaction cost one round trip,
+    // not fifty.
+    const records: Array<CachedEvent | undefined> = await Promise.all(
+      eventIds.map(
+        (id: string): Promise<CachedEvent | undefined> =>
+          requestToPromise<CachedEvent | undefined>(store.get(id)),
+      ),
+    );
 
+    for (const [index, record] of records.entries()) {
+      const id: string = eventIds[index] as string;
       if (!record) continue;
 
       // Check TTL

@@ -136,26 +136,22 @@ function updateRenderedProfile(
     event.pubkey as PubkeyHex,
     fetchedProfile,
   );
-  const eventElements: NodeListOf<Element> =
-    output.querySelectorAll('.event-container');
-  eventElements.forEach((el: Element): void => {
-    if ((el as HTMLElement).dataset.pubkey === event.pubkey) {
-      const nameEl: Element | null = el.querySelector('.event-username');
-      const avatarEl: Element | null = el.querySelector('.event-avatar');
-      if (nameEl) {
-        const npubStr: Npub = nip19.npubEncode(event.pubkey);
-        nameEl.textContent = getDisplayName(npubStr, renderProfile);
-        void showVerifiedNip05(
-          el as HTMLElement,
-          event.pubkey as PubkeyHex,
-          renderProfile,
-        );
-      }
-      if (avatarEl) {
-        setAvatar(avatarEl as HTMLImageElement, event.pubkey, renderProfile);
-      }
+  // Only this person's cards, picked by the browser's matcher rather than
+  // by walking every card for every profile that arrives.
+  for (const el of output.querySelectorAll<HTMLElement>(
+    `.event-container[data-pubkey="${event.pubkey}"]`,
+  )) {
+    const nameEl: Element | null = el.querySelector('.event-username');
+    const avatarEl: Element | null = el.querySelector('.event-avatar');
+    if (nameEl) {
+      const npubStr: Npub = nip19.npubEncode(event.pubkey);
+      nameEl.textContent = getDisplayName(npubStr, renderProfile);
+      void showVerifiedNip05(el, event.pubkey as PubkeyHex, renderProfile);
     }
-  });
+    if (avatarEl) {
+      setAvatar(avatarEl as HTMLImageElement, event.pubkey, renderProfile);
+    }
+  }
 }
 
 function getLiveRenderProfile(
@@ -187,16 +183,19 @@ function getLiveRenderProfile(
 
   if (!fetchingProfiles.has(event.pubkey)) {
     fetchingProfiles.add(event.pubkey);
+    // Not forced: the fetcher's own short memo stands, so a second timeline
+    // in five minutes does not ask every relay about every author again.
     fetchProfile(event.pubkey, relays, {
       usePersistentCache: false,
       persistProfile: true,
-      forceRefresh: true,
     })
       .then((fetchedProfile: NostrProfile | null): void => {
+        // Before the route check: a fetch that lands after leaving the page
+        // is still over, and an author left in this set is never asked again.
+        fetchingProfiles.delete(event.pubkey);
         if (!routeIsActive()) {
           return;
         }
-        fetchingProfiles.delete(event.pubkey);
         if (!fetchedProfile) {
           return;
         }
@@ -384,6 +383,25 @@ export async function loadTimeline(
             cached.events,
           );
           if (withdrawn.size > 0) forgetWithdrawn(Array.from(withdrawn));
+          // One lookup per author, all at once, before anything is drawn:
+          // the loop below then finds every profile in the memo instead of
+          // waiting on the database once per card.
+          await Promise.all(
+            Array.from(
+              new Set(
+                cached.events.map(
+                  (event: NostrEvent): PubkeyHex => event.pubkey as PubkeyHex,
+                ),
+              ),
+            ).map(
+              (pubkey: PubkeyHex): Promise<NostrProfile | null> =>
+                getCachedRenderProfile(
+                  pubkey,
+                  profileMode,
+                  options.staticProfile || null,
+                ),
+            ),
+          );
           if (!routeIsActive()) {
             return;
           }
