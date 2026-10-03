@@ -301,9 +301,14 @@ These were each found the hard way; the workaround is already in the code.
 
 ### Secrets
 
-The Nostr private key and the NWC connection secret both live in the platform
-credential store via `src/common/secret-store.ts`, never in `localStorage`. Both
-are cleared on logout.
+The Nostr private key and the NWC connection secret both go through
+`src/common/secret-store.ts`. On native they live in the platform credential
+store: a copy an earlier build left in `localStorage` is moved there and
+removed, and only when the store cannot be read or written does `localStorage`
+serve as the fallback. On the web there is no credential store, so both stay in
+`localStorage`, where any script that runs on the page can read them; a NIP-07
+extension, which never hands the page the key at all, is the safer way to sign
+there. Both are cleared on logout.
 
 ## Code Style Guidelines
 
