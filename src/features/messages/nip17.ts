@@ -110,11 +110,13 @@ async function signAsUser(
     return finalizeEvent(event, privateKey) as NostrEvent;
   }
 
-  const signEvent = getExtension()?.signEvent;
-  if (!signEvent) {
+  // Called on the extension, not lifted off it: extensions implement this
+  // with `this`, and a detached call throws "this._call is not a function".
+  const extension: Nip07 | null = getExtension();
+  if (!extension?.signEvent) {
     throw new Error('No signing method available.');
   }
-  return signEvent(event);
+  return extension.signEvent(event);
 }
 
 /**
