@@ -18,7 +18,11 @@ import {
   fetchNip65ReadRelays,
   resolveDeliveryRelays,
 } from './dm-relays.js';
-import { addMessages } from './messages-store.js';
+import {
+  addMessages,
+  getConversations,
+  loadCachedMessages,
+} from './messages-store.js';
 import type { ChatRumor } from './nip17.js';
 import { buildGiftWraps, GIFT_WRAP_KIND, unwrapChatMessage } from './nip17.js';
 
@@ -83,6 +87,9 @@ export async function startMessageSync(
   stopMessageSync();
   const current: number = generation;
 
+  // Read before deciding how far back to ask: the cache is what says whether
+  // this device has the history already.
+  await loadCachedMessages();
   // Listen wherever we advertised, or messages sent correctly by other
   // clients would land on relays this one never reads.
   const ownDmRelays: string[] = await fetchDmRelayList(viewerPubkey, relays);
@@ -95,7 +102,14 @@ export async function startMessageSync(
     new Set([...relays, ...ownDmRelays]),
   );
 
-  const since: number = Math.floor(Date.now() / 1000) - LOOKBACK_SECONDS;
+  // A device that holds the history catches up on the recent window. One that
+  // holds nothing - a new install, another origin, a cleared cache - asks for
+  // all of it, as far as each relay's limit allows, or a conversation older
+  // than the window would never appear there at all.
+  const since: { since?: number } =
+    getConversations().length > 0
+      ? { since: Math.floor(Date.now() / 1000) - LOOKBACK_SECONDS }
+      : {};
   const pending: NostrEvent[] = [];
   // `ReturnType<typeof setTimeout>` rather than `number`: the browser hands
   // back a number and React Native hands back an object, and neither cares
@@ -124,7 +138,7 @@ export async function startMessageSync(
           {
             kinds: [GIFT_WRAP_KIND],
             '#p': [viewerPubkey],
-            since,
+            ...since,
             limit: 500,
           },
           {
