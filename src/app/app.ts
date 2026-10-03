@@ -6,6 +6,7 @@ import { setupNavigation } from '../common/navigation.js';
 import { setupImageOverlay } from '../common/overlays.js';
 import { applyPlatformClass } from '../common/platform-class.js';
 import { publishEventToRelays } from '../common/publish-event.js';
+import { clearRelayAuthPermissions } from '../common/relay-socket.js';
 import { setupReplyOverlay } from '../common/reply.js';
 import { setupSearchBar } from '../common/search.js';
 import {
@@ -86,6 +87,8 @@ function handleLogout(): void {
   // Decrypted message history must not outlive the account it belongs to.
   clearMessages();
   stopMessageSync();
+  // Nor does a yes to "sign AUTH for these relays": that was this person's.
+  clearRelayAuthPermissions();
 
   appState.cachedHomeTimeline = null;
 
