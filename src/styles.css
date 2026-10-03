@@ -2294,6 +2294,12 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   display: none;
 }
 
+/* The slot under the output holds "Connecting to relays...", which this page
+   never shows; its margin was a band between the composer and the bottom. */
+.route-messages #nostr-output ~ * {
+  margin-top: 0;
+}
+
 .nox-dm-composer {
   position: sticky;
   bottom: 0;
@@ -2312,6 +2318,11 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
 @media (max-width: 1023px) {
   .route-messages #nostr-output {
     padding-top: 0.75rem;
+  }
+
+  /* A feed keeps a gap above the tab bar; the composer sits on it. */
+  .route-messages main {
+    padding-bottom: calc(var(--nox-tabbar-height) + var(--nox-safe-bottom));
   }
 
   .nox-dm-composer {
