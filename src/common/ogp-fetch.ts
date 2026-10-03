@@ -15,7 +15,7 @@
 import type { OGPMetadata, OGPResponse } from '../../types/nostr';
 import { crossOriginFetch, isNativeRuntime } from './native-http.js';
 import { parseOgpDocument } from './ogp-parse.js';
-import { isPublicWebUrl } from './url-safety.js';
+import { fetchPublic, type PublicFetch } from './public-fetch.js';
 
 const ogpCache: Map<string, Promise<OGPResponse | null>> = new Map();
 
@@ -65,9 +65,7 @@ export const DIRECT_FETCH_TIMEOUT_MS: number = 10_000;
 /** How much of a page is read. The head is long over by then. */
 export const DIRECT_FETCH_MAX_BYTES: number = 256 * 1024;
 /** How many redirects are followed, each checked like the first request. */
-const MAX_REDIRECTS: number = 3;
-
-export type DirectFetch = (url: string, init: RequestInit) => Promise<Response>;
+export type DirectFetch = PublicFetch;
 
 /**
  * Fetches OGP metadata straight from the origin and parses it locally.
@@ -93,40 +91,22 @@ export async function fetchOGPDirect(
   url: string,
   fetchFn: DirectFetch = crossOriginFetch,
 ): Promise<OGPResponse | null> {
-  if (!isPublicWebUrl(url)) {
-    return null;
-  }
-
   const abort: AbortController = new AbortController();
   const deadline = setTimeout(
     (): void => abort.abort(),
     DIRECT_FETCH_TIMEOUT_MS,
   );
   try {
-    let current: string = url;
-    let response: Response | null = null;
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-      const answer: Response = await fetchFn(current, {
+    const fetched = await fetchPublic(
+      url,
+      {
         headers: { Accept: 'text/html,application/xhtml+xml' },
-        redirect: 'manual',
         signal: abort.signal,
-      });
-      if (isRedirect(answer.status)) {
-        const location: string | null = answer.headers.get('location');
-        if (!location) return null;
-        const next: string = new URL(location, current).toString();
-        if (!isPublicWebUrl(next)) return null;
-        current = next;
-        continue;
-      }
-      // A runtime that followed redirects on its own reports where it
-      // ended up; that address is held to the same rule.
-      const landed: string = answer.url || current;
-      if (landed !== current && !isPublicWebUrl(landed)) return null;
-      response = answer;
-      break;
-    }
-    if (!response) return null;
+      },
+      fetchFn,
+    );
+    if (!fetched) return null;
+    const { response, url: landed } = fetched;
 
     if (!response.ok) {
       console.error(
@@ -147,21 +127,11 @@ export async function fetchOGPDirect(
       DIRECT_FETCH_MAX_BYTES,
     );
     if (html === null) return null;
-    const data: OGPMetadata = parseOgpDocument(html, response.url || current);
+    const data: OGPMetadata = parseOgpDocument(html, landed);
     return Object.keys(data).length > 0 ? { url, data } : null;
   } finally {
     clearTimeout(deadline);
   }
-}
-
-function isRedirect(status: number): boolean {
-  return (
-    status === 301 ||
-    status === 302 ||
-    status === 303 ||
-    status === 307 ||
-    status === 308
-  );
 }
 
 /**

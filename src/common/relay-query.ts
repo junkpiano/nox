@@ -53,10 +53,16 @@ export class NoRelayAnsweredError extends Error {
   }
 }
 
+export interface RelayQueryOptions {
+  /** Wait for every relay to answer or give up, rather than a grace after the first. */
+  everyRelay?: boolean;
+}
+
 export async function queryRelaysDetailed(
   relays: string[],
   filter: Record<string, unknown>,
   open: SubscriptionOpener = openRelaySubscription,
+  options: RelayQueryOptions = {},
 ): Promise<RelayQueryResult> {
   const byId: Map<string, NostrEvent> = new Map();
 
@@ -84,13 +90,32 @@ export async function queryRelaysDetailed(
           throw error;
         });
     },
-    { stragglerGraceMs: STRAGGLER_GRACE_MS },
+    options.everyRelay ? {} : { stragglerGraceMs: STRAGGLER_GRACE_MS },
   );
 
   return {
     events: Array.from(byId.values()),
     answered: outcome.answered.length,
   };
+}
+
+/**
+ * Every relay's word. For a replaceable list - the mute list, a relay list -
+ * whose newest copy may sit on the slowest relay: the first answer plus a
+ * grace could return the stale copy, and the next edit would republish it.
+ */
+export async function queryEveryRelay(
+  relays: string[],
+  filter: Record<string, unknown>,
+  open?: SubscriptionOpener,
+): Promise<NostrEvent[]> {
+  const result: RelayQueryResult = await queryRelaysDetailed(
+    relays,
+    filter,
+    open,
+    { everyRelay: true },
+  );
+  return result.events;
 }
 
 /** The latest of a replaceable kind, or null when no relay had one. */

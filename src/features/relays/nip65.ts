@@ -1,4 +1,4 @@
-import { newestOf, queryRelays } from '../../common/relay-query.js';
+import { newestOf, queryEveryRelay } from '../../common/relay-query.js';
 import { signWithSession } from '../../common/signer.js';
 import { normalizeRelayUrl } from './relays.js';
 
@@ -57,7 +57,7 @@ export async function fetchNip65RelayList(params: {
   // Through the checked ingress: this list decides which relays are asked
   // next, so it is believed only when signed by the person it is for.
   const newest: NostrEvent | null = newestOf(
-    await queryRelays(params.relays, {
+    await queryEveryRelay(params.relays, {
       kinds: [NIP65_KIND_RELAY_LIST],
       authors: [params.pubkeyHex],
       limit: 10,

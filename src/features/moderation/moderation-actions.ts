@@ -18,7 +18,7 @@ import {
   setMuteList,
 } from '../../common/mute-state.js';
 import { publishEventToRelays } from '../../common/publish-event.js';
-import { newestOf, queryRelays } from '../../common/relay-query.js';
+import { newestOf, queryEveryRelay } from '../../common/relay-query.js';
 import type { MuteEntries } from './mute-entries.js';
 import {
   MUTE_LIST_KIND,
@@ -57,7 +57,7 @@ export async function refreshMuteListFromRelays(
   // Through the checked ingress: an entry this client did not sign would be
   // merged into the next list it publishes, under the viewer's signature.
   const resolved: NostrEvent | null = newestOf(
-    await queryRelays(relays, {
+    await queryEveryRelay(relays, {
       kinds: [MUTE_LIST_KIND],
       authors: [viewerPubkey],
       limit: 1,

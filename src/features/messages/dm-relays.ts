@@ -14,7 +14,7 @@ import { signWithSession } from '../../common/signer.js';
  */
 
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
-import { newestOf, queryRelays } from '../../common/relay-query.js';
+import { newestOf, queryEveryRelay } from '../../common/relay-query.js';
 
 export const DM_RELAY_LIST_KIND: number = 10050;
 const NIP65_RELAY_LIST_KIND: number = 10002;
@@ -53,7 +53,7 @@ async function fetchNewestEvent(
   // Signed by the person it claims to be about, or it is a relay's
   // suggestion of where their messages should go.
   return newestOf(
-    await queryRelays(searchRelays, {
+    await queryEveryRelay(searchRelays, {
       kinds: [kind],
       authors: [pubkey],
       limit: 1,
