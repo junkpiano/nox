@@ -93,6 +93,15 @@ export async function queryRelaysDetailed(
   };
 }
 
+/** The latest of a replaceable kind, or null when no relay had one. */
+export function newestOf(events: NostrEvent[]): NostrEvent | null {
+  let newest: NostrEvent | null = null;
+  for (const event of events) {
+    if (!newest || event.created_at >= newest.created_at) newest = event;
+  }
+  return newest;
+}
+
 /** The events alone, for callers to whom an empty answer is just empty. */
 export async function queryRelays(
   relays: string[],
