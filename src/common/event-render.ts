@@ -16,13 +16,17 @@ import {
   getAvatarURL,
   getDisplayName,
   isTwitterURL,
-  replaceEmojiShortcodes,
 } from '../utils/utils.js';
 import { avatarErrorAttribute, fallbackAvatarUrl } from './avatar.js';
 import { loadableOnThisPage, setAvatar } from './avatar-dom.js';
 import { setCapped } from './capped-map.js';
 import { readClientName, withClientTag } from './client-tag.js';
-import { naddrViewerUrl } from './content-segments.js';
+import {
+  normalizeHttpUrl,
+  type RenderedContent,
+  renderContentHtml,
+  renderEmojiHtml,
+} from './content-html.js';
 import {
   type ContentWarning,
   contentWarningSummary,
@@ -39,7 +43,6 @@ import {
 } from './events-queries.js';
 import { describeLink, type LinkCard } from './link-card.js';
 import { isMachineContent } from './machine-content.js';
-import { classifyMediaUrl, withPosterFrame } from './media-type.js';
 import { isMuted } from './mute-state.js';
 import { verifiedNip05 } from './nip05.js';
 import { noteRenderedCard, recordOwnReaction } from './own-reactions-dom.js';
@@ -191,27 +194,6 @@ function formatEventTimeLabel(createdAtSeconds: number): string {
   return new Date(createdAtSeconds * 1000).toLocaleDateString();
 }
 
-function isValidEmojiImageUrl(url: string): boolean {
-  try {
-    const parsed: URL = new URL(url);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
-  } catch {
-    return false;
-  }
-}
-
-function normalizeHttpUrl(url: string): string | null {
-  try {
-    const parsed: URL = new URL(url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return null;
-    }
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
 function hasTextSelectionWithin(container: HTMLElement): boolean {
   const selection: Selection | null = window.getSelection();
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
@@ -227,52 +209,6 @@ function hasTextSelectionWithin(container: HTMLElement): boolean {
   return (
     container.contains(range.startContainer) ||
     container.contains(range.endContainer)
-  );
-}
-
-function getEmojiTagMap(tags: string[][]): Map<string, string> {
-  const emojiTagMap: Map<string, string> = new Map();
-  tags.forEach((tag: string[]): void => {
-    if (tag[0] !== 'emoji') {
-      return;
-    }
-    const shortcode: string | undefined = tag[1];
-    const imageUrl: string | undefined = tag[2];
-    if (!shortcode || !imageUrl) {
-      return;
-    }
-    if (!/^[a-z0-9_]+$/i.test(shortcode)) {
-      return;
-    }
-    if (!isValidEmojiImageUrl(imageUrl)) {
-      return;
-    }
-    emojiTagMap.set(shortcode.toLowerCase(), imageUrl);
-  });
-  return emojiTagMap;
-}
-
-function replaceCustomEmojiShortcodes(
-  content: string,
-  tags: string[][],
-): string {
-  const emojiTagMap: Map<string, string> = getEmojiTagMap(tags);
-
-  if (emojiTagMap.size === 0) {
-    return content;
-  }
-
-  return content.replace(
-    /:([a-z0-9_]+):/gi,
-    (match: string, code: string): string => {
-      const imageUrl: string | undefined = emojiTagMap.get(code.toLowerCase());
-      if (!imageUrl) {
-        return match;
-      }
-      const safeCode: string = escapeHtml(code);
-      const safeUrl: string = escapeHtml(imageUrl);
-      return `<img src="${safeUrl}" alt=":${safeCode}:" title=":${safeCode}:" class="inline-block align-text-bottom h-5 w-5 mx-0.5" loading="lazy" decoding="async" />`;
-    },
   );
 }
 
@@ -962,56 +898,6 @@ export function renderEvent(
 
   const contentSource: string = isRepost ? '' : event.content;
   const contentWarning: ContentWarning = getContentWarning(event);
-  const escapedContentSource: string = escapeHtml(contentSource);
-  const urls: string[] = [];
-  const imageUrls: string[] = [];
-  const mentionedNpubs: string[] = Array.from(
-    new Set(
-      [...contentSource.matchAll(/nostr:(npub1[0-9a-z]+)/gi)]
-        .map((match: RegExpMatchArray): string | undefined => match[1])
-        .filter((value: string | undefined): value is string => Boolean(value)),
-    ),
-  );
-  const mentionedNprofiles: string[] = Array.from(
-    new Set(
-      [...contentSource.matchAll(/nostr:(nprofile1[0-9a-z]+)/gi)]
-        .map((match: RegExpMatchArray): string | undefined => match[1])
-        .filter((value: string | undefined): value is string => Boolean(value)),
-    ),
-  );
-  const mentionNpubToPubkey: Map<string, PubkeyHex> = new Map();
-  mentionedNpubs.forEach((mentionedNpub: string): void => {
-    try {
-      const decoded = nip19.decode(mentionedNpub);
-      if (decoded.type === 'npub' && typeof decoded.data === 'string') {
-        mentionNpubToPubkey.set(mentionedNpub, decoded.data as PubkeyHex);
-      }
-    } catch (error: unknown) {
-      console.warn('Failed to decode mentioned npub:', error);
-    }
-  });
-  mentionedNprofiles.forEach((mentionedNprofile: string): void => {
-    try {
-      const decoded = nip19.decode(mentionedNprofile);
-      if (decoded.type === 'nprofile') {
-        const data: any = decoded.data;
-        const pubkey: string | undefined =
-          data?.pubkey || (typeof data === 'string' ? data : undefined);
-        if (pubkey) {
-          mentionNpubToPubkey.set(mentionedNprofile, pubkey as PubkeyHex);
-        }
-      }
-    } catch (error: unknown) {
-      console.warn('Failed to decode mentioned nprofile:', error);
-    }
-  });
-  const referencedEventRefs: string[] = Array.from(
-    new Set(
-      [...contentSource.matchAll(/nostr:((?:nevent1|note1)[0-9a-z]+)/gi)]
-        .map((match: RegExpMatchArray): string | undefined => match[1])
-        .filter((value: string | undefined): value is string => Boolean(value)),
-    ),
-  );
   const parentReference: ParentReference | null = isRepost
     ? null
     : resolveParentReference(event);
@@ -1019,87 +905,21 @@ export function renderEvent(
   const parentAuthorPubkey: PubkeyHex | null = parentEventId
     ? resolveParentAuthorPubkey(event)
     : null;
-  const contentWithUnicodeEmoji: string =
-    replaceEmojiShortcodes(escapedContentSource);
-  const contentWithNostrLinks: string = contentWithUnicodeEmoji.replace(
-    /(nostr:(?:nevent1|note1)[0-9a-z]+)/gi,
-    (): string => '',
-  );
-
-  const contentWithNprofiles: string = contentWithNostrLinks.replace(
-    /(nostr:nprofile1[0-9a-z]+)/gi,
-    (nprofileRef: string): string => {
-      const mentionedNprofile: string = nprofileRef.replace(/^nostr:/i, '');
-      const pubkey: PubkeyHex | undefined =
-        mentionNpubToPubkey.get(mentionedNprofile);
-      if (pubkey) {
-        const npub: Npub = nip19.npubEncode(pubkey);
-        const label: string = `@${mentionedNprofile.slice(0, 12)}...`;
-        return `<a href="/${npub}" class="text-indigo-600 underline mention-link" data-mention-nprofile="${mentionedNprofile}">${label}</a>`;
-      }
-      return nprofileRef;
-    },
-  );
-
-  const contentWithMentions: string = contentWithNprofiles.replace(
-    /(nostr:npub1[0-9a-z]+)/gi,
-    (npubRef: string): string => {
-      const mentionedNpub: string = npubRef.replace(/^nostr:/i, '');
-      const label: string = `@${mentionedNpub.slice(0, 12)}...`;
-      return `<a href="/${mentionedNpub}" class="text-indigo-600 underline mention-link" data-mention-npub="${mentionedNpub}">${label}</a>`;
-    },
-  );
-
-  // Check energy saving mode
   const isEnergySavingMode: boolean =
     localStorage.getItem('energy_saving_mode') === 'true';
 
-  // `naddr` in the same pass as URLs, so one inside a URL stays part of it.
-  const contentWithLinks: string = contentWithMentions.replace(
-    /(https?:\/\/[^\s]+)|nostr:(naddr1[0-9a-z]+)/g,
-    (url: string, _http: string | undefined, naddr?: string): string => {
-      if (naddr) {
-        return `<a href="${naddrViewerUrl(naddr)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline">${url.slice(0, 24)}…</a>`;
-      }
-      const safeUrl: string | null = normalizeHttpUrl(url);
-      if (!safeUrl) {
-        return url;
-      }
-
-      const mediaKind = classifyMediaUrl(safeUrl);
-
-      if (mediaKind) {
-        // In energy saving mode, show link instead of loading media
-        if (isEnergySavingMode) {
-          const fileName: string = safeUrl.split('/').pop() || 'media';
-          const label: string =
-            mediaKind === 'video' ? '🎬 Video: ' : '🖼️ Image: ';
-          return `<div class="my-2 p-2 bg-gray-100 rounded border border-gray-300"><span class="text-gray-600 text-xs">${label}</span><a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline text-sm">${escapeHtml(fileName)}</a></div>`;
-        }
-
-        if (mediaKind === 'video') {
-          // preload="metadata" so a timeline full of videos costs a few
-          // headers rather than the files themselves, and no autoplay: a feed
-          // that starts moving on its own is a feed you have to fight.
-          // Deliberately outside imageUrls - the gallery is an <img>, which is
-          // exactly what a video must not be handed to.
-          return `<video src="${escapeHtml(withPosterFrame(safeUrl))}" class="event-video my-2 max-w-full rounded shadow" controls preload="metadata" playsinline></video>`;
-        }
-
-        const imageIndex: number = imageUrls.length;
-        imageUrls.push(safeUrl);
-        return `<img src="${escapeHtml(safeUrl)}" alt="Image" class="my-2 max-w-full rounded shadow cursor-zoom-in event-image" loading="lazy" data-image-index="${imageIndex}" />`;
-      }
-
-      urls.push(safeUrl);
-      return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline">${escapeHtml(safeUrl)}</a>`;
-    },
-  );
-
-  const contentWithCustomEmoji: string = replaceCustomEmojiShortcodes(
-    contentWithLinks,
+  // The links, pictures, mentions, quotes and emoji are found once, by the
+  // parser the phone uses too; what is left to do here is draw the card.
+  const rendered: RenderedContent = renderContentHtml(
+    contentSource,
     event.tags,
+    { energySaving: isEnergySavingMode },
   );
+  const urls: string[] = rendered.links;
+  const imageUrls: string[] = rendered.images;
+  const mentionNpubToPubkey: Map<string, PubkeyHex> = rendered.mentions;
+  const referencedEventRefs: string[] = rendered.quotes;
+  const contentWithCustomEmoji: string = rendered.html;
   const hasContent: boolean = contentWithCustomEmoji.trim().length > 0;
   const repostBadgeHtml: string = isRepost
     ? `<span class="ml-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-900 text-xs font-semibold px-2 py-0.5">🔁 Repost</span>`
@@ -1855,11 +1675,8 @@ async function renderReferencedEventCards(
         referencedEvent.pubkey,
         renderProfile,
       );
-      const referencedContentWithUnicodeEmoji: string = replaceEmojiShortcodes(
-        escapeHtml(referencedEvent.content),
-      );
-      const referencedContent: string = replaceCustomEmojiShortcodes(
-        referencedContentWithUnicodeEmoji,
+      const referencedContent: string = renderEmojiHtml(
+        referencedEvent.content,
         referencedEvent.tags,
       );
       const referencedContentWarning: ContentWarning =
