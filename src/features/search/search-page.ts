@@ -18,7 +18,6 @@ import {
   getAuthoritativeProfile,
   getStoredPubkey,
 } from '../profile/profile.js';
-import { getCachedProfile as getPersistentCachedProfile } from '../profile/profile-cache.js';
 import { getRelays } from '../relays/relays.js';
 import {
   decodePubkeyQuery,
@@ -186,7 +185,7 @@ async function loadUserResults(params: UserResultsParams): Promise<void> {
       if (!routeIsActive()) {
         return;
       }
-      renderUserResults(container, [
+      await renderUserResults(container, [
         {
           pubkey: pastedPubkey,
           npub: nip19.npubEncode(pastedPubkey),
@@ -221,7 +220,7 @@ async function loadUserResults(params: UserResultsParams): Promise<void> {
     return;
   }
 
-  renderUserResults(
+  await renderUserResults(
     container,
     rankUserResults(results, query, followed).slice(0, USER_RESULTS_SHOWN),
   );
@@ -333,30 +332,21 @@ export async function loadSearchPage(
       connectingMsg.style.display = 'none';
     }
 
-    let profile: NostrProfile | null = profileCache.get(event.pubkey) || null;
+    const profile: NostrProfile | null = profileCache.get(event.pubkey) || null;
     if (!profileCache.has(event.pubkey)) {
-      const persistentProfile: NostrProfile | null = getPersistentCachedProfile(
-        event.pubkey as PubkeyHex,
+      void getCachedDbProfile(event.pubkey as PubkeyHex).then(
+        (cached: NostrProfile | null): void => {
+          if (!routeIsActive() || !cached) return;
+          profileCache.set(event.pubkey, cached);
+          updateRenderedProfile(output, event.pubkey as PubkeyHex, cached);
+        },
       );
-      if (persistentProfile) {
-        profile = persistentProfile;
-        profileCache.set(event.pubkey, persistentProfile);
-      } else {
-        void getCachedDbProfile(event.pubkey as PubkeyHex).then(
-          (cached: NostrProfile | null): void => {
-            if (!routeIsActive() || !cached) return;
-            profileCache.set(event.pubkey, cached);
-            updateRenderedProfile(output, event.pubkey as PubkeyHex, cached);
-          },
-        );
-      }
     }
 
     if (!fetchingProfiles.has(event.pubkey)) {
       fetchingProfiles.add(event.pubkey);
       fetchProfile(event.pubkey, relays, {
         usePersistentCache: false,
-        persistProfile: true,
         forceRefresh: true,
       })
         .then((fetchedProfile: NostrProfile | null): void => {

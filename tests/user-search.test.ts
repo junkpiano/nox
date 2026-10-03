@@ -275,33 +275,33 @@ test('a name is not mistaken for a key', () => {
   assert.equal(decodePubkeyQuery('a'.repeat(65)), null);
 });
 
-test('a name written to break out of its row is escaped, not obeyed', () => {
+test('a name written to break out of its row is escaped, not obeyed', async () => {
   const hostile: UserSearchResult = result('a', {
     name: '<img src=x onerror=alert(1)>',
     nip05: '"><script>alert(2)</script>',
   });
   const target: FakeContainer = container();
 
-  renderUserResults(target as unknown as HTMLElement, [hostile]);
+  await renderUserResults(target as unknown as HTMLElement, [hostile]);
 
   assert.ok(!target.innerHTML.includes('<script>'));
   assert.ok(!target.innerHTML.includes('<img src=x'));
   assert.ok(target.innerHTML.includes('&lt;img src=x onerror=alert(1)&gt;'));
 });
 
-test('a bio is flattened onto its one line', () => {
+test('a bio is flattened onto its one line', async () => {
   const chatty: UserSearchResult = result('b', {
     name: 'x',
     about: 'line one\nline two\tand   more',
   });
   const target: FakeContainer = container();
 
-  renderUserResults(target as unknown as HTMLElement, [chatty]);
+  await renderUserResults(target as unknown as HTMLElement, [chatty]);
 
   assert.ok(target.innerHTML.includes('line one line two and more'));
 });
 
-test('a picture URL that is not fetchable as an image is not put in a src', () => {
+test('a picture URL that is not fetchable as an image is not put in a src', async () => {
   // The picture field is whatever its owner typed. `javascript:` in a src is
   // inert in a browser, but it has no business reaching the attribute.
   const hostile: UserSearchResult = result('c', {
@@ -310,28 +310,28 @@ test('a picture URL that is not fetchable as an image is not put in a src', () =
   });
   const target: FakeContainer = container();
 
-  renderUserResults(target as unknown as HTMLElement, [hostile]);
+  await renderUserResults(target as unknown as HTMLElement, [hostile]);
 
   assert.ok(!target.innerHTML.includes('javascript:'));
   assert.ok(target.innerHTML.includes('robohash.org'));
 });
 
-test('an https picture URL is kept', () => {
+test('an https picture URL is kept', async () => {
   const normal: UserSearchResult = result('d', {
     name: 'x',
     picture: 'https://example.com/me.png',
   });
   const target: FakeContainer = container();
 
-  renderUserResults(target as unknown as HTMLElement, [normal]);
+  await renderUserResults(target as unknown as HTMLElement, [normal]);
 
   assert.ok(target.innerHTML.includes('https://example.com/me.png'));
 });
 
-test('no people means no People block, rather than an empty one', () => {
+test('no people means no People block, rather than an empty one', async () => {
   const target: FakeContainer = { innerHTML: 'stale', style: {} };
 
-  renderUserResults(target as unknown as HTMLElement, []);
+  await renderUserResults(target as unknown as HTMLElement, []);
 
   assert.equal(target.innerHTML, '');
   assert.equal(target.style.display, 'none');

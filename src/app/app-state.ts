@@ -13,7 +13,6 @@ import {
 import { findDeletedIds } from '../common/deletion-gate.js';
 import { renderEvent } from '../common/event-render.js';
 import { publishEventToRelays } from '../common/publish-event.js';
-import { getCachedProfile as getPersistentCachedProfile } from '../features/profile/profile-cache.js';
 import {
   fetchNip65RelayList,
   signNip65RelayListEvent,
@@ -491,14 +490,9 @@ export async function restoreTimelineFromCache(params: {
   const profiles: Array<NostrProfile | null> = await Promise.all(
     uniquePubkeys.map(async (pk: PubkeyHex): Promise<NostrProfile | null> => {
       try {
-        const cachedDbProfile: NostrProfile | null =
-          await getCachedDbProfile(pk);
-        if (cachedDbProfile) {
-          return cachedDbProfile;
-        }
-        return getPersistentCachedProfile(pk);
+        return await getCachedDbProfile(pk);
       } catch {
-        return getPersistentCachedProfile(pk);
+        return null;
       }
     }),
   );

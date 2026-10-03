@@ -23,13 +23,10 @@ import type {
   Npub,
   PubkeyHex,
 } from '../../../types/nostr';
+import { getProfile, storeProfile } from '../../common/db/index.js';
 import { isMuted } from '../../common/mute-state.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getAvatarURL, shortenNpub } from '../../utils/utils.js';
-import {
-  getCachedProfile,
-  setCachedProfile,
-} from '../profile/profile-cache.js';
 import {
   MAX_ABOUT_LENGTH,
   MAX_NAME_LENGTH,
@@ -190,24 +187,24 @@ export function searchUsers(
 }
 
 /**
- * Reconciles a search hit against the cache.
+ * Reconciles a search hit against the store.
  *
- * A search relay's copy of a profile may be older than the one already stored,
- * and the cache is the authoritative render source. So a cached profile wins
- * and is returned unchanged; a pubkey with no cache entry is filled in from
- * the search result, which populates a gap without overwriting anything.
+ * A search relay's copy of a profile may be older than the one already
+ * stored, and the store is the authoritative render source. So a stored
+ * profile wins and is returned unchanged; a pubkey with none is filled in
+ * from the search result, which populates a gap without overwriting anything.
  */
-export function reconcileWithCache(result: UserSearchResult): NostrProfile {
-  const cached: NostrProfile | null = getCachedProfile(result.pubkey);
-  if (cached) {
-    return cached;
-  }
-  setCachedProfile(result.pubkey, result.profile);
+async function reconcileWithStore(
+  result: UserSearchResult,
+): Promise<NostrProfile> {
+  const stored: NostrProfile | null = await getProfile(result.pubkey);
+  if (stored) return stored;
+  void storeProfile(result.pubkey, result.profile);
   return result.profile;
 }
 
 function renderUserRow(result: UserSearchResult): string {
-  const profile: NostrProfile = reconcileWithCache(result);
+  const profile: NostrProfile = result.profile;
   const name: string =
     oneLine(profile.display_name, MAX_NAME_LENGTH) ||
     oneLine(profile.name, MAX_NAME_LENGTH) ||
@@ -239,21 +236,31 @@ function renderUserRow(result: UserSearchResult): string {
  * An empty block is worse than no block: it takes a line of the page to say
  * that a thing the reader did not ask about was not found.
  */
-export function renderUserResults(
+export async function renderUserResults(
   container: HTMLElement,
   results: UserSearchResult[],
-): void {
+): Promise<void> {
   if (results.length === 0) {
     container.innerHTML = '';
     container.style.display = 'none';
     return;
   }
 
+  // Looked up together, before any row is drawn: the rows are one string.
+  const reconciled: UserSearchResult[] = await Promise.all(
+    results.map(
+      async (result: UserSearchResult): Promise<UserSearchResult> => ({
+        ...result,
+        profile: await reconcileWithStore(result),
+      }),
+    ),
+  );
+
   container.style.display = '';
   container.innerHTML = `
     <h3 class="font-semibold text-sm text-gray-800 mb-2">People (${results.length})</h3>
     <div class="space-y-1 mb-6">
-      ${results.map(renderUserRow).join('')}
+      ${reconciled.map(renderUserRow).join('')}
     </div>
   `;
 }

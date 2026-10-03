@@ -12,7 +12,6 @@ import {
   fetchProfile,
   getAuthoritativeProfile,
 } from '../features/profile/profile.js';
-import { getCachedProfile as getPersistentCachedProfile } from '../features/profile/profile-cache.js';
 import { getRelays } from '../features/relays/relays.js';
 import {
   createBackwardReq,
@@ -116,10 +115,7 @@ async function getCachedRenderProfile(
     return profileCache.get(pubkey) || null;
   }
 
-  let profile: NostrProfile | null = await getCachedDbProfile(pubkey);
-  if (!profile) {
-    profile = getPersistentCachedProfile(pubkey);
-  }
+  const profile: NostrProfile | null = await getCachedDbProfile(pubkey);
   if (profile) {
     profileCache.set(pubkey, profile);
   }
@@ -160,25 +156,17 @@ function getLiveRenderProfile(
   relays: string[],
   routeIsActive: () => boolean,
 ): NostrProfile | null {
-  let profile: NostrProfile | null = profileCache.get(event.pubkey) || null;
+  const profile: NostrProfile | null = profileCache.get(event.pubkey) || null;
   if (!profileCache.has(event.pubkey)) {
-    const persistentProfile: NostrProfile | null = getPersistentCachedProfile(
-      event.pubkey as PubkeyHex,
+    void getCachedDbProfile(event.pubkey as PubkeyHex).then(
+      (cachedProfile: NostrProfile | null): void => {
+        if (!routeIsActive() || !cachedProfile) {
+          return;
+        }
+        profileCache.set(event.pubkey, cachedProfile);
+        updateRenderedProfile(output, event, cachedProfile);
+      },
     );
-    if (persistentProfile) {
-      profile = persistentProfile;
-      profileCache.set(event.pubkey, persistentProfile);
-    } else {
-      void getCachedDbProfile(event.pubkey as PubkeyHex).then(
-        (cachedProfile: NostrProfile | null): void => {
-          if (!routeIsActive() || !cachedProfile) {
-            return;
-          }
-          profileCache.set(event.pubkey, cachedProfile);
-          updateRenderedProfile(output, event, cachedProfile);
-        },
-      );
-    }
   }
 
   if (!fetchingProfiles.has(event.pubkey)) {
@@ -187,7 +175,6 @@ function getLiveRenderProfile(
     // in five minutes does not ask every relay about every author again.
     fetchProfile(event.pubkey, relays, {
       usePersistentCache: false,
-      persistProfile: true,
     })
       .then((fetchedProfile: NostrProfile | null): void => {
         // Before the route check: a fetch that lands after leaving the page

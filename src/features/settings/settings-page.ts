@@ -8,6 +8,8 @@ import {
   clearEvents,
   clearProfiles,
   clearTimelines,
+  countProfiles,
+  LIMITS,
 } from '../../common/db/index.js';
 import {
   clearEventCache,
@@ -17,11 +19,6 @@ import {
 import { getMutedPubkeys, getMutedWords } from '../../common/mute-state.js';
 import type { SetActiveNavFn } from '../../common/types.js';
 import { setMutedWords, unmuteUser } from '../moderation/moderation-actions.js';
-import {
-  clearProfileCache,
-  getProfileCacheStats,
-  PROFILE_CACHE_LIMIT,
-} from '../profile/profile-cache.js';
 
 interface SettingsPageOptions {
   getRelays: () => string[];
@@ -158,7 +155,7 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
             Total stored data: <span id="cache-size">Calculating...</span>
           </div>
           <div class="text-xs text-gray-500 mt-1">
-            Posts: <span id="cache-events">-</span> / ${EVENT_CACHE_LIMIT} · Profiles: <span id="cache-profiles">-</span> / ${PROFILE_CACHE_LIMIT}
+            Posts: <span id="cache-events">-</span> / ${EVENT_CACHE_LIMIT} · Profiles: <span id="cache-profiles">-</span> / ${LIMITS.PROFILES}
           </div>
         </div>
         <button id="cache-clear"
@@ -227,7 +224,6 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
           clearProfiles(),
           clearEventCache(),
         ]);
-        clearProfileCache();
       }
 
       await updateStats();
@@ -246,11 +242,11 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
   }
 
   const updateStats = async (): Promise<void> => {
-    const [eventStats, profileStats] = await Promise.all([
+    const [eventStats, profileCount] = await Promise.all([
       getEventCacheStats(),
-      getProfileCacheStats(),
+      countProfiles(),
     ]);
-    const totalBytes: number = eventStats.bytes + profileStats.bytes;
+    const totalBytes: number = eventStats.bytes;
     if (sizeEl) {
       sizeEl.textContent = formatBytes(totalBytes);
     }
@@ -258,7 +254,7 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
       eventsEl.textContent = `${eventStats.count}`;
     }
     if (profilesEl) {
-      profilesEl.textContent = `${profileStats.count}`;
+      profilesEl.textContent = `${profileCount}`;
     }
   };
 
@@ -280,7 +276,6 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
       }
       await Promise.all([
         clearEventCache(),
-        clearProfileCache(),
         clearTimelines(),
         clearEvents(),
         clearProfiles(),
