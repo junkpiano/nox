@@ -11,6 +11,7 @@ import {
 } from '../../common/avatar.js';
 import { loadableOnThisPage } from '../../common/avatar-dom.js';
 import { storeProfile } from '../../common/db/index.js';
+import { escapeHtml } from '../../common/escape-html.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
 import { fetchFollowSet } from '../../common/notification-filter.js';
 import {
@@ -24,18 +25,6 @@ import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
 import { getRelays, recordRelayFailure } from '../relays/relays.js';
 import { getCachedProfile, setCachedProfile } from './profile-cache.js';
 import { fetchUserStatus } from './user-status.js';
-
-/**
- * Escapes text for safe HTML rendering.
- */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
 
 function normalizeHttpUrl(url: string): string | null {
   try {

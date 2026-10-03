@@ -50,16 +50,6 @@ export function createBackwardReq(subId?: string) {
   );
 }
 
-/**
- * Cleanup and dispose the RxNostr instance (call on app shutdown)
- */
-export function disposeRxNostr(): void {
-  if (rxNostr) {
-    rxNostr.dispose();
-    rxNostr = null;
-  }
-}
-
 // Initialize with current relays
 syncRelayConnections();
 

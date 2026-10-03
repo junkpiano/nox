@@ -1,4 +1,5 @@
 import { avatarErrorAttribute } from '../../common/avatar.js';
+import { escapeHtml } from '../../common/escape-html.js';
 /**
  * Finding a person, rather than a post.
  *
@@ -57,16 +58,6 @@ export interface UserSearchParams {
 }
 
 const USER_SEARCH_TIMEOUT_MS: number = 8000;
-
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 /**
  * Collects kind 0 events matching `query` from every search relay.

@@ -4,9 +4,11 @@ import {
   deleteTimeline,
   getTimelineNewestTimestamp,
 } from '../common/db/index.js';
+import { escapeHtml } from '../common/escape-html.js';
 import { setActiveNav } from '../common/navigation.js';
 import { isNip05Identifier, resolveNip05 } from '../common/nip05.js';
 import { hidesWallet } from '../common/platform.js';
+import { publishEventToRelays } from '../common/publish-event.js';
 import { setRelayTimeout } from '../common/relay-schedule.js';
 import {
   clearSessionPrivateKey,
@@ -172,9 +174,9 @@ async function getNotificationsModule(): Promise<
 }
 
 async function getProfileFollowModule(): Promise<
-  typeof import('../features/profile/follow-page.js')
+  typeof import('../features/profile/follow.js')
 > {
-  return import('../features/profile/follow-page.js');
+  return import('../features/profile/follow.js');
 }
 
 async function getProfilePageModule(): Promise<
@@ -215,12 +217,6 @@ function decodePathSegment(segment: string): string {
   } catch {
     return segment;
   }
-}
-
-function escapeHtml(text: string): string {
-  const div: HTMLDivElement = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 function stopBackgroundFetch(): void {
@@ -1071,10 +1067,8 @@ async function startAppCore(
     return;
   }
   if (profileSection) {
-    const [
-      { renderProfile, setupProfileEditor, setupProfileZapButton },
-      { publishEventToRelays },
-    ] = await Promise.all([getProfilePageModule(), getProfileFollowModule()]);
+    const { renderProfile, setupProfileEditor, setupProfileZapButton } =
+      await getProfilePageModule();
     if (!isRouteActive()) return; // Guard before DOM update
     renderProfile(pubkeyHex, npub, appState.profile, profileSection);
     mountProfileTabs(profileSection);
@@ -1109,8 +1103,7 @@ async function startAppCore(
   }
 
   try {
-    const { setupFollowToggle, publishEventToRelays } =
-      await getProfileFollowModule();
+    const { setupFollowToggle } = await getProfileFollowModule();
     await setupFollowToggle(pubkeyHex, {
       getRelays: (): string[] => appState.relays,
       publishEvent: publishEventToRelays,

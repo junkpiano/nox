@@ -12,7 +12,7 @@ import {
 } from '../common/db/index.js';
 import { findDeletedIds } from '../common/deletion-gate.js';
 import { renderEvent } from '../common/event-render.js';
-import { publishEventToRelays } from '../features/profile/follow.js';
+import { publishEventToRelays } from '../common/publish-event.js';
 import { getCachedProfile as getPersistentCachedProfile } from '../features/profile/profile-cache.js';
 import {
   fetchNip65RelayList,
