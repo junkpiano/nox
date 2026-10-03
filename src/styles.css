@@ -1030,6 +1030,7 @@ main {
 }
 
 .nox-tab {
+  position: relative;
   flex: 1 1 0;
   display: flex;
   flex-direction: column;
@@ -1048,6 +1049,13 @@ main {
 .nox-tab-icon {
   font-size: 1.125rem;
   line-height: 1;
+  /* The icons are colour emoji, which all shout equally. Quieting the ones
+     not chosen is what lets the chosen one be seen. */
+  opacity: 0.5;
+  filter: grayscale(0.7);
+  transition:
+    opacity 120ms ease,
+    filter 120ms ease;
 }
 
 .nox-tab-label {
@@ -1057,7 +1065,25 @@ main {
 }
 
 .nox-tab.is-active {
-  color: var(--nox-text-strong, #edf3ff);
+  color: var(--nox-accent-strong);
+}
+
+.nox-tab.is-active .nox-tab-icon {
+  opacity: 1;
+  filter: none;
+}
+
+/* The primary button's gradient, as a mark on the edge the tab hangs from. */
+.nox-tab.is-active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2rem;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(90deg, #76dbff, #8da4ff 48%, #d18fff);
 }
 
 /* Small screens ----------------------------------------------------------- */
@@ -1124,12 +1150,35 @@ main {
     padding-right: calc(1rem + var(--nox-safe-right));
   }
 
-  /* The People block is a sibling of the post cards in the same feed, and the
-     feed panel drops its own gutter on a phone - so the block has to carry the
-     same one, or its heading sits flush against the edge of the screen. */
-  #search-users {
+  /* Only post cards run edge to edge, and they carry their own reading
+     margin. Everything else a page puts here - forms, lists, switches, the
+     People block - has none, and without the page gutter sat flush against
+     the screen. Thread sections and search results hold cards, and the
+     new-posts row pads itself. */
+  #nostr-output
+    > :not(
+      .event-container,
+      .ancestor-chain,
+      .thread-replies,
+      #search-posts,
+      .new-posts-row,
+      .nox-segment
+    ) {
     padding-left: calc(1rem + var(--nox-safe-left));
     padding-right: calc(1rem + var(--nox-safe-right));
+  }
+
+  /* A pill: the gutter goes outside its border, not inside. It sits right
+     under the header bar, which has no margin of its own here, and the list
+     below already pads its first row. */
+  #nostr-output > .nox-segment {
+    margin: 0.75rem 0 0.5rem calc(1rem + var(--nox-safe-left));
+  }
+
+  /* `.theme-nox #nostr-output > * + *` spaces the desktop panel, and outranks
+     the plain reset above. Under a switch, the switch's margin is the gap. */
+  .theme-nox #nostr-output > .nox-segment ~ * {
+    margin-top: 0;
   }
 
   /* Sits above the tab bar rather than on top of it. */
@@ -1757,8 +1806,8 @@ main {
 }
 
 .nox-segment-option[aria-pressed="true"] {
-  background: rgba(137, 168, 255, 0.18);
-  color: #f5f8ff;
+  background: var(--nox-accent-strong);
+  color: #04111f;
 }
 
 .nox-segment-option:focus-visible {
