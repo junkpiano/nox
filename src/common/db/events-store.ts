@@ -1,5 +1,6 @@
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr.js';
 import { isTimelineCacheEnabled } from '../cache-settings.js';
+import { verifiedEvent } from '../event-filter.js';
 import {
   createTransaction,
   isIndexedDBAvailable,
@@ -34,6 +35,7 @@ export async function storeEvent(
       kind: event.kind,
       created_at: event.created_at,
       storedAt: Date.now(),
+      verified: true,
       isHomeTimeline: options?.isHomeTimeline,
     };
 
@@ -71,6 +73,7 @@ export async function storeEvents(
         kind: event.kind,
         created_at: event.created_at,
         storedAt: now,
+        verified: true,
         isHomeTimeline: options?.isHomeTimeline,
       };
       store.put(cachedEvent);
@@ -81,6 +84,32 @@ export async function storeEvents(
   } catch (error) {
     console.error('[EventsStore] Failed to store events:', error);
   }
+}
+
+/**
+ * The event in a record, if it may be shown.
+ *
+ * The page checks an event before storing it and marks the record. The
+ * service worker cannot - it is plain script with no signature library - and
+ * records from before the mark existed carry none either. An unmarked record
+ * is checked here, once, on the way out: a genuine one is marked, a forged
+ * one deleted.
+ */
+function admitted(
+  record: CachedEvent,
+  store: IDBObjectStore,
+): NostrEvent | null {
+  if (record.verified) return record.event;
+  const checked: NostrEvent | null = verifiedEvent(
+    { kinds: [record.kind] },
+    record.event,
+  );
+  if (!checked) {
+    store.delete(record.id);
+    return null;
+  }
+  store.put({ ...record, event: checked, verified: true });
+  return checked;
 }
 
 /**
@@ -108,7 +137,7 @@ export async function getEvent(eventId: string): Promise<NostrEvent | null> {
       return null;
     }
 
-    return record.event;
+    return admitted(record, store);
   } catch (error) {
     console.error('[EventsStore] Failed to get event:', error);
     return null;
@@ -147,7 +176,8 @@ export async function getEvents(eventIds: string[]): Promise<NostrEvent[]> {
         continue;
       }
 
-      events.push(record.event);
+      const event: NostrEvent | null = admitted(record, store);
+      if (event) events.push(event);
     }
 
     return events;
@@ -166,7 +196,9 @@ export async function queryEvents(
   if (!isIndexedDBAvailable()) return [];
 
   try {
-    const tx = await createTransaction(STORE_NAMES.EVENTS, 'readonly');
+    // Read-write: a record the service worker left unchecked is settled as
+    // it is read, and that is a write.
+    const tx = await createTransaction(STORE_NAMES.EVENTS, 'readwrite');
     const store = tx.objectStore(STORE_NAMES.EVENTS);
     const now = Date.now();
     const events: NostrEvent[] = [];
@@ -238,7 +270,12 @@ export async function queryEvents(
           return;
         }
 
-        events.push(record.event);
+        const event: NostrEvent | null = admitted(record, store);
+        if (!event) {
+          cursor.continue();
+          return;
+        }
+        events.push(event);
         count++;
         cursor.continue();
       };
