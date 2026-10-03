@@ -2271,3 +2271,54 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
 .event-actions .repost-event-btn[aria-pressed="true"] {
   color: #34d399;
 }
+
+/* ---------------------------------------------------------------------------
+   A conversation
+
+   The composer stays on screen while the thread scrolls under it, like the
+   tab bar it sits above. Sticky rather than fixed, so it keeps the width of
+   the column it belongs to on every layout; that needs the two clipping
+   boxes around it to stop being scroll containers, which `clip` and
+   `visible` are not.
+   --------------------------------------------------------------------------- */
+
+.route-messages .nox-feed-panel {
+  overflow: clip;
+}
+
+.route-messages #nostr-output {
+  overflow: visible;
+}
+
+.route-messages #nav-compose {
+  display: none;
+}
+
+.nox-dm-composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: grid;
+  gap: 0.375rem;
+  /* Reaches the panel's edges so nothing shows beside it as the thread
+     scrolls past. */
+  margin: 0 -1.5rem -1.5rem;
+  padding: 0.75rem 1.5rem 1rem;
+  background: var(--nox-panel-strong);
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 1023px) {
+  .route-messages #nostr-output {
+    padding-top: 0.75rem;
+  }
+
+  .nox-dm-composer {
+    bottom: calc(var(--nox-tabbar-height) + var(--nox-safe-bottom));
+    margin: 0 calc(-1rem - var(--nox-safe-right)) 0
+      calc(-1rem - var(--nox-safe-left));
+    padding: 0.625rem calc(1rem + var(--nox-safe-right)) 0.625rem
+      calc(1rem + var(--nox-safe-left));
+  }
+}

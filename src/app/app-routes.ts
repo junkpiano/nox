@@ -280,6 +280,9 @@ export function handleRoute(scrollRestoreState?: unknown): void {
   // The profile page too: the person's name is the heading, and the
   // stylesheet keeps the list heading off the wide layout.
   document.body.classList.toggle('route-profile', /^\/npub1/.test(path));
+  // A conversation keeps its composer on screen, and has no use for the
+  // compose button that would sit over it.
+  document.body.classList.toggle('route-messages', path === '/messages');
   document.body.classList.remove('profile-replies');
   if (output && !/^\/(nevent1|note1)/.test(path)) {
     delete output.dataset.threadIds;
