@@ -88,9 +88,21 @@ function getRelayAuthPermission(relayUrl: string): RelayAuthPermission | null {
   return permissions[relayUrl] || null;
 }
 
+/**
+ * The viewer's own DM relays (kind 10050). They are not in the relay settings,
+ * but the viewer chose them, and they are where gift wraps addressed to the
+ * viewer wait behind AUTH - so they may ask, like a configured relay.
+ */
+let ownDmRelayUrls: string[] = [];
+
+export function setOwnDmRelaysForAuth(relayUrls: string[]): void {
+  ownDmRelayUrls = relayUrls;
+}
+
 /** Forgets every stored answer, so nothing granted earlier outlives the switch. */
 export function clearRelayAuthPermissions(): void {
   persistRelayAuthPermissions({});
+  ownDmRelayUrls = [];
 }
 
 export function setRelayAuthPermissionForRelays(
@@ -107,9 +119,15 @@ export function setRelayAuthPermissionForRelays(
 }
 
 function getConfiguredRelayUrls(): string[] {
-  return getRelays()
-    .map((relayUrl: string): string | null => normalizeRelayUrl(relayUrl))
-    .filter((relayUrl: string | null): relayUrl is string => Boolean(relayUrl));
+  return Array.from(
+    new Set(
+      [...getRelays(), ...ownDmRelayUrls]
+        .map((relayUrl: string): string | null => normalizeRelayUrl(relayUrl))
+        .filter((relayUrl: string | null): relayUrl is string =>
+          Boolean(relayUrl),
+        ),
+    ),
+  );
 }
 
 function parseAuthChallengeMessage(data: string): AuthChallengeMessage | null {

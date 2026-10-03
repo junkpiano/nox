@@ -14,6 +14,7 @@ import { signWithSession } from '../../common/signer.js';
  */
 
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
+import { verifiedEvent } from '../../common/event-filter.js';
 import { createRelayWebSocket } from '../../common/relay-socket.js';
 
 export const DM_RELAY_LIST_KIND: number = 10050;
@@ -85,9 +86,14 @@ async function fetchNewestEvent(
             try {
               const frame: unknown[] = JSON.parse(message.data);
               if (frame[0] === 'EVENT') {
-                const event = frame[2] as NostrEvent;
+                // Signed by the person it claims to be about, or it is a
+                // relay's suggestion of where their messages should go.
+                const event: NostrEvent | null = verifiedEvent(
+                  { kinds: [kind], authors: [pubkey] },
+                  frame[2],
+                );
                 if (
-                  event?.kind === kind &&
+                  event &&
                   (!newest.event || event.created_at >= newest.event.created_at)
                 ) {
                   newest.event = event;
