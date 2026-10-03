@@ -1,6 +1,6 @@
-import { createRelayWebSocket } from '../../common/relay-socket.js';
+import { newestOf, queryRelays } from '../../common/relay-query.js';
 import { signWithSession } from '../../common/signer.js';
-import { normalizeRelayUrl, recordRelayFailure } from './relays.js';
+import { normalizeRelayUrl } from './relays.js';
 
 // Local structural types to avoid module-resolution edge cases with `types/nostr`.
 // This stays compatible with the app-wide `NostrEvent` interface.
@@ -53,96 +53,21 @@ export function buildNip65RelayTags(relayUrls: string[]): string[][] {
 export async function fetchNip65RelayList(params: {
   pubkeyHex: PubkeyHex;
   relays: string[];
-  timeoutMs?: number;
 }): Promise<{ relayUrls: string[]; createdAt: number } | null> {
-  const timeoutMs: number = Number.isFinite(params.timeoutMs)
-    ? Math.max(500, Math.floor(params.timeoutMs as number))
-    : 5000;
-
-  let newestEvent: NostrEvent | null = null;
-
-  const promises: Promise<void>[] = params.relays.map(
-    async (relayUrl: string): Promise<void> => {
-      try {
-        const socket: WebSocket = createRelayWebSocket(relayUrl);
-        await new Promise<void>((resolve) => {
-          let settled: boolean = false;
-          const finish = (): void => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          };
-
-          const timeout = setTimeout((): void => {
-            recordRelayFailure(relayUrl);
-            finish();
-          }, timeoutMs);
-
-          socket.onopen = (): void => {
-            const subId: string = `nip65-${Math.random().toString(36).slice(2)}`;
-            const req: [
-              string,
-              string,
-              { kinds: number[]; authors: string[]; limit: number },
-            ] = [
-              'REQ',
-              subId,
-              {
-                kinds: [NIP65_KIND_RELAY_LIST],
-                authors: [params.pubkeyHex],
-                limit: 10,
-              },
-            ];
-            socket.send(JSON.stringify(req));
-          };
-
-          socket.onmessage = (msg: MessageEvent): void => {
-            const arr: any[] = JSON.parse(msg.data);
-            if (arr[0] === 'EVENT' && arr[2]?.kind === NIP65_KIND_RELAY_LIST) {
-              const event: NostrEvent = arr[2] as NostrEvent;
-              if (!newestEvent || event.created_at >= newestEvent.created_at) {
-                newestEvent = event;
-              }
-              return;
-            }
-            if (arr[0] === 'EOSE') {
-              finish();
-            }
-          };
-
-          socket.onerror = (): void => {
-            finish();
-          };
-        });
-      } catch (error: unknown) {
-        console.warn(
-          `[NIP-65] Failed to fetch relay list from ${relayUrl}:`,
-          error,
-        );
-      }
-    },
+  // Through the checked ingress: this list decides which relays are asked
+  // next, so it is believed only when signed by the person it is for.
+  const newest: NostrEvent | null = newestOf(
+    await queryRelays(params.relays, {
+      kinds: [NIP65_KIND_RELAY_LIST],
+      authors: [params.pubkeyHex],
+      limit: 10,
+    }),
   );
-
-  await Promise.allSettled(promises);
-
-  // Copy to a local const before narrowing; `newestEvent` is written from socket callbacks.
-  const resolved: NostrEvent | null = newestEvent;
-
-  if (resolved === null) {
-    return null;
-  }
-
-  // TS sometimes fails to narrow this in strict+isolatedModules setups when the value
-  // is populated from nested socket callbacks; keep it runtime-safe instead.
-  const eventAny: any = resolved;
-  const relayUrls: string[] = parseNip65RelayUrls(
-    Array.isArray(eventAny?.tags) ? (eventAny.tags as string[][]) : [],
-  );
-  const createdAt: number =
-    typeof eventAny?.created_at === 'number' ? eventAny.created_at : 0;
-  return { relayUrls, createdAt };
+  if (!newest) return null;
+  return {
+    relayUrls: parseNip65RelayUrls(newest.tags),
+    createdAt: newest.created_at,
+  };
 }
 
 export async function signNip65RelayListEvent(params: {

@@ -14,10 +14,9 @@ import {
   saveNotificationScope,
   scopeNotifications,
 } from '../../common/notification-filter.js';
-import { createRelayWebSocket } from '../../common/relay-socket.js';
+import { queryRelays } from '../../common/relay-query.js';
 import { getDisplayName, replaceEmojiShortcodes } from '../../utils/utils.js';
 import { fetchProfile, getAuthoritativeProfile } from '../profile/profile.js';
-import { recordRelayFailure } from '../relays/relays.js';
 
 interface LoadNotificationsOptions {
   relays: string[];
@@ -165,61 +164,15 @@ async function fetchNotifications(
   targetPubkey: PubkeyHex,
   limit: number,
 ): Promise<NostrEvent[]> {
-  const results: Map<string, NostrEvent> = new Map();
-
-  const promises = relays.map(async (relayUrl: string): Promise<void> => {
-    try {
-      const socket: WebSocket = createRelayWebSocket(relayUrl);
-      await new Promise<void>((resolve) => {
-        let settled: boolean = false;
-        const finish = (): void => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          socket.close();
-          resolve();
-        };
-
-        const timeout = setTimeout(() => {
-          recordRelayFailure(relayUrl);
-          finish();
-        }, 5000);
-
-        socket.onopen = (): void => {
-          const subId: string = `notif-${Math.random().toString(36).slice(2)}`;
-          const req: [
-            string,
-            string,
-            { kinds: number[]; '#p': string[]; limit: number },
-          ] = ['REQ', subId, { kinds: [1, 6, 7], '#p': [targetPubkey], limit }];
-          socket.send(JSON.stringify(req));
-        };
-
-        socket.onmessage = (msg: MessageEvent): void => {
-          const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'EVENT' && arr[2]) {
-            const event: NostrEvent = arr[2];
-            const type = classifyNotification(event, targetPubkey);
-            if (type) {
-              results.set(event.id, event);
-            }
-          } else if (arr[0] === 'EOSE') {
-            finish();
-          }
-        };
-
-        socket.onerror = (): void => {
-          finish();
-        };
-      });
-    } catch (e) {
-      console.warn(`Failed to load notifications from ${relayUrl}:`, e);
-    }
-  });
-
-  await Promise.allSettled(promises);
-
-  const events: NostrEvent[] = Array.from(results.values());
+  const events: NostrEvent[] = (
+    await queryRelays(relays, {
+      kinds: [1, 6, 7],
+      '#p': [targetPubkey],
+      limit,
+    })
+  ).filter((event: NostrEvent): boolean =>
+    Boolean(classifyNotification(event, targetPubkey)),
+  );
   events.sort(
     (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
   );

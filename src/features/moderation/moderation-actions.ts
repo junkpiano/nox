@@ -18,8 +18,7 @@ import {
   setMuteList,
 } from '../../common/mute-state.js';
 import { publishEventToRelays } from '../../common/publish-event.js';
-import { createRelayWebSocket } from '../../common/relay-socket.js';
-import { recordRelayFailure } from '../relays/relays.js';
+import { newestOf, queryRelays } from '../../common/relay-query.js';
 import type { MuteEntries } from './mute-entries.js';
 import {
   MUTE_LIST_KIND,
@@ -55,81 +54,15 @@ export async function refreshMuteListFromRelays(
     return;
   }
 
-  // Held in an object so TypeScript keeps the type across the socket
-  // callbacks; a plain `let` narrows to null and loses it after the await.
-  const newest: { event: NostrEvent | null } = { event: null };
-
-  const promises: Promise<void>[] = relays.map(
-    async (relayUrl: string): Promise<void> => {
-      try {
-        const socket: WebSocket = createRelayWebSocket(relayUrl);
-        await new Promise<void>((resolve) => {
-          let settled: boolean = false;
-          const finish = (): void => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          };
-
-          const timeout = setTimeout((): void => {
-            recordRelayFailure(relayUrl);
-            finish();
-          }, 5000);
-
-          socket.onopen = (): void => {
-            const subId: string = `mute-${Math.random().toString(36).slice(2)}`;
-            socket.send(
-              JSON.stringify([
-                'REQ',
-                subId,
-                {
-                  kinds: [MUTE_LIST_KIND],
-                  authors: [viewerPubkey],
-                  limit: 1,
-                },
-              ]),
-            );
-          };
-
-          socket.onmessage = (msg: MessageEvent): void => {
-            try {
-              const arr: unknown[] = JSON.parse(msg.data);
-              if (arr[0] === 'EVENT') {
-                const event = arr[2] as NostrEvent;
-                if (
-                  event?.kind === MUTE_LIST_KIND &&
-                  (!newest.event || event.created_at >= newest.event.created_at)
-                ) {
-                  newest.event = event;
-                }
-                return;
-              }
-              if (arr[0] === 'EOSE') {
-                finish();
-              }
-            } catch {
-              finish();
-            }
-          };
-
-          socket.onerror = (): void => {
-            finish();
-          };
-        });
-      } catch (error: unknown) {
-        console.warn(
-          `[mute] Failed to fetch mute list from ${relayUrl}:`,
-          error,
-        );
-      }
-    },
+  // Through the checked ingress: an entry this client did not sign would be
+  // merged into the next list it publishes, under the viewer's signature.
+  const resolved: NostrEvent | null = newestOf(
+    await queryRelays(relays, {
+      kinds: [MUTE_LIST_KIND],
+      authors: [viewerPubkey],
+      limit: 1,
+    }),
   );
-
-  await Promise.allSettled(promises);
-
-  const resolved: NostrEvent | null = newest.event;
   if (!resolved || resolved.created_at <= getMuteListCreatedAt()) {
     return;
   }
