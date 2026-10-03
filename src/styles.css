@@ -841,11 +841,19 @@ body.theme-nox textarea {
   ) !important;
 }
 
+.theme-nox .hover\:bg-gray-50:hover,
 .theme-nox .hover\:bg-gray-100:hover,
 .theme-nox .hover\:bg-gray-300:hover,
 .theme-nox .hover\:bg-gray-400:hover,
 .theme-nox .hover\:bg-slate-50:hover {
   background: rgba(31, 44, 77, 0.76) !important;
+}
+
+/* A quoted or reposted post. Tailwind's light indigo turned the box nearly
+   white under the theme's light text; a tint of the accent says "open me"
+   and keeps the words readable. */
+.theme-nox .hover\:bg-indigo-100:hover {
+  background: rgba(137, 168, 255, 0.14) !important;
 }
 
 .theme-nox .hover\:bg-indigo-700:hover,
