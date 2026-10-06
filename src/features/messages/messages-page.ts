@@ -45,6 +45,8 @@ let messagesUpdatedListener: (() => void) | null = null;
 
 /** True while picking a recipient for a conversation that does not exist yet. */
 let composing: boolean = false;
+/** The thread on screen at the last render, to tell opening from updating. */
+let lastShownPeer: PubkeyHex | null = null;
 
 /**
  * Set by other pages to open a conversation on arrival.
@@ -364,18 +366,20 @@ function renderThread(
       <p id="dm-peer" class="truncate font-semibold"></p>
       <p id="dm-peer-warning" class="text-xs text-amber-300" role="status"></p>
       <div id="dm-thread" class="space-y-2"></div>
-      <div class="flex gap-2">
-        <input
-          id="dm-input"
-          type="text"
-          placeholder="Message"
-          class="nox-input flex-1 rounded p-2 text-sm"
-        />
-        <button id="dm-send" type="button" class="nox-primary-button flex-none rounded px-4 py-2 font-semibold">
-          Send
-        </button>
+      <div id="dm-composer" class="nox-dm-composer">
+        <div class="flex gap-2">
+          <input
+            id="dm-input"
+            type="text"
+            placeholder="Message"
+            class="nox-input flex-1 rounded p-2 text-sm"
+          />
+          <button id="dm-send" type="button" class="nox-primary-button flex-none rounded px-4 py-2 font-semibold">
+            Send
+          </button>
+        </div>
+        <p id="dm-status" class="text-sm empty:hidden" role="status"></p>
       </div>
-      <p id="dm-status" class="text-sm" role="status"></p>
     </div>
   `;
 
@@ -415,12 +419,16 @@ function renderThread(
 
   const thread = output.querySelector('#dm-thread');
   if (thread) {
-    for (const message of getConversation(peer)) {
+    const messages = getConversation(peer);
+    // Their face once per run, beside the last message of it, as in any chat:
+    // a run is one turn of theirs, and the face says whose turn it was.
+    const avatars: HTMLImageElement[] = [];
+    messages.forEach((message, index: number): void => {
       const mine: boolean = message.author === viewerPubkey;
       const bubble: HTMLDivElement = document.createElement('div');
       bubble.className = mine
         ? 'ml-auto max-w-[80%] rounded-lg px-3 py-2 text-sm bg-indigo-600/40'
-        : 'mr-auto max-w-[80%] rounded-lg px-3 py-2 text-sm bg-white/10';
+        : 'max-w-[80%] rounded-lg px-3 py-2 text-sm bg-white/10';
       bubble.textContent = message.content;
 
       const stamp: HTMLDivElement = document.createElement('div');
@@ -428,7 +436,34 @@ function renderThread(
       stamp.textContent = formatTime(message.createdAt);
       bubble.appendChild(stamp);
 
-      thread.appendChild(bubble);
+      if (mine) {
+        thread.appendChild(bubble);
+        return;
+      }
+      const row: HTMLDivElement = document.createElement('div');
+      row.className = 'flex items-end gap-2';
+      const next = messages[index + 1];
+      const lastOfRun: boolean = !next || next.author === viewerPubkey;
+      if (lastOfRun) {
+        const avatar: HTMLImageElement = document.createElement('img');
+        avatar.className = 'h-7 w-7 flex-none rounded-full object-cover';
+        avatar.loading = 'lazy';
+        avatar.alt = '';
+        setAvatar(avatar, peer, null);
+        avatars.push(avatar);
+        row.appendChild(avatar);
+      } else {
+        const spacer: HTMLDivElement = document.createElement('div');
+        spacer.className = 'w-7 flex-none';
+        row.appendChild(spacer);
+      }
+      row.appendChild(bubble);
+      thread.appendChild(row);
+    });
+    if (avatars.length > 0) {
+      void resolvePeerProfile(peer, options).then((profile): void => {
+        for (const avatar of avatars) setAvatar(avatar, peer, profile);
+      });
     }
   }
 
@@ -509,6 +544,13 @@ function getViewerPubkey(): PubkeyHex | null {
   }
 }
 
+function atPageEnd(): boolean {
+  return (
+    window.innerHeight + window.scrollY >=
+    document.documentElement.scrollHeight - 80
+  );
+}
+
 function render(options: MessagesPageOptions): void {
   const output: HTMLElement | null = options.output;
   const viewerPubkey: PubkeyHex | null = getViewerPubkey();
@@ -516,10 +558,22 @@ function render(options: MessagesPageOptions): void {
     return;
   }
 
+  const shownPeer: PubkeyHex | null = composing ? null : openPeer;
+  // Opening a thread lands on its newest message. An update - which fires for
+  // every conversation - follows the thread down only if the reader was
+  // already at the end, not while they are reading back.
+  const toEnd: boolean =
+    shownPeer !== null && (shownPeer !== lastShownPeer || atPageEnd());
+  lastShownPeer = shownPeer;
+
   if (composing) {
     renderCompose(output, options);
   } else if (openPeer) {
     renderThread(output, openPeer, viewerPubkey, options);
+    // The composer is sticky and always "in view", so the end of the page is
+    // the target: there the composer is back in place, the newest message
+    // just above it.
+    if (toEnd) window.scrollTo({ top: document.documentElement.scrollHeight });
   } else {
     renderConversationList(output, options);
     void renderDmRelayNotice(output, viewerPubkey, options);
@@ -527,6 +581,7 @@ function render(options: MessagesPageOptions): void {
 }
 
 export function loadMessagesPage(options: MessagesPageOptions): void {
+  lastShownPeer = null;
   options.closeAllWebSockets();
   options.stopBackgroundFetch();
   options.clearNotification();
