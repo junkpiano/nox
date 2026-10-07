@@ -43,6 +43,12 @@ export interface CachedEvent {
   created_at: number;
   storedAt: number;
   isHomeTimeline?: boolean | undefined; // Protected from pruning
+  /**
+   * Set by the page, which checks an event before storing it. Absent on what
+   * the service worker wrote, and on every record from before the mark
+   * existed: both are checked on the way out instead.
+   */
+  verified?: boolean | undefined;
 }
 
 // Cached profile record

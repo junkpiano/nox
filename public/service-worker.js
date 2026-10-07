@@ -400,6 +400,8 @@ async function storeEventsInDB(db, events, timelineType) {
         created_at: event.created_at,
         storedAt: now,
         isHomeTimeline: timelineType === 'home',
+        // No `verified` mark: this script has no signature library, so it
+        // takes the relay's word, and the page checks the record on reading.
       });
     }
 
