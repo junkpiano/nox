@@ -284,6 +284,9 @@ async function fetchReactionEvents(
   return request;
 }
 
+/** Badges shown before the rest wait behind a pill: about two rows on a phone. */
+const REACTIONS_SHOWN: number = 12;
+
 /** One page of reactions; a relay commonly caps a page at about this. */
 const REACTION_PAGE: number = 500;
 /** A post with more than this many pages is a relay that will not stop. */
@@ -513,8 +516,11 @@ export async function loadReactionsForEvent(
     entries.sort(
       (a: ReactionAggregate, b: ReactionAggregate): number => b.count - a.count,
     );
-    // Every kind of reaction, most given first: the row wraps.
+    // Every kind of reaction, most given first. A busy post has more kinds
+    // than fit above the fold, and the list of who gave one opens below the
+    // last badge - so the rest wait behind a pill until asked for.
     container.innerHTML = '';
+    const badges: HTMLElement[] = [];
     entries.forEach((reaction: ReactionAggregate): void => {
       const badge: HTMLSpanElement = document.createElement('span');
       badge.className =
@@ -616,9 +622,39 @@ export async function loadReactionsForEvent(
 
         detailsContainer.style.display = '';
         loadReactionDetails(eventId, nextState.reactionKey, detailsContainer);
+        // Below every badge, which may be a long way down once all are shown.
+        detailsContainer.scrollIntoView({
+          block: 'nearest',
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)')
+            .matches
+            ? 'auto'
+            : 'smooth',
+        });
       });
       container.appendChild(badge);
+      badges.push(badge);
     });
+
+    const hidden: HTMLElement[] = badges.slice(REACTIONS_SHOWN);
+    if (hidden.length > 0) {
+      const toggle: HTMLButtonElement = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'nox-reactions-more';
+      // Kept on the row, so redrawing it after a reaction leaves it open.
+      const showAll = (all: boolean): void => {
+        for (const badge of hidden) badge.hidden = !all;
+        toggle.textContent = all ? 'Show fewer' : `+${hidden.length}`;
+        toggle.setAttribute('aria-expanded', all ? 'true' : 'false');
+        container.dataset.expanded = all ? 'true' : 'false';
+      };
+      toggle.addEventListener('click', (event: MouseEvent): void => {
+        event.preventDefault();
+        event.stopPropagation();
+        showAll(toggle.getAttribute('aria-expanded') !== 'true');
+      });
+      showAll(container.dataset.expanded === 'true');
+      container.appendChild(toggle);
+    }
   } catch (error: unknown) {
     console.warn('Failed to load reactions:', error);
   }
