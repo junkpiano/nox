@@ -10,7 +10,7 @@ import {
   fallbackAvatarUrl,
 } from '../../common/avatar.js';
 import { loadableOnThisPage } from '../../common/avatar-dom.js';
-import { storeProfile } from '../../common/db/index.js';
+import { getProfile, storeProfile } from '../../common/db/index.js';
 import { escapeHtml } from '../../common/escape-html.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
 import { fetchFollowSet } from '../../common/notification-filter.js';
@@ -23,7 +23,6 @@ import { signWithSession } from '../../common/signer.js';
 import { openZapComposer } from '../../common/zap.js';
 import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
 import { getRelays, recordRelayFailure } from '../relays/relays.js';
-import { getCachedProfile, setCachedProfile } from './profile-cache.js';
 import { fetchUserStatus } from './user-status.js';
 
 function normalizeHttpUrl(url: string): string | null {
@@ -122,7 +121,8 @@ function emojifySegmentToHtml(
           }
         }
         if (pubkey && profilePathNpub) {
-          const cachedProfile: NostrProfile | null = getCachedProfile(pubkey);
+          const cachedProfile: NostrProfile | null =
+            profileMemoryCache.get(pubkey)?.profile ?? null;
           const displayName: string = getDisplayName(
             profilePathNpub,
             cachedProfile,
@@ -155,6 +155,33 @@ function emojifySegmentToHtml(
 }
 
 /**
+ * Mentioned names in a bio, from the store once it answers.
+ *
+ * The bio is drawn at once with whatever names are in memory; the store is
+ * asked afterwards for the rest, and each link is relabelled as its name
+ * arrives. Nothing is fetched from relays for this: a bio is not a feed.
+ */
+function fillMentionNames(container: HTMLElement): void {
+  for (const anchor of container.querySelectorAll<HTMLAnchorElement>(
+    'a.mention-link[data-mention-npub]',
+  )) {
+    const npub: string = anchor.dataset.mentionNpub ?? '';
+    let pubkey: PubkeyHex;
+    try {
+      const decoded = nip19.decode(npub);
+      if (decoded.type !== 'npub') continue;
+      pubkey = decoded.data as PubkeyHex;
+    } catch {
+      continue;
+    }
+    void getProfile(pubkey).then((stored: NostrProfile | null): void => {
+      if (stored)
+        anchor.textContent = `@${getDisplayName(npub as Npub, stored)}`;
+    });
+  }
+}
+
+/**
  * Converts URLs in text to clickable links and emojifies NIP-30 shortcodes.
  */
 function emojifyAndLinkify(text: string, emojiTags: string[][]): string {
@@ -178,7 +205,6 @@ function emojifyAndLinkify(text: string, emojiTags: string[][]): string {
 
 interface FetchProfileOptions {
   usePersistentCache?: boolean;
-  persistProfile?: boolean;
   forceRefresh?: boolean;
 }
 
@@ -231,11 +257,7 @@ interface WindowWithNostr extends Window {
 async function cacheResolvedProfile(
   pubkeyHex: PubkeyHex,
   profile: NostrProfile,
-  persistProfile: boolean,
 ): Promise<void> {
-  if (persistProfile) {
-    setCachedProfile(pubkeyHex, profile);
-  }
   await storeProfile(pubkeyHex, profile);
   profileMemoryCache.set(pubkeyHex, {
     profile,
@@ -252,15 +274,6 @@ export function getAuthoritativeProfile(
     | undefined = profileMemoryCache.get(pubkeyHex);
   if (cachedMem?.profile) {
     return cachedMem.profile;
-  }
-
-  const cachedProfile: NostrProfile | null = getCachedProfile(pubkeyHex);
-  if (cachedProfile) {
-    profileMemoryCache.set(pubkeyHex, {
-      profile: cachedProfile,
-      expiresAt: Date.now() + PROFILE_MEM_CACHE_TTL_MS,
-    });
-    return cachedProfile;
   }
 
   return remoteProfile;
@@ -332,7 +345,6 @@ export async function fetchProfile(
   options: FetchProfileOptions = {},
 ): Promise<NostrProfile | null> {
   const usePersistentCache: boolean = options.usePersistentCache !== false;
-  const persistProfile: boolean = options.persistProfile !== false;
   const forceRefresh: boolean = options.forceRefresh === true;
   const now: number = Date.now();
 
@@ -345,7 +357,7 @@ export async function fetchProfile(
     }
 
     if (usePersistentCache) {
-      const cachedProfile: NostrProfile | null = getCachedProfile(pubkeyHex);
+      const cachedProfile: NostrProfile | null = await getProfile(pubkeyHex);
       if (cachedProfile) {
         profileMemoryCache.set(pubkeyHex, {
           profile: cachedProfile,
@@ -463,7 +475,7 @@ export async function fetchProfile(
 
       try {
         const profile: NostrProfile = await promiseAny(profileRequests);
-        await cacheResolvedProfile(pubkeyHex, profile, persistProfile);
+        await cacheResolvedProfile(pubkeyHex, profile);
         return profile;
       } catch {
         // All relays missed or failed. Do NOT cache null in profileMemoryCache —
@@ -574,6 +586,7 @@ export function renderProfile(
       </div>
     </div>
   `;
+  fillMentionNames(profileSection);
 
   // A long bio folds at a few lines. The person's addresses and manifesto
   // are still one tap away; the posts are not two screens away.
@@ -922,7 +935,7 @@ export function setupProfileEditor(
         nextProfile,
       );
       await options.publishEvent(signedEvent, options.getRelays());
-      await cacheResolvedProfile(pubkey, nextProfile, true);
+      await cacheResolvedProfile(pubkey, nextProfile);
       renderProfile(pubkey, npub, nextProfile, profileSection);
       setupProfileZapButton(pubkey, npub, nextProfile, profileSection);
       setupProfileEditor(pubkey, npub, nextProfile, profileSection, options);
