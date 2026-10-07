@@ -10,6 +10,10 @@ import {
   fallbackAvatarUrl,
 } from '../../common/avatar.js';
 import { loadableOnThisPage } from '../../common/avatar-dom.js';
+import {
+  type ContentHtmlOptions,
+  renderContentHtml,
+} from '../../common/content-html.js';
 import { getProfile, storeProfile } from '../../common/db/index.js';
 import { escapeHtml } from '../../common/escape-html.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
@@ -54,153 +58,6 @@ function normalizeProfileWebsiteUrl(
     ? trimmed
     : `https://${trimmed}`;
   return normalizeHttpUrl(withProtocol);
-}
-
-function isValidEmojiImageUrl(url: string): boolean {
-  try {
-    const parsed: URL = new URL(url);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
-  } catch {
-    return false;
-  }
-}
-
-function buildEmojiTagMap(emojiTags: string[][]): Map<string, string> {
-  const emojiTagMap: Map<string, string> = new Map();
-  emojiTags.forEach((tag: string[]): void => {
-    if (tag[0] !== 'emoji') {
-      return;
-    }
-    const shortcode: string | undefined = tag[1];
-    const imageUrl: string | undefined = tag[2];
-    if (!shortcode || !imageUrl) {
-      return;
-    }
-    if (!/^[a-z0-9_]+$/i.test(shortcode)) {
-      return;
-    }
-    if (!isValidEmojiImageUrl(imageUrl)) {
-      return;
-    }
-    emojiTagMap.set(shortcode.toLowerCase(), imageUrl);
-  });
-  return emojiTagMap;
-}
-
-function emojifySegmentToHtml(
-  segment: string,
-  emojiTagMap: Map<string, string>,
-): string {
-  const escaped: string = escapeHtml(segment);
-  const withMentionLinks: string = escaped.replace(
-    /(nostr:(?:npub1|nprofile1)[0-9a-z]+)/gi,
-    (profileRef: string): string => {
-      const mentionedProfileId: string = profileRef.replace(/^nostr:/i, '');
-      let profilePathNpub: Npub | null = null;
-      let label: string = `@${mentionedProfileId.slice(0, 12)}...`;
-      try {
-        const decoded = nip19.decode(mentionedProfileId);
-        let pubkey: PubkeyHex | null = null;
-        if (decoded.type === 'npub' && typeof decoded.data === 'string') {
-          pubkey = decoded.data as PubkeyHex;
-          profilePathNpub = mentionedProfileId as Npub;
-        } else if (decoded.type === 'nprofile') {
-          const data: unknown = decoded.data;
-          let dataPubkey: string | undefined;
-          if (typeof data === 'object' && data !== null && 'pubkey' in data) {
-            const maybePubkey: unknown = (data as { pubkey?: unknown }).pubkey;
-            if (typeof maybePubkey === 'string') {
-              dataPubkey = maybePubkey;
-            }
-          }
-          const candidate: string | undefined =
-            dataPubkey || (typeof data === 'string' ? data : undefined);
-          if (candidate) {
-            pubkey = candidate as PubkeyHex;
-            profilePathNpub = nip19.npubEncode(pubkey);
-          }
-        }
-        if (pubkey && profilePathNpub) {
-          const cachedProfile: NostrProfile | null =
-            profileMemoryCache.get(pubkey)?.profile ?? null;
-          const displayName: string = getDisplayName(
-            profilePathNpub,
-            cachedProfile,
-          );
-          label = `@${displayName}`;
-        }
-      } catch {
-        // Ignore invalid mentions and keep the fallback label.
-      }
-      if (!profilePathNpub) {
-        return profileRef;
-      }
-      const safeNpub: string = escapeHtml(profilePathNpub);
-      return `<a href="/${safeNpub}" class="text-indigo-600 underline mention-link" data-mention-npub="${safeNpub}">${escapeHtml(label)}</a>`;
-    },
-  );
-
-  return withMentionLinks.replace(
-    /:([a-z0-9_]+):/gi,
-    (match: string, code: string): string => {
-      const imageUrl: string | undefined = emojiTagMap.get(code.toLowerCase());
-      if (!imageUrl) {
-        return match;
-      }
-      const safeCode: string = escapeHtml(code);
-      const safeUrl: string = escapeHtml(imageUrl);
-      return `<img src="${safeUrl}" alt=":${safeCode}:" title=":${safeCode}:" class="inline-block align-text-bottom h-5 w-5 mx-0.5" loading="lazy" decoding="async" />`;
-    },
-  );
-}
-
-/**
- * Mentioned names in a bio, from the store once it answers.
- *
- * The bio is drawn at once with whatever names are in memory; the store is
- * asked afterwards for the rest, and each link is relabelled as its name
- * arrives. Nothing is fetched from relays for this: a bio is not a feed.
- */
-function fillMentionNames(container: HTMLElement): void {
-  for (const anchor of container.querySelectorAll<HTMLAnchorElement>(
-    'a.mention-link[data-mention-npub]',
-  )) {
-    const npub: string = anchor.dataset.mentionNpub ?? '';
-    let pubkey: PubkeyHex;
-    try {
-      const decoded = nip19.decode(npub);
-      if (decoded.type !== 'npub') continue;
-      pubkey = decoded.data as PubkeyHex;
-    } catch {
-      continue;
-    }
-    void getProfile(pubkey).then((stored: NostrProfile | null): void => {
-      if (stored)
-        anchor.textContent = `@${getDisplayName(npub as Npub, stored)}`;
-    });
-  }
-}
-
-/**
- * Converts URLs in text to clickable links and emojifies NIP-30 shortcodes.
- */
-function emojifyAndLinkify(text: string, emojiTags: string[][]): string {
-  const emojiTagMap: Map<string, string> = buildEmojiTagMap(emojiTags);
-  const urlRegex: RegExp = /(https?:\/\/[^\s]+)/g;
-  let cursor: number = 0;
-  let html: string = '';
-  let match: RegExpExecArray | null = urlRegex.exec(text);
-  while (match) {
-    const url: string = match[0];
-    const index: number = match.index;
-    html += emojifySegmentToHtml(text.slice(cursor, index), emojiTagMap);
-    const safeUrl: string = escapeHtml(url);
-    html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700 underline font-medium">${safeUrl}</a>`;
-    cursor = index + url.length;
-    match = urlRegex.exec(text);
-  }
-  html += emojifySegmentToHtml(text.slice(cursor), emojiTagMap);
-  return html;
 }
 
 interface FetchProfileOptions {
@@ -493,6 +350,36 @@ export async function fetchProfile(
   }
 }
 
+/** A mentioned person's name, when it is already in memory. */
+function knownName(pubkey: PubkeyHex): string | null {
+  const profile: NostrProfile | null | undefined =
+    profileMemoryCache.get(pubkey)?.profile;
+  return profile
+    ? `@${getDisplayName(nip19.npubEncode(pubkey), profile)}`
+    : null;
+}
+
+/**
+ * Mentioned names in a bio, from the store once it answers.
+ *
+ * The bio is drawn at once with whatever names are in memory; the store is
+ * asked afterwards for the rest, and each link is relabelled as its name
+ * arrives. Nothing is fetched from relays for this: a bio is not a feed.
+ */
+function fillMentionNames(container: HTMLElement): void {
+  for (const anchor of container.querySelectorAll<HTMLAnchorElement>(
+    'a.mention-link[data-pubkey]',
+  )) {
+    const pubkey: PubkeyHex = (anchor.dataset.pubkey ?? '') as PubkeyHex;
+    if (!/^[0-9a-f]{64}$/i.test(pubkey)) continue;
+    void getProfile(pubkey).then((stored: NostrProfile | null): void => {
+      if (stored) {
+        anchor.textContent = `@${getDisplayName(nip19.npubEncode(pubkey), stored)}`;
+      }
+    });
+  }
+}
+
 export function renderProfile(
   pubkey: PubkeyHex,
   npub: Npub,
@@ -522,9 +409,12 @@ export function renderProfile(
   const isEnergySavingMode: boolean =
     localStorage.getItem('energy_saving_mode') === 'true';
 
-  const nameHtml: string = emojifyAndLinkify(rawName, emojiTags);
+  // A line of prose, not a post: links stay links and a quote stays text.
+  // Names already in memory are used at once; the store fills in the rest.
+  const asLine: ContentHtmlOptions = { inline: true, mentionLabel: knownName };
+  const nameHtml: string = renderContentHtml(rawName, emojiTags, asLine).html;
   const bioHtml: string = renderProfileData?.about
-    ? emojifyAndLinkify(renderProfileData.about, emojiTags)
+    ? renderContentHtml(renderProfileData.about, emojiTags, asLine).html
     : '';
 
   // The banner is a banner: a fixed strip the person chose, with nothing
