@@ -259,21 +259,14 @@ async function fetchReactionEvents(
   }
 
   const request: Promise<NostrEvent[]> = (async (): Promise<NostrEvent[]> => {
-    const list: NostrEvent[] = await queryRelays(relays, {
-      kinds: [7],
-      '#e': [eventId],
-      limit: 100,
-    });
+    const list: NostrEvent[] = await fetchAllReactions(eventId, relays);
     list.sort(
       (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
     );
     let kept: NostrEvent[] = list;
     try {
       const deletionEvents: NostrEvent[] = await fetchReactionDeletionEvents(
-        list.map((reaction: NostrEvent): string => reaction.id),
-        Array.from(
-          new Set(list.map((reaction: NostrEvent): string => reaction.pubkey)),
-        ),
+        list,
         relays,
       );
       kept = filterDeletedReactionEvents(list, deletionEvents);
@@ -291,20 +284,89 @@ async function fetchReactionEvents(
   return request;
 }
 
-async function fetchReactionDeletionEvents(
-  reactionIds: string[],
-  authors: string[],
+/** Badges shown before the rest wait behind a pill: about two rows on a phone. */
+const REACTIONS_SHOWN: number = 12;
+
+/** One page of reactions; a relay commonly caps a page at about this. */
+const REACTION_PAGE: number = 500;
+/** A post with more than this many pages is a relay that will not stop. */
+const MAX_REACTION_PAGES: number = 40;
+
+/**
+ * Every reaction to a post, page by page back in time, each relay on its own.
+ *
+ * A post can draw thousands, and one REQ returns a relay's page of them, so
+ * the counts stopped at whatever the first page held. Each relay keeps its
+ * own place - a shared one would jump past what a busier relay has not sent
+ * yet. A page asks for what came at or before the oldest one seen, so
+ * reactions sharing that second are not skipped, and repeats are dropped by
+ * id. A page that brings nothing new ends the walk, unless it was full of
+ * one second's reactions, in which case the next page starts a second
+ * earlier.
+ */
+async function fetchAllReactions(
+  eventId: string,
   relays: string[],
 ): Promise<NostrEvent[]> {
-  if (reactionIds.length === 0 || authors.length === 0) {
-    return [];
+  const byId: Map<string, NostrEvent> = new Map();
+  const walk = async (relay: string): Promise<void> => {
+    let until: number | undefined;
+    for (let page = 0; page < MAX_REACTION_PAGES; page += 1) {
+      const got: NostrEvent[] = await queryRelays([relay], {
+        kinds: [7],
+        '#e': [eventId],
+        limit: REACTION_PAGE,
+        ...(until === undefined ? {} : { until }),
+      });
+      if (got.length === 0) return;
+      let added: number = 0;
+      let oldest: number = Number.POSITIVE_INFINITY;
+      for (const event of got) {
+        if (!byId.has(event.id)) {
+          byId.set(event.id, event);
+          added += 1;
+        }
+        if (event.created_at < oldest) oldest = event.created_at;
+      }
+      // A short page is the last one this relay has.
+      if (got.length < REACTION_PAGE) return;
+      // A full page of repeats is one second's worth: start a second earlier.
+      until = added === 0 ? oldest - 1 : oldest;
+    }
+  };
+  await Promise.allSettled(relays.map(walk));
+  return Array.from(byId.values());
+}
+
+/**
+ * Withdrawals of these reactions, asked about a few hundred at a time.
+ *
+ * A filter naming every id and every reactor of a busy post is one a relay
+ * refuses, so each chunk names its own reactions and only their authors.
+ */
+async function fetchReactionDeletionEvents(
+  reactions: NostrEvent[],
+  relays: string[],
+): Promise<NostrEvent[]> {
+  const CHUNK: number = 200;
+  const chunks: NostrEvent[][] = [];
+  for (let index = 0; index < reactions.length; index += CHUNK) {
+    chunks.push(reactions.slice(index, index + CHUNK));
   }
-  return queryRelays(relays, {
-    kinds: [5],
-    authors,
-    '#e': reactionIds,
-    limit: Math.max(50, reactionIds.length * 2),
-  });
+  const pages: NostrEvent[][] = await Promise.all(
+    chunks.map(
+      (chunk: NostrEvent[]): Promise<NostrEvent[]> =>
+        queryRelays(relays, {
+          kinds: [5],
+          authors: Array.from(
+            new Set(chunk.map((event: NostrEvent): string => event.pubkey)),
+          ),
+          '#e': chunk.map((event: NostrEvent): string => event.id),
+          limit: Math.max(50, chunk.length * 2),
+        }),
+    ),
+  );
+  return pages.flat();
 }
 
 function resolveParentAuthorPubkey(event: NostrEvent): PubkeyHex | null {
@@ -454,10 +516,12 @@ export async function loadReactionsForEvent(
     entries.sort(
       (a: ReactionAggregate, b: ReactionAggregate): number => b.count - a.count,
     );
-    const top: ReactionAggregate[] = entries.slice(0, 5);
-
+    // Every kind of reaction, most given first. A busy post has more kinds
+    // than fit above the fold, and the list of who gave one opens below the
+    // last badge - so the rest wait behind a pill until asked for.
     container.innerHTML = '';
-    top.forEach((reaction: ReactionAggregate): void => {
+    const badges: HTMLElement[] = [];
+    entries.forEach((reaction: ReactionAggregate): void => {
       const badge: HTMLSpanElement = document.createElement('span');
       badge.className =
         'relative inline-flex items-center gap-1 rounded-full bg-white border border-gray-200 px-2 py-1 cursor-pointer hover:bg-gray-50 transition-colors';
@@ -558,9 +622,39 @@ export async function loadReactionsForEvent(
 
         detailsContainer.style.display = '';
         loadReactionDetails(eventId, nextState.reactionKey, detailsContainer);
+        // Below every badge, which may be a long way down once all are shown.
+        detailsContainer.scrollIntoView({
+          block: 'nearest',
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)')
+            .matches
+            ? 'auto'
+            : 'smooth',
+        });
       });
       container.appendChild(badge);
+      badges.push(badge);
     });
+
+    const hidden: HTMLElement[] = badges.slice(REACTIONS_SHOWN);
+    if (hidden.length > 0) {
+      const toggle: HTMLButtonElement = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'nox-reactions-more';
+      // Kept on the row, so redrawing it after a reaction leaves it open.
+      const showAll = (all: boolean): void => {
+        for (const badge of hidden) badge.hidden = !all;
+        toggle.textContent = all ? 'Show fewer' : `+${hidden.length}`;
+        toggle.setAttribute('aria-expanded', all ? 'true' : 'false');
+        container.dataset.expanded = all ? 'true' : 'false';
+      };
+      toggle.addEventListener('click', (event: MouseEvent): void => {
+        event.preventDefault();
+        event.stopPropagation();
+        showAll(toggle.getAttribute('aria-expanded') !== 'true');
+      });
+      showAll(container.dataset.expanded === 'true');
+      container.appendChild(toggle);
+    }
   } catch (error: unknown) {
     console.warn('Failed to load reactions:', error);
   }
@@ -594,40 +688,60 @@ async function loadReactionDetails(
     list.className = 'space-y-2 max-h-48 overflow-auto';
     container.appendChild(list);
 
-    await Promise.allSettled(
-      filtered.slice(0, 20).map(async (event: NostrEvent): Promise<void> => {
-        let profile: NostrProfile | null = null;
+    // One row per person, newest first, with how many times they gave this
+    // one: a post asking for reactions gets the same person dozens of times.
+    const times: Map<PubkeyHex, number> = new Map();
+    for (const event of filtered) {
+      const pubkey: PubkeyHex = event.pubkey as PubkeyHex;
+      times.set(pubkey, (times.get(pubkey) ?? 0) + 1);
+    }
+
+    // Every row at once, with the name already known; the rest arrive below.
+    const draw: Map<PubkeyHex, (profile: NostrProfile | null) => void> =
+      new Map();
+    for (const [pubkey, count] of times) {
+      const npub: Npub = nip19.npubEncode(pubkey);
+      const row: HTMLAnchorElement = document.createElement('a');
+      row.className =
+        'flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 transition-colors';
+      row.href = `/${npub}`;
+      const img: HTMLImageElement = document.createElement('img');
+      img.className = 'w-6 h-6 rounded-full object-cover';
+      const nameEl: HTMLSpanElement = document.createElement('span');
+      row.append(img, nameEl);
+      if (count > 1) {
+        const countEl: HTMLSpanElement = document.createElement('span');
+        countEl.className = 'text-xs text-gray-500';
+        countEl.textContent = `×${count}`;
+        row.appendChild(countEl);
+      }
+      const paint = (profile: NostrProfile | null): void => {
+        const shown: NostrProfile | null = getAuthoritativeProfile(
+          pubkey,
+          profile,
+        );
+        const name: string = getDisplayName(npub, shown);
+        setAvatar(img, pubkey, shown);
+        img.alt = name;
+        nameEl.textContent = name;
+      };
+      paint(null);
+      draw.set(pubkey, paint);
+      list.appendChild(row);
+    }
+
+    // A thousand reactors is a thousand profile lookups; eight at a time.
+    const queue: PubkeyHex[] = Array.from(times.keys());
+    const worker = async (): Promise<void> => {
+      for (let next = queue.shift(); next; next = queue.shift()) {
         try {
-          profile = await fetchProfile(event.pubkey, relays);
+          draw.get(next)?.(await fetchProfile(next, relays));
         } catch (error: unknown) {
           console.warn('Failed to load profile for reaction:', error);
         }
-        const renderProfile: NostrProfile | null = getAuthoritativeProfile(
-          event.pubkey as PubkeyHex,
-          profile,
-        );
-
-        const npub: Npub = nip19.npubEncode(event.pubkey);
-        const name: string = getDisplayName(npub, renderProfile);
-
-        const row: HTMLAnchorElement = document.createElement('a');
-        row.className =
-          'flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 transition-colors';
-        row.href = `/${npub}`;
-
-        const img: HTMLImageElement = document.createElement('img');
-        setAvatar(img, event.pubkey, renderProfile);
-        img.alt = name;
-        img.className = 'w-6 h-6 rounded-full object-cover';
-
-        const nameEl: HTMLSpanElement = document.createElement('span');
-        nameEl.textContent = name;
-
-        row.appendChild(img);
-        row.appendChild(nameEl);
-        list.appendChild(row);
-      }),
-    );
+      }
+    };
+    await Promise.allSettled(Array.from({ length: 8 }, worker));
   } catch (error: unknown) {
     console.warn('Failed to load reaction details:', error);
     container.innerHTML =

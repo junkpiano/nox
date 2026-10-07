@@ -2333,3 +2333,24 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
       calc(1rem + var(--nox-safe-left));
   }
 }
+
+/* The reactions not shown, as a pill among the badges: the same shape, so it
+   reads as part of the row, but no fill and dim text, so it is not mistaken
+   for one more reaction. */
+.nox-reactions-more {
+  border: 1px dashed var(--nox-border-strong);
+  border-radius: 999px;
+  padding: 0.25rem 0.625rem;
+  color: var(--nox-text-dim);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.nox-reactions-more:hover {
+  color: var(--nox-text);
+}
+
+/* A badge's `inline-flex` would otherwise outrank the `hidden` attribute. */
+.reactions-container > [hidden] {
+  display: none;
+}
