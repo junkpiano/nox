@@ -1,10 +1,12 @@
-import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import type { PubkeyHex } from '../../types/nostr';
 import { setupBottomTabs } from '../common/bottom-tabs.js';
 import { setupComposeOverlay } from '../common/compose.js';
 import { clearMuteList, loadCachedMuteList } from '../common/mute-state.js';
 import { setupNavigation } from '../common/navigation.js';
 import { setupImageOverlay } from '../common/overlays.js';
 import { applyPlatformClass } from '../common/platform-class.js';
+import { publishEventToRelays } from '../common/publish-event.js';
+import { clearRelayAuthPermissions } from '../common/relay-socket.js';
 import { setupReplyOverlay } from '../common/reply.js';
 import { setupSearchBar } from '../common/search.js';
 import {
@@ -73,16 +75,6 @@ async function getHomeTimelineModule(): Promise<
   return import('../features/home/home-timeline.js');
 }
 
-async function publishEventToRelays(
-  event: NostrEvent,
-  relayList: string[],
-): Promise<void> {
-  const { publishEventToRelays } = await import(
-    '../features/profile/follow-page.js'
-  );
-  await publishEventToRelays(event, relayList);
-}
-
 function handleLogout(): void {
   // Whichever kind of session this is: signed in, or browsing as a key.
   endSession();
@@ -95,6 +87,8 @@ function handleLogout(): void {
   // Decrypted message history must not outlive the account it belongs to.
   clearMessages();
   stopMessageSync();
+  // Nor does a yes to "sign AUTH for these relays": that was this person's.
+  clearRelayAuthPermissions();
 
   appState.cachedHomeTimeline = null;
 

@@ -1,6 +1,7 @@
 import * as QRCode from 'qrcode';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
 import { getWalletConnection } from '../features/wallet/wallet-store.js';
+import { escapeHtml } from './escape-html.js';
 import { signWithSession } from './signer.js';
 import { requestZapInvoice, type ZapInvoice } from './zap-request.js';
 
@@ -33,15 +34,6 @@ interface WebLnPaymentResult {
 }
 
 let currentZapContext: ZapContext | null = null;
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
 
 function getStoredPubkey(): PubkeyHex | null {
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');

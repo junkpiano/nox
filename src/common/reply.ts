@@ -1,6 +1,7 @@
 import type { NostrEvent } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
 import { storeEvent } from './db/index.js';
+import { escapeHtml } from './escape-html.js';
 import { replyTags } from './reply-tags.js';
 import { isReadOnlySession } from './session.js';
 import { canWrite, extensionSigner, signWithSession } from './signer.js';
@@ -175,10 +176,4 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
       }
     }
   });
-}
-
-function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }

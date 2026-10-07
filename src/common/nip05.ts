@@ -1,5 +1,6 @@
 import { nip05 } from 'nostr-tools';
 import type { PubkeyHex } from '../../types/nostr';
+import { setCapped } from './capped-map.js';
 
 export function isNip05Identifier(str: string): boolean {
   return str.includes('@');
@@ -31,7 +32,7 @@ export function verifiedNip05(
       (owner: PubkeyHex | null): string | null =>
         owner === pubkey ? candidate : null,
     );
-    verified.set(key, pending);
+    setCapped(verified, key, pending, 2000);
   }
   return pending;
 }

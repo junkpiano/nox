@@ -24,7 +24,7 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { bech32 } from '@scure/base';
 import { nip57 } from 'nostr-tools';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
-import { crossOriginFetch } from './native-http.js';
+import { fetchPublic } from './public-fetch.js';
 
 export interface ZapPayInfo {
   callback: string;
@@ -102,8 +102,13 @@ export async function fetchZapPayInfo(
   if (!lnurl) {
     throw new Error('Recipient does not have a Lightning address configured.');
   }
-
-  const response: Response = await crossOriginFetch(lnurl);
+  // The address is theirs to choose; where it may point is not. On native
+  // the fetch is made from Rust, which no browser rule keeps off the LAN.
+  const fetched = await fetchPublic(lnurl);
+  if (!fetched) {
+    throw new Error('Lightning address points somewhere this app will not go.');
+  }
+  const response: Response = fetched.response;
   if (!response.ok) {
     throw new Error(
       `Failed to load zap endpoint: ${response.status} ${response.statusText}`,
@@ -344,7 +349,11 @@ export async function requestZapInvoice(
     callbackUrl.searchParams.set('comment', comment);
   }
 
-  const response: Response = await crossOriginFetch(callbackUrl.toString());
+  const fetched = await fetchPublic(callbackUrl.toString());
+  if (!fetched) {
+    throw new Error('Zap endpoint points somewhere this app will not go.');
+  }
+  const response: Response = fetched.response;
   if (!response.ok) {
     throw new Error(
       `Failed to create invoice: ${response.status} ${response.statusText}`,

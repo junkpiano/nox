@@ -1,13 +1,13 @@
 import { nip19 } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { deleteEvents } from '../../common/db/index.js';
+import { requestDeletion } from '../../common/delete-event.js';
 import { isMuted } from '../../common/mute-state.js';
 import { setActiveNav } from '../../common/navigation.js';
 import { refreshOwnReactions } from '../../common/own-reactions-dom.js';
 import { filterDeletedReactionEvents } from '../../common/reaction-interactions.js';
-import { createRelayWebSocket } from '../../common/relay-socket.js';
-import { canWrite, signWithSession } from '../../common/signer.js';
-import { recordRelayFailure } from '../relays/relays.js';
+import { queryRelays } from '../../common/relay-query.js';
+import { canWrite } from '../../common/signer.js';
 
 interface LoadReactionsPageOptions {
   relays: string[];
@@ -39,63 +39,18 @@ async function fetchMyReactions(
   authorPubkey: PubkeyHex,
   limit: number,
 ): Promise<NostrEvent[]> {
-  const results: Map<string, NostrEvent> = new Map();
-
-  const promises = relays.map(async (relayUrl: string): Promise<void> => {
-    try {
-      const socket: WebSocket = createRelayWebSocket(relayUrl);
-      await new Promise<void>((resolve) => {
-        let settled: boolean = false;
-        const finish = (): void => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          socket.close();
-          resolve();
-        };
-
-        const timeout = setTimeout(() => {
-          recordRelayFailure(relayUrl);
-          finish();
-        }, 5000);
-
-        socket.onopen = (): void => {
-          const subId: string = `my-reactions-${Math.random().toString(36).slice(2)}`;
-          const req: [
-            string,
-            string,
-            { kinds: number[]; authors: string[]; limit: number },
-          ] = ['REQ', subId, { kinds: [7], authors: [authorPubkey], limit }];
-          socket.send(JSON.stringify(req));
-        };
-
-        socket.onmessage = (msg: MessageEvent): void => {
-          const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'EVENT' && arr[2]?.kind === 7) {
-            const event: NostrEvent = arr[2];
-            results.set(event.id, event);
-          } else if (arr[0] === 'EOSE') {
-            finish();
-          }
-        };
-
-        socket.onerror = (): void => {
-          finish();
-        };
-      });
-    } catch (e) {
-      console.warn(`Failed to load reactions from ${relayUrl}:`, e);
-    }
+  const events: NostrEvent[] = await queryRelays(relays, {
+    kinds: [7],
+    authors: [authorPubkey],
+    limit,
   });
-
-  await Promise.allSettled(promises);
-
-  const events: NostrEvent[] = Array.from(results.values());
-  const deletionEvents: NostrEvent[] = await fetchReactionDeletionEvents(
-    relays,
-    authorPubkey,
-    events.map((event: NostrEvent): string => event.id),
-  );
+  if (events.length === 0) return [];
+  const deletionEvents: NostrEvent[] = await queryRelays(relays, {
+    kinds: [5],
+    authors: [authorPubkey],
+    '#e': events.map((event: NostrEvent): string => event.id),
+    limit: Math.max(50, events.length * 2),
+  });
   const visibleEvents: NostrEvent[] = filterDeletedReactionEvents(
     events,
     deletionEvents,
@@ -104,148 +59,6 @@ async function fetchMyReactions(
     (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
   );
   return visibleEvents.slice(0, limit);
-}
-
-async function fetchReactionDeletionEvents(
-  relays: string[],
-  authorPubkey: PubkeyHex,
-  reactionIds: string[],
-): Promise<NostrEvent[]> {
-  if (reactionIds.length === 0) {
-    return [];
-  }
-
-  const results: Map<string, NostrEvent> = new Map();
-  const requestLimit: number = Math.max(50, reactionIds.length * 2);
-
-  const promises = relays.map(async (relayUrl: string): Promise<void> => {
-    try {
-      const socket: WebSocket = createRelayWebSocket(relayUrl);
-      await new Promise<void>((resolve) => {
-        let settled: boolean = false;
-        const finish = (): void => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          socket.close();
-          resolve();
-        };
-
-        const timeout = setTimeout(() => {
-          recordRelayFailure(relayUrl);
-          finish();
-        }, 5000);
-
-        socket.onopen = (): void => {
-          const subId: string = `my-reaction-deletes-${Math.random().toString(36).slice(2)}`;
-          const req: [
-            string,
-            string,
-            {
-              kinds: number[];
-              authors: string[];
-              '#e': string[];
-              limit: number;
-            },
-          ] = [
-            'REQ',
-            subId,
-            {
-              kinds: [5],
-              authors: [authorPubkey],
-              '#e': reactionIds,
-              limit: requestLimit,
-            },
-          ];
-          socket.send(JSON.stringify(req));
-        };
-
-        socket.onmessage = (msg: MessageEvent): void => {
-          const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'EVENT' && arr[2]?.kind === 5) {
-            const event: NostrEvent = arr[2];
-            results.set(event.id, event);
-          } else if (arr[0] === 'EOSE') {
-            finish();
-          }
-        };
-
-        socket.onerror = (): void => {
-          finish();
-        };
-      });
-    } catch (error: unknown) {
-      console.warn(
-        `Failed to load reaction deletions from ${relayUrl}:`,
-        error,
-      );
-    }
-  });
-
-  await Promise.allSettled(promises);
-  return Array.from(results.values());
-}
-
-async function deleteEventOnRelays(
-  targetEvent: NostrEvent,
-  relays: string[],
-): Promise<void> {
-  const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
-  if (!storedPubkey || storedPubkey !== targetEvent.pubkey) {
-    throw new Error('You can only delete your own reactions.');
-  }
-
-  const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = {
-    kind: 5,
-    pubkey: storedPubkey as PubkeyHex,
-    created_at: Math.floor(Date.now() / 1000),
-    tags: [['e', targetEvent.id]],
-    content: '',
-  };
-
-  const signedEvent: NostrEvent = await signWithSession(unsignedEvent);
-
-  const publishPromises = relays.map(
-    async (relayUrl: string): Promise<void> => {
-      try {
-        const socket: WebSocket = createRelayWebSocket(relayUrl);
-        await new Promise<void>((resolve) => {
-          let settled: boolean = false;
-          const finish = (): void => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          };
-
-          const timeout = setTimeout(() => {
-            recordRelayFailure(relayUrl);
-            finish();
-          }, 5000);
-
-          socket.onopen = (): void => {
-            socket.send(JSON.stringify(['EVENT', signedEvent]));
-          };
-
-          socket.onmessage = (msg: MessageEvent): void => {
-            const arr: any[] = JSON.parse(msg.data);
-            if (arr[0] === 'OK') {
-              finish();
-            }
-          };
-
-          socket.onerror = (): void => {
-            finish();
-          };
-        });
-      } catch (e) {
-        console.warn(`Failed to publish delete event to ${relayUrl}:`, e);
-      }
-    },
-  );
-
-  await Promise.allSettled(publishPromises);
 }
 
 export async function loadReactionsPage(
@@ -412,7 +225,7 @@ export async function loadReactionsPage(
         deleteBtn.disabled = true;
         deleteBtn.classList.add('opacity-60', 'cursor-not-allowed');
         try {
-          await deleteEventOnRelays(reactionEvent, options.relays);
+          await requestDeletion(reactionEvent, options.relays);
           await deleteEvents([reactionEvent.id]);
           // The cards elsewhere drew their ♡ from the book. The heart
           // stood for any reaction of yours on the post, and this list

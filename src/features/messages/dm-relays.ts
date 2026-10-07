@@ -14,8 +14,7 @@ import { signWithSession } from '../../common/signer.js';
  */
 
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
-import { verifiedEvent } from '../../common/event-filter.js';
-import { createRelayWebSocket } from '../../common/relay-socket.js';
+import { newestOf, queryEveryRelay } from '../../common/relay-query.js';
 
 export const DM_RELAY_LIST_KIND: number = 10050;
 const NIP65_RELAY_LIST_KIND: number = 10002;
@@ -51,71 +50,15 @@ async function fetchNewestEvent(
   pubkey: PubkeyHex,
   searchRelays: string[],
 ): Promise<NostrEvent | null> {
-  // Held in an object so the type survives the socket callbacks.
-  const newest: { event: NostrEvent | null } = { event: null };
-
-  await Promise.allSettled(
-    searchRelays.map(async (relayUrl: string): Promise<void> => {
-      try {
-        const socket: WebSocket = createRelayWebSocket(relayUrl);
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          const finish = (): void => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            try {
-              socket.close();
-            } catch {
-              // Already closing.
-            }
-            resolve();
-          };
-          const timer = setTimeout(finish, 5000);
-
-          socket.onopen = (): void => {
-            socket.send(
-              JSON.stringify([
-                'REQ',
-                `dmr-${Math.random().toString(36).slice(2)}`,
-                { kinds: [kind], authors: [pubkey], limit: 1 },
-              ]),
-            );
-          };
-          socket.onmessage = (message: MessageEvent): void => {
-            try {
-              const frame: unknown[] = JSON.parse(message.data);
-              if (frame[0] === 'EVENT') {
-                // Signed by the person it claims to be about, or it is a
-                // relay's suggestion of where their messages should go.
-                const event: NostrEvent | null = verifiedEvent(
-                  { kinds: [kind], authors: [pubkey] },
-                  frame[2],
-                );
-                if (
-                  event &&
-                  (!newest.event || event.created_at >= newest.event.created_at)
-                ) {
-                  newest.event = event;
-                }
-                return;
-              }
-              if (frame[0] === 'EOSE') {
-                finish();
-              }
-            } catch {
-              finish();
-            }
-          };
-          socket.onerror = finish;
-        });
-      } catch {
-        // One unreachable relay must not fail the lookup.
-      }
+  // Signed by the person it claims to be about, or it is a relay's
+  // suggestion of where their messages should go.
+  return newestOf(
+    await queryEveryRelay(searchRelays, {
+      kinds: [kind],
+      authors: [pubkey],
+      limit: 1,
     }),
   );
-
-  return newest.event;
 }
 
 /**

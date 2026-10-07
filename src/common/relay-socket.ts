@@ -130,6 +130,9 @@ function getConfiguredRelayUrls(): string[] {
   );
 }
 
+/** One per connection is the protocol; a few more is a reconnect. */
+const MAX_AUTH_CHALLENGES: number = 4;
+
 function parseAuthChallengeMessage(data: string): AuthChallengeMessage | null {
   try {
     const parsed: unknown = JSON.parse(data);
@@ -266,7 +269,10 @@ export function createRelayWebSocket(
     if (!authMessage || authMessage.type !== 'AUTH') {
       return;
     }
-    if (handledChallenges.has(authMessage.challenge)) {
+    if (
+      handledChallenges.has(authMessage.challenge) ||
+      handledChallenges.size >= MAX_AUTH_CHALLENGES
+    ) {
       return;
     }
     handledChallenges.add(authMessage.challenge);
@@ -333,7 +339,10 @@ function attachSharedRelayListeners(connection: SharedRelayConnection): void {
       event.data,
     );
     if (authMessage?.type === 'AUTH') {
-      if (handledChallenges.has(authMessage.challenge)) {
+      if (
+        handledChallenges.has(authMessage.challenge) ||
+        handledChallenges.size >= MAX_AUTH_CHALLENGES
+      ) {
         return;
       }
       handledChallenges.add(authMessage.challenge);

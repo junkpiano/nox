@@ -39,6 +39,30 @@ export interface ChatRumor {
   content: string;
 }
 
+/**
+ * The shape and nothing more. A rumor is unsigned by design, so this is all
+ * that can be asked of it before the seal's author is compared to its own.
+ * One with no `tags` threw in the store and took the whole batch with it,
+ * every sync, for as long as the wrap stayed on the relay.
+ */
+function isChatRumor(value: unknown): value is ChatRumor {
+  if (!value || typeof value !== 'object') return false;
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.id === 'string' &&
+    typeof r.pubkey === 'string' &&
+    typeof r.created_at === 'number' &&
+    typeof r.kind === 'number' &&
+    typeof r.content === 'string' &&
+    Array.isArray(r.tags) &&
+    r.tags.every(
+      (tag: unknown): boolean =>
+        Array.isArray(tag) &&
+        tag.every((item: unknown): boolean => typeof item === 'string'),
+    )
+  );
+}
+
 interface Nip07 {
   getPublicKey?: () => Promise<string>;
   signEvent?: (event: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent>;
@@ -215,8 +239,8 @@ export async function unwrapChatMessage(
     }
 
     const rumorJson: string = await decryptFrom(seal.pubkey, seal.content);
-    const rumor = JSON.parse(rumorJson) as ChatRumor;
-    if (rumor.kind !== CHAT_KIND) {
+    const rumor: unknown = JSON.parse(rumorJson);
+    if (!isChatRumor(rumor) || rumor.kind !== CHAT_KIND) {
       return null;
     }
 

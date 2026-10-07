@@ -1,4 +1,5 @@
 import { setAvatar } from '../../common/avatar-dom.js';
+import { publishEventToRelays } from '../../common/publish-event.js';
 import { isReadOnlySession } from '../../common/session.js';
 /**
  * Messages tab: conversation list and thread view.
@@ -132,7 +133,6 @@ async function renderDmRelayNotice(
           pubkeyHex: viewerPubkey,
           relayUrls: relays,
         });
-        const { publishEventToRelays } = await import('../profile/follow.js');
         await publishEventToRelays(event, relays);
         invalidateDmRelayCache(viewerPubkey);
         notice.remove();

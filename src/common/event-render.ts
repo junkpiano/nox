@@ -20,6 +20,7 @@ import {
 } from '../utils/utils.js';
 import { avatarErrorAttribute, fallbackAvatarUrl } from './avatar.js';
 import { loadableOnThisPage, setAvatar } from './avatar-dom.js';
+import { setCapped } from './capped-map.js';
 import { readClientName, withClientTag } from './client-tag.js';
 import { naddrViewerUrl } from './content-segments.js';
 import {
@@ -30,6 +31,7 @@ import {
 import { deleteEvents, removeEventFromTimeline } from './db/index.js';
 import { requestDeletion } from './delete-event.js';
 import { computeTimelineRemovalTargets } from './deletion-targets.js';
+import { escapeHtml } from './escape-html.js';
 import {
   cacheDeletionStatus,
   getCachedDeletionStatus,
@@ -41,6 +43,7 @@ import { classifyMediaUrl, withPosterFrame } from './media-type.js';
 import { isMuted } from './mute-state.js';
 import { verifiedNip05 } from './nip05.js';
 import { noteRenderedCard, recordOwnReaction } from './own-reactions-dom.js';
+import { publishEventToRelays } from './publish-event.js';
 import type { ReactionAggregate } from './reaction-interactions.js';
 import {
   applyOptimisticReactionState,
@@ -55,7 +58,7 @@ import {
   fetchReferencedEvent,
   rememberReferencedMiss,
 } from './referenced-event.js';
-import { createRelayWebSocket } from './relay-socket.js';
+import { queryRelays } from './relay-query.js';
 import { repostTags } from './reply-tags.js';
 import { eTagMarker } from './reply-target.js';
 import { unwrapRepost } from './repost.js';
@@ -72,6 +75,8 @@ const reactionCache: Map<
   Promise<Map<string, ReactionAggregate>>
 > = new Map();
 const reactionEventsCache: Map<string, Promise<NostrEvent[]>> = new Map();
+/** Posts whose reactions are remembered; the event page asks for one at a time. */
+const MAX_REACTION_MEMO: number = 500;
 const optimisticReactionEvents: Map<
   string,
   Map<string, NostrEvent>
@@ -195,15 +200,6 @@ function isValidEmojiImageUrl(url: string): boolean {
   }
 }
 
-function escapeHtmlAttribute(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/'/g, '&#39;');
-}
-
 function normalizeHttpUrl(url: string): string | null {
   try {
     const parsed: URL = new URL(url);
@@ -211,33 +207,6 @@ function normalizeHttpUrl(url: string): string | null {
       return null;
     }
     return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Reduces a URL someone else chose to one an `<img>` may be pointed at.
- *
- * Exported because the search results render avatars too: a second call site
- * that skipped this would happily put `javascript:` in a `src`.
- */
-export function normalizeAvatarUrl(url: string): string | null {
-  try {
-    const parsed: URL = new URL(url);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return parsed.toString();
-    }
-    if (parsed.protocol === 'blob:') {
-      return url;
-    }
-    if (
-      parsed.protocol === 'data:' &&
-      url.trim().toLowerCase().startsWith('data:image/')
-    ) {
-      return url;
-    }
-    return null;
   } catch {
     return null;
   }
@@ -300,8 +269,8 @@ function replaceCustomEmojiShortcodes(
       if (!imageUrl) {
         return match;
       }
-      const safeCode: string = escapeHtmlAttribute(code);
-      const safeUrl: string = escapeHtmlAttribute(imageUrl);
+      const safeCode: string = escapeHtml(code);
+      const safeUrl: string = escapeHtml(imageUrl);
       return `<img src="${safeUrl}" alt=":${safeCode}:" title=":${safeCode}:" class="inline-block align-text-bottom h-5 w-5 mx-0.5" loading="lazy" decoding="async" />`;
     },
   );
@@ -339,7 +308,7 @@ async function fetchReactions(
     return counts;
   })();
 
-  reactionCache.set(eventId, request);
+  setCapped(reactionCache, eventId, request, MAX_REACTION_MEMO);
   return request;
 }
 
@@ -353,100 +322,36 @@ async function fetchReactionEvents(
     return cached;
   }
 
-  const request: Promise<NostrEvent[]> = new Promise<NostrEvent[]>(
-    (resolve) => {
-      const events: Map<string, NostrEvent> = new Map();
+  const request: Promise<NostrEvent[]> = (async (): Promise<NostrEvent[]> => {
+    const list: NostrEvent[] = await queryRelays(relays, {
+      kinds: [7],
+      '#e': [eventId],
+      limit: 100,
+    });
+    list.sort(
+      (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
+    );
+    let kept: NostrEvent[] = list;
+    try {
+      const deletionEvents: NostrEvent[] = await fetchReactionDeletionEvents(
+        list.map((reaction: NostrEvent): string => reaction.id),
+        Array.from(
+          new Set(list.map((reaction: NostrEvent): string => reaction.pubkey)),
+        ),
+        relays,
+      );
+      kept = filterDeletedReactionEvents(list, deletionEvents);
+    } catch (error: unknown) {
+      console.warn('Failed to fetch reaction deletion events:', error);
+    }
+    return applyOptimisticReactionState(
+      kept,
+      getAllOptimisticReactionEvents(eventId),
+      getOptimisticRemovedReactionIds(eventId),
+    );
+  })();
 
-      const promises = relays.map(async (relayUrl: string): Promise<void> => {
-        try {
-          const socket: WebSocket = createRelayWebSocket(relayUrl);
-          await new Promise<void>((innerResolve) => {
-            let settled: boolean = false;
-            const finish = (): void => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timeout);
-              socket.close();
-              innerResolve();
-            };
-
-            const timeout = setTimeout(() => {
-              finish();
-            }, 5000);
-
-            socket.onopen = (): void => {
-              const subId: string = `reactions-events-${Math.random().toString(36).slice(2)}`;
-              const req: [
-                string,
-                string,
-                { kinds: number[]; '#e': string[]; limit: number },
-              ] = ['REQ', subId, { kinds: [7], '#e': [eventId], limit: 100 }];
-              socket.send(JSON.stringify(req));
-            };
-
-            socket.onmessage = (msg: MessageEvent): void => {
-              const arr: any[] = JSON.parse(msg.data);
-              if (arr[0] === 'EVENT' && arr[2]) {
-                const event: NostrEvent = arr[2];
-                if (event.kind !== 7) {
-                  return;
-                }
-                events.set(event.id, event);
-              } else if (arr[0] === 'EOSE') {
-                finish();
-              }
-            };
-
-            socket.onerror = (): void => {
-              finish();
-            };
-          });
-        } catch (e) {
-          console.warn(`Failed to fetch reaction events from ${relayUrl}:`, e);
-        }
-      });
-
-      Promise.allSettled(promises).then(() => {
-        const list: NostrEvent[] = Array.from(events.values());
-        list.sort(
-          (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
-        );
-        const reactionIds: string[] = list.map(
-          (reactionEvent: NostrEvent): string => reactionEvent.id,
-        );
-        const reactionAuthors: string[] = Array.from(
-          new Set(
-            list.map(
-              (reactionEvent: NostrEvent): string => reactionEvent.pubkey,
-            ),
-          ),
-        );
-
-        void fetchReactionDeletionEvents(reactionIds, reactionAuthors, relays)
-          .then((deletionEvents: NostrEvent[]): void => {
-            resolve(
-              applyOptimisticReactionState(
-                filterDeletedReactionEvents(list, deletionEvents),
-                getAllOptimisticReactionEvents(eventId),
-                getOptimisticRemovedReactionIds(eventId),
-              ),
-            );
-          })
-          .catch((error: unknown): void => {
-            console.warn('Failed to fetch reaction deletion events:', error);
-            resolve(
-              applyOptimisticReactionState(
-                list,
-                getAllOptimisticReactionEvents(eventId),
-                getOptimisticRemovedReactionIds(eventId),
-              ),
-            );
-          });
-      });
-    },
-  );
-
-  reactionEventsCache.set(eventId, request);
+  setCapped(reactionEventsCache, eventId, request, MAX_REACTION_MEMO);
   return request;
 }
 
@@ -458,66 +363,12 @@ async function fetchReactionDeletionEvents(
   if (reactionIds.length === 0 || authors.length === 0) {
     return [];
   }
-
-  const deletionEvents: Map<string, NostrEvent> = new Map();
-  const limit: number = Math.max(50, reactionIds.length * 2);
-
-  const promises = relays.map(async (relayUrl: string): Promise<void> => {
-    try {
-      const socket: WebSocket = createRelayWebSocket(relayUrl);
-      await new Promise<void>((innerResolve) => {
-        let settled: boolean = false;
-        const finish = (): void => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          socket.close();
-          innerResolve();
-        };
-
-        const timeout = setTimeout(() => {
-          finish();
-        }, 5000);
-
-        socket.onopen = (): void => {
-          const subId: string = `reactions-deletes-${Math.random().toString(36).slice(2)}`;
-          const req: [
-            string,
-            string,
-            {
-              kinds: number[];
-              authors: string[];
-              '#e': string[];
-              limit: number;
-            },
-          ] = ['REQ', subId, { kinds: [5], authors, '#e': reactionIds, limit }];
-          socket.send(JSON.stringify(req));
-        };
-
-        socket.onmessage = (msg: MessageEvent): void => {
-          const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'EVENT' && arr[2]?.kind === 5) {
-            const event: NostrEvent = arr[2];
-            deletionEvents.set(event.id, event);
-          } else if (arr[0] === 'EOSE') {
-            finish();
-          }
-        };
-
-        socket.onerror = (): void => {
-          finish();
-        };
-      });
-    } catch (error: unknown) {
-      console.warn(
-        `Failed to fetch reaction deletion events from ${relayUrl}:`,
-        error,
-      );
-    }
+  return queryRelays(relays, {
+    kinds: [5],
+    authors,
+    '#e': reactionIds,
+    limit: Math.max(50, reactionIds.length * 2),
   });
-
-  await Promise.allSettled(promises);
-  return Array.from(deletionEvents.values());
 }
 
 function resolveParentAuthorPubkey(event: NostrEvent): PubkeyHex | null {
@@ -881,41 +732,7 @@ async function publishReaction(
     return null;
   }
 
-  const relays: string[] = getRelays();
-  const promises = relays.map(async (relayUrl: string): Promise<void> => {
-    try {
-      const socket: WebSocket = createRelayWebSocket(relayUrl);
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          socket.close();
-          resolve();
-        }, 5000);
-
-        socket.onopen = (): void => {
-          socket.send(JSON.stringify(['EVENT', signedEvent]));
-        };
-
-        socket.onmessage = (msg: MessageEvent): void => {
-          const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'OK') {
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          }
-        };
-
-        socket.onerror = (): void => {
-          clearTimeout(timeout);
-          socket.close();
-          resolve();
-        };
-      });
-    } catch (e) {
-      console.warn(`Failed to publish reaction to ${relayUrl}:`, e);
-    }
-  });
-
-  await Promise.allSettled(promises);
+  await publishEventToRelays(signedEvent, getRelays());
   return signedEvent;
 }
 
@@ -943,41 +760,7 @@ async function publishRepost(targetEvent: NostrEvent): Promise<boolean> {
     return false;
   }
 
-  const relays: string[] = getRelays();
-  const promises = relays.map(async (relayUrl: string): Promise<void> => {
-    try {
-      const socket: WebSocket = createRelayWebSocket(relayUrl);
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          socket.close();
-          resolve();
-        }, 5000);
-
-        socket.onopen = (): void => {
-          socket.send(JSON.stringify(['EVENT', signedEvent]));
-        };
-
-        socket.onmessage = (msg: MessageEvent): void => {
-          const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'OK') {
-            clearTimeout(timeout);
-            socket.close();
-            resolve();
-          }
-        };
-
-        socket.onerror = (): void => {
-          clearTimeout(timeout);
-          socket.close();
-          resolve();
-        };
-      });
-    } catch (e) {
-      console.warn(`Failed to publish repost to ${relayUrl}:`, e);
-    }
-  });
-
-  await Promise.allSettled(promises);
+  await publishEventToRelays(signedEvent, getRelays());
   return true;
 }
 
@@ -993,13 +776,13 @@ function renderReplyBadge(
     const shortName = `@${parentNpub.slice(0, 12)}...`;
     container.innerHTML = `
       <div class="flex items-center gap-1 text-xs text-gray-500">
-        <a href="${escapeHtmlAttribute(parentPath)}" class="flex items-center gap-1 text-gray-400 hover:text-gray-600">
+        <a href="${escapeHtml(parentPath)}" class="flex items-center gap-1 text-gray-400 hover:text-gray-600">
           <span>↩</span><span>replying to</span>
         </a>
-        <a href="/${escapeHtmlAttribute(parentNpub)}"
+        <a href="/${escapeHtml(parentNpub)}"
            class="reply-badge-username text-indigo-500 hover:underline font-medium"
-           data-pubkey="${escapeHtmlAttribute(parentAuthorPubkey)}">
-          ${escapeHtmlAttribute(shortName)}
+           data-pubkey="${escapeHtml(parentAuthorPubkey)}">
+          ${escapeHtml(shortName)}
         </a>
       </div>`;
 
@@ -1018,7 +801,7 @@ function renderReplyBadge(
   } else {
     container.innerHTML = `
       <div class="flex items-center gap-1 text-xs text-gray-400">
-        <a href="${escapeHtmlAttribute(parentPath)}" class="flex items-center gap-1 hover:text-gray-600">
+        <a href="${escapeHtml(parentPath)}" class="flex items-center gap-1 hover:text-gray-600">
           <span>↩</span><span>reply</span>
         </a>
       </div>`;
@@ -1060,8 +843,8 @@ export function renderEvent(
     : null;
   const avatar: string = getAvatarURL(pubkey, renderProfile);
   const name: string = getDisplayName(npub, renderProfile);
-  const safeName: string = escapeHtmlAttribute(name);
-  const safeNpub: string = escapeHtmlAttribute(npub);
+  const safeName: string = escapeHtml(name);
+  const safeNpub: string = escapeHtml(npub);
   const createdAt: string = new Date(event.created_at * 1000).toLocaleString();
   const timeLabel: string = formatEventTimeLabel(event.created_at);
 
@@ -1070,7 +853,7 @@ export function renderEvent(
   // thing that should catch your eye. Absent when the event does not say.
   const clientName: string | null = readClientName(event.tags);
   const clientNameHtml: string = clientName
-    ? `<span class="flex-none text-xs text-gray-500" title="Posted with ${escapeHtmlAttribute(clientName)}">\u00b7 ${escapeHtmlAttribute(clientName)}</span>`
+    ? `<span class="flex-none text-xs text-gray-500" title="Posted with ${escapeHtml(clientName)}">\u00b7 ${escapeHtml(clientName)}</span>`
     : '';
   let eventPermalink: string | null = null;
   try {
@@ -1137,7 +920,7 @@ export function renderEvent(
 
   const actionBarHtml: string = `
           <div class="event-actions flex items-center">
-            <button class="${replyButtonClasses}" aria-label="Reply to post" title="${replyButtonTitle}" data-event-id="${escapeHtmlAttribute(event.id)}" data-event-pubkey="${escapeHtmlAttribute(event.pubkey)}" data-event-author="${safeName}">
+            <button class="${replyButtonClasses}" aria-label="Reply to post" title="${replyButtonTitle}" data-event-id="${escapeHtml(event.id)}" data-event-pubkey="${escapeHtml(event.pubkey)}" data-event-author="${safeName}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 12c0 4.418-4.03 8-9 8a9.77 9.77 0 01-3.18-.52L3 20l1.35-3.6A7.76 7.76 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01" />
@@ -1179,7 +962,7 @@ export function renderEvent(
 
   const contentSource: string = isRepost ? '' : event.content;
   const contentWarning: ContentWarning = getContentWarning(event);
-  const escapedContentSource: string = escapeHtmlAttribute(contentSource);
+  const escapedContentSource: string = escapeHtml(contentSource);
   const urls: string[] = [];
   const imageUrls: string[] = [];
   const mentionedNpubs: string[] = Array.from(
@@ -1291,7 +1074,7 @@ export function renderEvent(
           const fileName: string = safeUrl.split('/').pop() || 'media';
           const label: string =
             mediaKind === 'video' ? '🎬 Video: ' : '🖼️ Image: ';
-          return `<div class="my-2 p-2 bg-gray-100 rounded border border-gray-300"><span class="text-gray-600 text-xs">${label}</span><a href="${escapeHtmlAttribute(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline text-sm">${escapeHtmlAttribute(fileName)}</a></div>`;
+          return `<div class="my-2 p-2 bg-gray-100 rounded border border-gray-300"><span class="text-gray-600 text-xs">${label}</span><a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline text-sm">${escapeHtml(fileName)}</a></div>`;
         }
 
         if (mediaKind === 'video') {
@@ -1300,16 +1083,16 @@ export function renderEvent(
           // that starts moving on its own is a feed you have to fight.
           // Deliberately outside imageUrls - the gallery is an <img>, which is
           // exactly what a video must not be handed to.
-          return `<video src="${escapeHtmlAttribute(withPosterFrame(safeUrl))}" class="event-video my-2 max-w-full rounded shadow" controls preload="metadata" playsinline></video>`;
+          return `<video src="${escapeHtml(withPosterFrame(safeUrl))}" class="event-video my-2 max-w-full rounded shadow" controls preload="metadata" playsinline></video>`;
         }
 
         const imageIndex: number = imageUrls.length;
         imageUrls.push(safeUrl);
-        return `<img src="${escapeHtmlAttribute(safeUrl)}" alt="Image" class="my-2 max-w-full rounded shadow cursor-zoom-in event-image" loading="lazy" data-image-index="${imageIndex}" />`;
+        return `<img src="${escapeHtml(safeUrl)}" alt="Image" class="my-2 max-w-full rounded shadow cursor-zoom-in event-image" loading="lazy" data-image-index="${imageIndex}" />`;
       }
 
       urls.push(safeUrl);
-      return `<a href="${escapeHtmlAttribute(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline">${escapeHtmlAttribute(safeUrl)}</a>`;
+      return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline">${escapeHtml(safeUrl)}</a>`;
     },
   );
 
@@ -1328,7 +1111,7 @@ export function renderEvent(
     ? `
       <details class="event-cw-details mb-2 rounded-lg border border-amber-300 bg-amber-50">
         <summary class="cursor-pointer select-none text-xs font-semibold text-amber-900 px-3 py-2">
-          ⚠️ ${escapeHtmlAttribute(contentWarningSummary(contentWarning))}. Click to reveal.
+          ⚠️ ${escapeHtml(contentWarningSummary(contentWarning))}. Click to reveal.
         </summary>
         <div class="px-3 pb-3 pt-2">
           ${
@@ -1363,7 +1146,7 @@ export function renderEvent(
     loadableOnThisPage(avatar) ?? fallbackAvatarUrl(pubkey);
   const avatarHtml: string = isEnergySavingMode
     ? `<div class="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-xl">👤</div>`
-    : `<img src="${escapeHtmlAttribute(safeAvatar)}" alt="Avatar" class="event-avatar w-12 h-12 rounded-full object-cover cursor-pointer"
+    : `<img src="${escapeHtml(safeAvatar)}" alt="Avatar" class="event-avatar w-12 h-12 rounded-full object-cover cursor-pointer"
          onerror="${avatarErrorAttribute(pubkey)}" />`;
 
   div.innerHTML = `
@@ -1377,8 +1160,8 @@ export function renderEvent(
 				          <span class="event-nip05 min-w-0 truncate text-xs text-gray-500"></span>
 			          ${
                   eventPermalink
-                    ? `<a href="${eventPermalink}" class="flex-none text-xs text-gray-500 hover:text-blue-600 transition-colors" title="${escapeHtmlAttribute(createdAt)}">${escapeHtmlAttribute(timeLabel)}</a>`
-                    : `<span class="flex-none text-xs text-gray-500" title="${escapeHtmlAttribute(createdAt)}">${escapeHtmlAttribute(timeLabel)}</span>`
+                    ? `<a href="${eventPermalink}" class="flex-none text-xs text-gray-500 hover:text-blue-600 transition-colors" title="${escapeHtml(createdAt)}">${escapeHtml(timeLabel)}</a>`
+                    : `<span class="flex-none text-xs text-gray-500" title="${escapeHtml(createdAt)}">${escapeHtml(timeLabel)}</span>`
                 }
 			          ${clientNameHtml}
 			        </div>
@@ -1402,25 +1185,26 @@ export function renderEvent(
   // the slot exists to fill.
   void showVerifiedNip05(div, pubkey as PubkeyHex, renderProfile);
 
-  // Insert event in sorted order by timestamp (newest first)
-  const existingEvents: HTMLElement[] = Array.from(
-    output.querySelectorAll('.event-container'),
-  );
-  let inserted: boolean = false;
-
-  for (const existingEvent of existingEvents) {
-    const existingTimestamp: number = parseInt(
-      existingEvent.dataset.timestamp || '0',
-      10,
-    );
-    if (event.created_at > existingTimestamp) {
-      output.insertBefore(div, existingEvent);
-      inserted = true;
-      break;
-    }
-  }
-
-  if (!inserted) {
+  // Newest first. Cached and batched renders already arrive in order, so
+  // nearly every card is older than the last one drawn: that is checked
+  // before the list is walked, or a long timeline costs a walk per card.
+  const newerThan = (card: HTMLElement): boolean =>
+    event.created_at > parseInt(card.dataset.timestamp || '0', 10);
+  const lastChild: Element | null = output.lastElementChild;
+  const lastCard: HTMLElement | null =
+    lastChild instanceof HTMLElement &&
+    lastChild.classList.contains('event-container')
+      ? lastChild
+      : null;
+  const before: HTMLElement | undefined =
+    lastCard && !newerThan(lastCard)
+      ? undefined
+      : Array.from(
+          output.querySelectorAll<HTMLElement>('.event-container'),
+        ).find(newerThan);
+  if (before) {
+    output.insertBefore(div, before);
+  } else {
     output.appendChild(div);
   }
   if (parentEventId) {
@@ -2072,7 +1856,7 @@ async function renderReferencedEventCards(
         renderProfile,
       );
       const referencedContentWithUnicodeEmoji: string = replaceEmojiShortcodes(
-        escapeHtmlAttribute(referencedEvent.content),
+        escapeHtml(referencedEvent.content),
       );
       const referencedContent: string = replaceCustomEmojiShortcodes(
         referencedContentWithUnicodeEmoji,
@@ -2085,8 +1869,8 @@ async function renderReferencedEventCards(
           ? `${referencedContent.slice(0, 180)}...`
           : referencedContent;
       const referencedPath: string = `/${eventRef}`;
-      const safeReferencedPath: string = escapeHtmlAttribute(referencedPath);
-      const safeReferencedName: string = escapeHtmlAttribute(referencedName);
+      const safeReferencedPath: string = escapeHtml(referencedPath);
+      const safeReferencedName: string = escapeHtml(referencedName);
 
       const isEnergySavingMode: boolean =
         localStorage.getItem('energy_saving_mode') === 'true';
@@ -2096,14 +1880,14 @@ async function renderReferencedEventCards(
       const referencedAvatarHtml: string = isEnergySavingMode
         ? `<div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-sm flex-shrink-0">👤</div>`
         : `<img
-            src="${escapeHtmlAttribute(safeReferencedAvatar)}"
+            src="${escapeHtml(safeReferencedAvatar)}"
             alt="${safeReferencedName}"
             class="w-8 h-8 rounded-full object-cover flex-shrink-0"
             onerror="${avatarErrorAttribute(referencedEvent.pubkey)}"
           />`;
 
       const referencedPreviewHtml: string = referencedContentWarning.hasWarning
-        ? `<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">⚠️ ${escapeHtmlAttribute(contentWarningSummary(referencedContentWarning))}. Open post to view.</div>`
+        ? `<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">⚠️ ${escapeHtml(contentWarningSummary(referencedContentWarning))}. Open post to view.</div>`
         : `<div class="nox-post-text text-sm text-gray-800 whitespace-pre-wrap break-words">${referencedText || '(no content)'}</div>`;
 
       card.innerHTML = `
