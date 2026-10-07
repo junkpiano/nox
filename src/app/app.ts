@@ -1,6 +1,7 @@
 import type { PubkeyHex } from '../../types/nostr';
 import { setupBottomTabs } from '../common/bottom-tabs.js';
 import { setupComposeOverlay } from '../common/compose.js';
+import { installEmojiFallback } from '../common/content-html.js';
 import { kvRemove } from '../common/kv.js';
 import { clearMuteList, loadCachedMuteList } from '../common/mute-state.js';
 import { setupNavigation } from '../common/navigation.js';
@@ -149,6 +150,7 @@ document.addEventListener('DOMContentLoaded', (): void => {
 });
 
 function boot(): void {
+  installEmojiFallback();
   // The profile copy an earlier build kept in localStorage; IndexedDB holds
   // the same profiles, and nothing reads this one any more.
   kvRemove('nostr_profile_cache_v1');

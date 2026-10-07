@@ -532,7 +532,7 @@ export async function loadReactionsForEvent(
         imageEl.src = reaction.imageUrl;
         imageEl.alt = `:${reaction.shortcode}:`;
         imageEl.title = `:${reaction.shortcode}:`;
-        imageEl.className = 'inline-block h-5 w-5 align-text-bottom';
+        imageEl.className = 'nox-emoji inline-block h-5 w-5 align-text-bottom';
         imageEl.loading = 'lazy';
         imageEl.decoding = 'async';
         emojiEl = imageEl;

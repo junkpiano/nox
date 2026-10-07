@@ -64,7 +64,7 @@ function link(href: string, label: string): string {
 
 function emojiImage(shortcode: string, url: string): string {
   const code: string = escapeHtml(shortcode);
-  return `<img src="${escapeHtml(url)}" alt=":${code}:" title=":${code}:" class="inline-block align-text-bottom h-5 w-5 mx-0.5" loading="lazy" decoding="async" />`;
+  return `<img src="${escapeHtml(url)}" alt=":${code}:" title=":${code}:" class="nox-emoji inline-block align-text-bottom h-5 w-5 mx-0.5" loading="lazy" decoding="async" />`;
 }
 
 function renderSegment(
@@ -160,4 +160,33 @@ export function renderEmojiHtml(text: string, tags: string[][]): string {
         : replaceEmojiShortcodes(escapeHtml(segment.text)),
     )
     .join('');
+}
+
+/**
+ * A custom emoji whose picture will not load becomes its name.
+ *
+ * The picture lives on whatever host its author chose, and hosts delete
+ * files. The browser's broken-image icon says only that something is
+ * missing; `:shortcode:` still says which reaction it was. One listener on
+ * the document, in the capture phase because `error` does not bubble,
+ * covers every emoji however it was drawn.
+ */
+export function installEmojiFallback(): void {
+  document.addEventListener(
+    'error',
+    (event: Event): void => {
+      const target: EventTarget | null = event.target;
+      if (
+        !(target instanceof HTMLImageElement) ||
+        !target.classList.contains('nox-emoji')
+      ) {
+        return;
+      }
+      const name: HTMLSpanElement = document.createElement('span');
+      name.className = 'nox-emoji-missing';
+      name.textContent = target.alt;
+      target.replaceWith(name);
+    },
+    true,
+  );
 }

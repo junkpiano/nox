@@ -2354,3 +2354,10 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
 .reactions-container > [hidden] {
   display: none;
 }
+
+/* A custom emoji whose picture is gone, shown by name. Quieter than text
+   around it: a gap where a picture was, labelled, not a word in the post. */
+.nox-emoji-missing {
+  color: var(--nox-text-dim);
+  font-size: 0.85em;
+}
