@@ -18,6 +18,7 @@ import {
   type ContentSegment,
   parseContentSegments,
   parseEmojiSegments,
+  readTopicTags,
   shortIdentifier,
 } from './content-segments.js';
 import { readEmojiTags } from './custom-emoji.js';
@@ -146,7 +147,11 @@ export function renderContentHtml(
     quotes: [],
   };
   const parts: string[] = [];
-  for (const segment of parseContentSegments(content, readEmojiTags(tags))) {
+  for (const segment of parseContentSegments(
+    content,
+    readEmojiTags(tags),
+    readTopicTags(tags),
+  )) {
     parts.push(renderSegment(segment, options, out));
   }
   out.html = parts.join('');
