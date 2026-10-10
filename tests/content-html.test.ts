@@ -93,3 +93,13 @@ test('a reference inside a URL stays part of that URL', () => {
   assert.equal(mentions.size, 0);
   assert.equal((html.match(/<a /g) ?? []).length, 1);
 });
+
+test('a hashtag is a link to its page, lowercased as the tag is indexed', () => {
+  const { html } = renderContentHtml('news #Rust today', []);
+  assert.ok(html.includes('<a href="/t/rust" class="hashtag-link">#Rust</a>'));
+});
+
+test('a hashtag inside a URL stays part of the URL', () => {
+  const { html } = renderContentHtml('https://example.com/page#rust', []);
+  assert.ok(!html.includes('/t/rust'));
+});

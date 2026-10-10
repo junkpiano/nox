@@ -323,6 +323,9 @@ export async function loadTimeline(
   /** A withdrawn post leaves the cache too, or it comes back on restore. */
   const forgetWithdrawn = (ids: string[]): void => {
     void deleteEvents(ids);
+    // A view that stores no timeline - a hashtag - has none to edit, and
+    // editing the one it names would refresh that timeline's age.
+    if (!persistEvents) return;
     for (const id of ids) {
       void removeEventFromTimeline(
         options.timelineType,
