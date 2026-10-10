@@ -18,6 +18,7 @@ import {
   type ContentSegment,
   parseContentSegments,
   parseEmojiSegments,
+  readTopicTags,
   shortIdentifier,
 } from './content-segments.js';
 import { readEmojiTags } from './custom-emoji.js';
@@ -74,8 +75,10 @@ function renderSegment(
 ): string {
   switch (segment.kind) {
     case 'text':
-    case 'hashtag':
       return replaceEmojiShortcodes(escapeHtml(segment.text));
+    case 'hashtag':
+      // The same address the phone opens: /t/<tag>, lowercased as NIP-12 `t`.
+      return `<a href="/t/${encodeURIComponent(segment.tag)}" class="hashtag-link">${escapeHtml(segment.text)}</a>`;
     case 'emoji':
       return emojiImage(segment.shortcode, segment.url);
     case 'mention': {
@@ -144,7 +147,11 @@ export function renderContentHtml(
     quotes: [],
   };
   const parts: string[] = [];
-  for (const segment of parseContentSegments(content, readEmojiTags(tags))) {
+  for (const segment of parseContentSegments(
+    content,
+    readEmojiTags(tags),
+    readTopicTags(tags),
+  )) {
     parts.push(renderSegment(segment, options, out));
   }
   out.html = parts.join('');

@@ -254,7 +254,18 @@ const PUBLIC_PATHS: ReadonlySet<string> = new Set([
 ]);
 
 function isPublicPath(path: string): boolean {
-  return PUBLIC_PATHS.has(path);
+  // A hashtag is a public feed, as the global timeline is.
+  return PUBLIC_PATHS.has(path) || path.startsWith('/t/');
+}
+
+/** The tag in /t/<tag>, as NIP-12 indexes it, or null when it is not one. */
+function hashtagFromPath(path: string): string | null {
+  if (!path.startsWith('/t/')) return null;
+  const tag: string = decodePathSegment(path.slice(3))
+    .trim()
+    .replace(/^#/, '')
+    .toLowerCase();
+  return /^[\p{L}\p{N}_-]+$/u.test(tag) ? tag : null;
 }
 
 export function handleRoute(scrollRestoreState?: unknown): void {
@@ -563,6 +574,8 @@ export function handleRoute(scrollRestoreState?: unknown): void {
         output,
         document: path === '/privacy' ? 'privacy' : 'terms',
       });
+    } else if (hashtagFromPath(path)) {
+      await loadHashtagPage(hashtagFromPath(path) as string, isRouteActive);
     } else if (path === '/about') {
       resetNotificationsButtonState();
       const { loadAboutPage } = await getAboutPageModule();
@@ -978,6 +991,55 @@ export async function loadGlobalPage(
       isRouteActive,
     );
   }
+}
+
+async function loadHashtagPage(
+  tag: string,
+  isRouteActive: () => boolean,
+): Promise<void> {
+  if (!isRouteActive()) return;
+  closeAllWebSockets();
+  stopBackgroundFetch();
+  clearNewPostsNotification();
+  resetNotificationsButtonState();
+  setActiveNav(
+    document.getElementById('nav-home'),
+    document.getElementById('nav-global'),
+    document.getElementById('nav-relays'),
+    document.getElementById('nav-profile'),
+    document.getElementById('nav-settings'),
+    null,
+  );
+  renderLoadingState(`Loading #${escapeHtml(tag)}...`);
+
+  // The tag is the page's name; on a phone the header bar shows it too.
+  const postsHeader: HTMLElement | null =
+    document.getElementById('posts-header');
+  if (postsHeader) {
+    postsHeader.textContent = `#${tag}`;
+    postsHeader.style.display = '';
+  }
+  if (profileSection) {
+    profileSection.innerHTML = '';
+    profileSection.className = '';
+  }
+
+  seenEventIds.clear();
+  appState.untilTimestamp = Math.floor(Date.now() / 1000);
+  if (!output) return;
+  const { loadHashtagTimeline } = await import(
+    '../features/hashtag/hashtag-timeline.js'
+  );
+  await loadHashtagTimeline({
+    tag,
+    limit,
+    untilTimestamp: appState.untilTimestamp,
+    seenEventIds,
+    output,
+    connectingMsg,
+    activeTimeouts: appState.activeTimeouts,
+    isRouteActive,
+  });
 }
 
 async function startApp(

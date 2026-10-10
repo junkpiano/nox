@@ -149,11 +149,57 @@ export function parseEmojiSegments(
   return withCustomEmoji([{ kind: 'text', text }], emoji);
 }
 
+/**
+ * The hashtags a post declares: its `t` tags, lowercased as NIP-12 indexes
+ * them. A client that supports hashtags writes one for each it sees.
+ */
+export function readTopicTags(tags: string[][]): Set<string> {
+  const topics: Set<string> = new Set();
+  for (const tag of tags) {
+    // Without its `#`, as the NIP has it; some clients keep the mark.
+    const topic: string =
+      tag[0] === 't' && typeof tag[1] === 'string'
+        ? tag[1].replace(/^#/, '').toLowerCase()
+        : '';
+    if (topic) topics.add(topic);
+  }
+  return topics;
+}
+
+/**
+ * `topics` are the hashtags the post declares (`readTopicTags`). A number
+ * on its own becomes a hashtag only when it is one of them.
+ */
+/** What `parseReferences` asks of a topic list: whether it holds a tag. */
+type Topics = { has(tag: string): boolean };
+
+/**
+ * The `t` tags a post should carry for the hashtags written in it.
+ *
+ * Every hashtag the writer typed, numbers included: writing one is saying it
+ * is a topic, and the tag is what lets a client find the post under it.
+ * Tags already present are kept and not repeated.
+ */
+export function withTopicTags(content: string, tags: string[][]): string[][] {
+  const present: Set<string> = readTopicTags(tags);
+  const added: string[][] = [];
+  for (const segment of parseReferences(content, {
+    has: (): boolean => true,
+  })) {
+    if (segment.kind === 'hashtag' && !present.has(segment.tag)) {
+      present.add(segment.tag);
+      added.push(['t', segment.tag]);
+    }
+  }
+  return [...tags, ...added];
+}
+
 export function parseContentSegments(
   content: string,
   emoji?: EmojiMap,
+  topics?: ReadonlySet<string>,
 ): ContentSegment[] {
-  return withCustomEmoji(parseReferences(content), emoji);
+  return withCustomEmoji(parseReferences(content, topics), emoji);
 }
 
 /**
@@ -201,7 +247,7 @@ function withCustomEmoji(
   return out;
 }
 
-function parseReferences(content: string): ContentSegment[] {
+function parseReferences(content: string, topics?: Topics): ContentSegment[] {
   if (!content) {
     return [];
   }
@@ -265,11 +311,12 @@ function parseReferences(content: string): ContentSegment[] {
       // The pattern consumes the character before the `#` so a URL fragment
       // or a word ending in one is not a tag. That character is text.
       const hashStart: number = start + whole.indexOf('#');
-      // A tag needs a letter in it. "#695" in a Wordle score is a number
-      // somebody wrote, and linking it sends the reader to an empty search.
-      // A rejected one leaves the cursor alone, so its characters are picked
-      // up as text by whatever comes next.
-      if (/\p{L}/u.test(hashtag)) {
+      // A tag needs a letter in it, or the post's own `t` tag saying it is
+      // one. "#695" in a Wordle score is a number somebody wrote, and
+      // linking it sends the reader to an empty search; "#733" that the
+      // author tagged is a topic. A rejected one leaves the cursor alone, so
+      // its characters are picked up as text by whatever comes next.
+      if (/\p{L}/u.test(hashtag) || topics?.has(hashtag.toLowerCase())) {
         if (hashStart > cursor) {
           segments.push({
             kind: 'text',
