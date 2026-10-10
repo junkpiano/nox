@@ -35,6 +35,7 @@ import {
 import { deleteEvents, removeEventFromTimeline } from './db/index.js';
 import { requestDeletion } from './delete-event.js';
 import { computeTimelineRemovalTargets } from './deletion-targets.js';
+import { openEmojiPicker } from './emoji-picker.js';
 import { escapeHtml } from './escape-html.js';
 import {
   cacheDeletionStatus,
@@ -988,6 +989,16 @@ export function renderEvent(
               </svg>
             </button>
             ${
+              isLoggedIn
+                ? `<button class="${actionBtnBase} emoji-react-btn ${actionIdle} hover:text-amber-400" aria-label="Add reaction" aria-haspopup="dialog" title="Add reaction">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.5A9 9 0 1111.5 3" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M8 14.5s1.5 2 4 2 4-2 4-2M9 9.5h.01M15 9.5h.01M19 2v6M16 5h6" />
+                    </svg>
+                  </button>`
+                : ''
+            }
+            ${
               canZapTarget
                 ? `<button class="${zapButtonClasses}" aria-label="Zap post" title="${zapButtonTitle}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
@@ -1332,6 +1343,47 @@ export function renderEvent(
         }
       },
     );
+  }
+
+  // Any reaction, not only ❤: the picker's choice is sent as the heart's is,
+  // and joins its badge at once rather than after the relays answer.
+  const emojiButton: HTMLButtonElement | null = div.querySelector(
+    '.emoji-react-btn',
+  ) as HTMLButtonElement | null;
+  if (emojiButton) {
+    emojiButton.addEventListener('click', (e: MouseEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      const viewerPubkey: PubkeyHex = storedPubkey as PubkeyHex;
+      openEmojiPicker({
+        anchor: emojiButton,
+        viewer: viewerPubkey,
+        relays: getRelays(),
+        onPick: async (reaction: ReactionAggregate): Promise<void> => {
+          emojiButton.disabled = true;
+          try {
+            const published: NostrEvent | null = await publishReaction(
+              event.id,
+              event.pubkey,
+              reaction,
+            );
+            if (published) {
+              rememberOptimisticReaction(event.id, reaction.key, published);
+              forgetOptimisticRemovedReaction(event.id, published.id);
+              recordOwnReaction(viewerPubkey, event.id, 'like', true);
+            }
+            invalidateReactionCaches(event.id);
+            await refreshReactionUi(event.id, div);
+          } catch (error: unknown) {
+            console.error('Failed to react:', error);
+            alert('Failed to react. Please try again.');
+          } finally {
+            emojiButton.disabled = false;
+            emojiButton.focus();
+          }
+        },
+      });
+    });
   }
 
   // Whether this viewer already liked or reposted it is asked once for all
