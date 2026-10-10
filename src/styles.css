@@ -2371,3 +2371,72 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
 .theme-nox .hashtag-link:hover {
   text-decoration: underline;
 }
+
+/* Choosing a reaction. The panel of the strong surface, its tiles the size
+   of a fingertip; the common row first, the person's own below. */
+.nox-emoji-picker {
+  position: fixed;
+  z-index: 80;
+  width: min(20rem, calc(100vw - 1rem));
+  padding: 0.5rem;
+  border: 1px solid var(--nox-border-strong);
+  border-radius: 1rem;
+  background: var(--nox-panel-strong);
+  box-shadow: var(--nox-shadow);
+}
+
+.nox-emoji-common,
+.nox-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 0.125rem;
+}
+
+.nox-emoji-common {
+  padding-bottom: 0.375rem;
+  margin-bottom: 0.375rem;
+  border-bottom: 1px solid var(--nox-border);
+}
+
+.nox-emoji-grid {
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.nox-emoji-choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 0.5rem;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.nox-emoji-choice:hover,
+.nox-emoji-choice:focus-visible {
+  background: rgba(137, 168, 255, 0.16);
+}
+
+.nox-emoji-choice[hidden] {
+  display: none;
+}
+
+.nox-emoji-choice img {
+  width: 1.5rem;
+  height: 1.5rem;
+  object-fit: contain;
+}
+
+.nox-emoji-filter {
+  width: 100%;
+  margin-bottom: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.875rem;
+}
+
+.nox-emoji-note {
+  padding: 0.5rem 0.25rem;
+  color: var(--nox-text-dim);
+  font-size: 0.8125rem;
+}
