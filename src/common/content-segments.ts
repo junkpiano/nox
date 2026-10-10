@@ -170,6 +170,30 @@ export function readTopicTags(tags: string[][]): Set<string> {
  * `topics` are the hashtags the post declares (`readTopicTags`). A number
  * on its own becomes a hashtag only when it is one of them.
  */
+/** What `parseReferences` asks of a topic list: whether it holds a tag. */
+type Topics = { has(tag: string): boolean };
+
+/**
+ * The `t` tags a post should carry for the hashtags written in it.
+ *
+ * Every hashtag the writer typed, numbers included: writing one is saying it
+ * is a topic, and the tag is what lets a client find the post under it.
+ * Tags already present are kept and not repeated.
+ */
+export function withTopicTags(content: string, tags: string[][]): string[][] {
+  const present: Set<string> = readTopicTags(tags);
+  const added: string[][] = [];
+  for (const segment of parseReferences(content, {
+    has: (): boolean => true,
+  })) {
+    if (segment.kind === 'hashtag' && !present.has(segment.tag)) {
+      present.add(segment.tag);
+      added.push(['t', segment.tag]);
+    }
+  }
+  return [...tags, ...added];
+}
+
 export function parseContentSegments(
   content: string,
   emoji?: EmojiMap,
@@ -223,10 +247,7 @@ function withCustomEmoji(
   return out;
 }
 
-function parseReferences(
-  content: string,
-  topics?: ReadonlySet<string>,
-): ContentSegment[] {
+function parseReferences(content: string, topics?: Topics): ContentSegment[] {
   if (!content) {
     return [];
   }

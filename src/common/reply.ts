@@ -1,5 +1,6 @@
 import type { NostrEvent } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
+import { withTopicTags } from './content-segments.js';
 import { storeEvent } from './db/index.js';
 import { escapeHtml } from './escape-html.js';
 import { replyTags } from './reply-tags.js';
@@ -145,7 +146,7 @@ export function setupReplyOverlay(options: ReplyOverlayOptions): void {
       const unsignedEvent: any = withClientTag({
         kind: 1,
         created_at: Math.floor(Date.now() / 1000),
-        tags: replyTags(currentReplyContext.event),
+        tags: withTopicTags(content, replyTags(currentReplyContext.event)),
         content,
       });
 

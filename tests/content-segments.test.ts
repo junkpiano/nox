@@ -14,6 +14,7 @@ import type { ContentSegment } from '../src/common/content-segments.js';
 import {
   parseContentSegments,
   partitionContent,
+  withTopicTags,
 } from '../src/common/content-segments.js';
 
 const NPUB: string =
@@ -267,4 +268,18 @@ test('partition: an naddr becomes a link to a viewer that can show it', () => {
     url: `https://njump.me/${naddr}`,
     media: null,
   });
+});
+
+test('every hashtag written becomes a t tag, numbers too, each once', () => {
+  assert.deepEqual(
+    withTopicTags('WORD5 #721 and #Rust #rust https://x.dev/#frag', [
+      ['client', 'nox'],
+      ['t', 'rust'],
+    ]),
+    [
+      ['client', 'nox'],
+      ['t', 'rust'],
+      ['t', '721'],
+    ],
+  );
 });
