@@ -2371,3 +2371,29 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
 .theme-nox .hashtag-link:hover {
   text-decoration: underline;
 }
+
+/* A remote signer asking for approval after sign-in: a strip above the tab
+   bar, out of the way of the post being written, gone once followed. */
+.nox-signer-approval {
+  position: fixed;
+  left: 50%;
+  bottom: calc(
+    var(--nox-tabbar-height, 0px) +
+    var(--nox-safe-bottom, 0px) +
+    0.75rem
+  );
+  transform: translateX(-50%);
+  z-index: 70;
+  max-width: calc(100% - 2rem);
+  padding: 0.625rem 1rem;
+  border: 1px solid var(--nox-border-strong);
+  border-radius: 999px;
+  background: var(--nox-panel-strong);
+  color: var(--nox-text);
+  font-size: 0.875rem;
+}
+
+.nox-signer-approval a {
+  color: var(--nox-accent-strong);
+  text-decoration: underline;
+}

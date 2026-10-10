@@ -9,6 +9,10 @@ import { setupImageOverlay } from '../common/overlays.js';
 import { applyPlatformClass } from '../common/platform-class.js';
 import { publishEventToRelays } from '../common/publish-event.js';
 import { clearRelayAuthPermissions } from '../common/relay-socket.js';
+import {
+  disconnectRemoteSigner,
+  restoreRemoteSigner,
+} from '../common/remote-signer.js';
 import { setupReplyOverlay } from '../common/reply.js';
 import { setupSearchBar } from '../common/search.js';
 import {
@@ -80,6 +84,8 @@ async function getHomeTimelineModule(): Promise<
 function handleLogout(): void {
   // Whichever kind of session this is: signed in, or browsing as a key.
   endSession();
+  // A remote signer's connection is this person's too.
+  void disconnectRemoteSigner();
   clearNotifications();
   // Otherwise the next account inherits this one's mute list.
   clearMuteList();
@@ -349,7 +355,11 @@ function boot(): void {
     })
     .then(
       (): Promise<unknown> =>
-        Promise.all([restoreSessionPrivateKey(), loadCachedMuteList()]),
+        Promise.all([
+          restoreSessionPrivateKey(),
+          restoreRemoteSigner(),
+          loadCachedMuteList(),
+        ]),
     )
     .finally((): void => {
       updateLogoutButton(composeButton);
