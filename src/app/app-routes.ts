@@ -1,5 +1,6 @@
 import { nip19 } from 'nostr-tools';
 import type { NostrProfile, Npub, PubkeyHex } from '../../types/nostr';
+import { composeWithText } from '../common/compose.js';
 import {
   deleteTimeline,
   getTimelineNewestTimestamp,
@@ -16,6 +17,11 @@ import {
   setSessionPrivateKeyFromRaw,
   updateLogoutButton,
 } from '../common/session.js';
+import {
+  keepShareDraft,
+  shareTextFrom,
+  takeShareDraft,
+} from '../common/share-draft.js';
 import { canWrite } from '../common/signer.js';
 import { profileName } from '../features/profile/profile.js';
 import { loadReactionsPage } from '../features/reactions/reactions-page.js';
@@ -269,6 +275,15 @@ function hashtagFromPath(path: string): string | null {
 }
 
 export function handleRoute(scrollRestoreState?: unknown): void {
+  // A share link is a draft, not a page: its text waits for the composer,
+  // and the address goes back to the front door.
+  if (window.location.pathname === '/post') {
+    const shared: string | null = shareTextFrom(
+      new URL(window.location.href).searchParams,
+    );
+    if (shared) keepShareDraft(shared);
+    replaceAppHistoryPath('/');
+  }
   const isRouteActive: () => boolean = createRouteGuard();
   const url: URL = new URL(window.location.href);
   const path: string = url.pathname;
@@ -295,6 +310,12 @@ export function handleRoute(scrollRestoreState?: unknown): void {
     delete output.dataset.threadIds;
   }
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
+  // Signed in and able to post: a waiting shared text opens the composer.
+  // Signed out, it keeps waiting; the route after sign-in comes back here.
+  if (canWrite()) {
+    const draft: string | null = takeShareDraft();
+    if (draft && !composeWithText(draft)) keepShareDraft(draft);
+  }
 
   void (async (): Promise<void> => {
     if (!storedPubkey && !isPublicPath(path)) {

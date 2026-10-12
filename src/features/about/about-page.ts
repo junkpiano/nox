@@ -5,6 +5,9 @@
  * behind it can be swapped without reprinting the address everywhere it has
  * already been published — including a shipped Android build.
  */
+
+import { escapeHtml } from '../../common/escape-html.js';
+import { isNativeRuntime } from '../../common/native-http.js';
 import {
   nipLabel,
   nipUrl,
@@ -74,6 +77,13 @@ export function loadAboutPage(options: AboutPageOptions): void {
   if (!options.output) {
     return;
   }
+
+  // The website's address: inside the desktop app this page's own origin is
+  // an app-internal one that no browser can open.
+  const shareBase: string = `${
+    isNativeRuntime() ? 'https://nox.garden' : window.location.origin
+  }/post`;
+  const bookmarklet: string = `javascript:(()=>{window.open('${shareBase}?content='+encodeURIComponent(document.title+' '+location.href))})()`;
 
   options.output.innerHTML = `
     <article class="space-y-6 text-sm text-gray-700 leading-relaxed">
@@ -148,6 +158,17 @@ export function loadAboutPage(options: AboutPageOptions): void {
 	        </p>
 	      </section>
 	
+	      <section class="bg-white border border-gray-200 rounded-lg p-5">
+	        <h3 class="text-base font-bold text-gray-900 mb-2">Share to nox</h3>
+	        <p>Drag this to your bookmarks bar. On any page, click it to start a post with the page's title and link.</p>
+	        <p class="mt-3">
+	          <a id="share-bookmarklet" class="nox-bookmarklet" href="${escapeHtml(bookmarklet)}" title="Drag me to your bookmarks bar">Share to nox</a>
+	        </p>
+	        <p class="mt-3 text-xs text-gray-600">
+	          For extensions and apps: <code class="font-mono">${escapeHtml(shareBase)}?content=&lt;URL-encoded text&gt;</code>
+	        </p>
+	      </section>
+
 	      <section class="bg-emerald-50 border border-emerald-200 rounded-lg p-5">
 	        <h3 class="text-base font-bold text-emerald-900 mb-2">Donate / Zap</h3>
 	        <p>
@@ -168,6 +189,11 @@ export function loadAboutPage(options: AboutPageOptions): void {
 	      </section>
 	    </article>
 	  `;
+
+  // A bookmarklet runs on other pages; clicked here it would share this one.
+  options.output
+    .querySelector('#share-bookmarklet')
+    ?.addEventListener('click', (event: Event): void => event.preventDefault());
 
   const copyZapButton: HTMLButtonElement | null = options.output.querySelector(
     '#copy-zap-address',
