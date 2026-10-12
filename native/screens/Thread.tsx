@@ -1,5 +1,11 @@
+import { addToEmojiList } from '../../src/common/emoji-list';
+import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
+import EmojiPickerSheet, {
+  forgetEmojiList,
+} from '../components/EmojiPickerSheet';
+import QuickReactionGlyph from '../components/QuickReactionGlyph';
 import { guardWrite, hasViewer, signInPrompt } from '../lib/read-only';
 /**
  * One post and its replies.
@@ -61,9 +67,9 @@ import {
   type TimelinePost,
 } from '../lib/home-timeline';
 import {
-  LIKE,
-  likeEvent,
   NotSignedInError,
+  quickReaction,
+  reactWith,
   replyToEvent,
   repostEvent,
 } from '../lib/interact';
@@ -196,6 +202,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const liked: boolean = data?.root ? own.liked.has(data.root.id) : false;
   const reposted: boolean = data?.root ? own.reposted.has(data.root.id) : false;
   const [liking, setLiking] = useState(false);
+  const [picking, setPicking] = useState(false);
   // NIP-36: the author asked not to be shown unasked. The timeline and the
   // quote card cover such a post; opened directly - from a notification, a
   // link, a reply - the root was drawn in full. It is covered here too.
@@ -420,20 +427,49 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     }
   };
 
-  const like = async (): Promise<void> => {
+  const like = async (
+    reaction: ReactionAggregate = quickReaction(),
+  ): Promise<void> => {
     setLiking(true);
     // Marked only once a relay has it: a like nobody stored is not a like, and
     // showing it as one would be a small lie that persists.
     await attempt(
       'reaction',
-      () => likeEvent(root),
+      () => reactWith(root, reaction),
       (by: PubkeyHex) => {
         own.mark(root.id, 'like', by);
         // The badge moves with the heart, as it does on a timeline card.
-        countOwnReaction(root.id, LIKE);
+        countOwnReaction(root.id, reaction);
       },
     );
     setLiking(false);
+  };
+
+  // A custom emoji someone reacted with, offered for the viewer's own list.
+  // The other badges are only counts: pressing them does nothing.
+  const offerToAddEmoji = (entry: ReactionAggregate): void => {
+    const viewer: PubkeyHex | null = getSession().pubkey;
+    if (!entry.shortcode || !entry.imageUrl || !viewer) return;
+    if (!guardWrite()) return;
+    const emoji = { shortcode: entry.shortcode, url: entry.imageUrl };
+    Alert.alert(`:${entry.shortcode}:`, 'Add this emoji to yours?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Add to my emoji',
+        onPress: (): void => {
+          void addToEmojiList(viewer, getRelays(), emoji)
+            .then((outcome): void => {
+              forgetEmojiList(viewer);
+              Alert.alert(
+                outcome === 'added'
+                  ? 'Added to your emoji'
+                  : 'Already in your emoji',
+              );
+            })
+            .catch((): void => Alert.alert('Could not add. Try again.'));
+        },
+      },
+    ]);
   };
 
   const repost = async (): Promise<void> => {
@@ -524,7 +560,10 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           {/* Who reacted, counted. Under the post and above the actions:
               it is about the post, not about what you can do to it. */}
           {data.deleted ? null : (
-            <ReactionSummary entries={reactions.get(root.id)} />
+            <ReactionSummary
+              entries={reactions.get(root.id)}
+              onPressEntry={offerToAddEmoji}
+            />
           )}
           {hasViewer() && !data.deleted ? (
             <View style={[styles.actions, !canWrite() && styles.actionsOff]}>
@@ -573,13 +612,38 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                   disabled={liking || liked}
                   style={[styles.action, (liking || liked) && styles.actionOff]}
                 >
+                  {liking ? (
+                    <Text style={styles.actionText}>···</Text>
+                  ) : (
+                    <QuickReactionGlyph
+                      reaction={quickReaction()}
+                      given={liked}
+                      style={liked ? styles.actionDone : styles.actionText}
+                    />
+                  )}
+                </Pressable>
+                <Pressable
+                  onPress={(): void => {
+                    if (guardWrite()) setPicking(true);
+                  }}
+                  disabled={liking}
+                  style={styles.action}
+                >
                   <Text
-                    accessibilityLabel="Like"
-                    style={liked ? styles.actionDone : styles.actionText}
+                    accessibilityLabel="Add reaction"
+                    style={styles.actionText}
                   >
-                    {liking ? '···' : liked ? '♥' : '♡'}
+                    {'\u263A\uFE0E'}
                   </Text>
                 </Pressable>
+                <EmojiPickerSheet
+                  visible={picking}
+                  viewer={getSession().pubkey}
+                  onClose={(): void => setPicking(false)}
+                  onPick={(reaction: ReactionAggregate): void => {
+                    void like(reaction);
+                  }}
+                />
                 <Pressable
                   onPress={(): void => {
                     if (guardWrite()) setReporting(true);

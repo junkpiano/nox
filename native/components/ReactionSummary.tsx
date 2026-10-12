@@ -11,7 +11,7 @@
  * they know.
  */
 
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { loadableImageUrl } from '../../src/common/avatar';
 import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 import { REACTION_SUMMARY_LIMIT } from '../../src/common/reaction-summary';
@@ -47,10 +47,13 @@ function symbolFor(content: string): string {
 export default function ReactionSummary({
   entries,
   compact = false,
+  onPressEntry,
 }: {
   entries: ReactionAggregate[] | undefined;
   /** In a timeline row, where the badges sit inside the card's own padding. */
   compact?: boolean;
+  /** A badge that does something when pressed: adding its emoji, say. */
+  onPressEntry?: (entry: ReactionAggregate) => void;
 }) {
   if (!entries || entries.length === 0) return null;
 
@@ -66,7 +69,12 @@ export default function ReactionSummary({
             ? loadableImageUrl(entry.imageUrl, PHONE_IMAGES)
             : null;
           return (
-            <View key={entry.key} style={styles.badge}>
+            <Pressable
+              key={entry.key}
+              style={styles.badge}
+              disabled={!onPressEntry}
+              onPress={(): void => onPressEntry?.(entry)}
+            >
               {picture ? (
                 <Image
                   source={{ uri: picture }}
@@ -81,7 +89,7 @@ export default function ReactionSummary({
                 </Text>
               )}
               <Text style={styles.count}>{entry.count}</Text>
-            </View>
+            </Pressable>
           );
         })}
     </View>

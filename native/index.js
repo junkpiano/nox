@@ -4,6 +4,7 @@
  * `crypto.getRandomValues`, which Hermes does not provide on its own, and a
  * later import would be exactly that - later than the module needing it.
  */
+import { refreshQuickReaction } from '../src/common/quick-reaction';
 import 'react-native-get-random-values';
 
 import { registerRootComponent } from 'expo';
@@ -81,6 +82,10 @@ function startForCurrentSession() {
     getSessionPrivateKey() !== null
   ) {
     void beginMessages(stored.toLowerCase());
+    // The heart's reaction, as the account last chose it on any device.
+    void refreshQuickReaction(stored.toLowerCase(), getRelays()).catch(
+      () => {},
+    );
   }
 }
 

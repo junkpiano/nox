@@ -1,6 +1,8 @@
 import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
 import { guardWrite, hasViewer } from '../lib/read-only';
+import EmojiPickerSheet from './EmojiPickerSheet';
+import QuickReactionGlyph from './QuickReactionGlyph';
 /**
  * The list both timelines draw.
  *
@@ -41,9 +43,9 @@ import type { RootStackParamList } from '../App';
 import { customEmojiOf } from '../lib/avatar';
 import type { TimelinePost } from '../lib/home-timeline';
 import {
-  LIKE,
-  likeEvent,
   NotSignedInError,
+  quickReaction,
+  reactWith,
   repostEvent,
 } from '../lib/interact';
 import {
@@ -211,6 +213,19 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
   const reposted: boolean = own.reposted.has(post.id);
   const [busy, setBusy] = useState<'like' | 'repost' | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [picking, setPicking] = useState(false);
+  // What the heart sends, read when the row is drawn.
+  const heart: ReactionAggregate = quickReaction();
+  const react = (reaction: ReactionAggregate): void =>
+    run(
+      'like',
+      () => reactWith(post.event, reaction),
+      (by: PubkeyHex) => {
+        own.mark(post.id, 'like', by);
+        // The count moves with the heart rather than at the next ask.
+        countOwnReaction(post.id, reaction);
+      },
+    );
 
   if (!hasViewer()) {
     return null;
@@ -309,25 +324,37 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
       <Pressable
         hitSlop={8}
         disabled={liked || busy !== null}
-        onPress={(): void =>
-          run(
-            'like',
-            () => likeEvent(post.event),
-            (by: PubkeyHex) => {
-              own.mark(post.id, 'like', by);
-              // The count moves with the heart rather than at the next ask.
-              countOwnReaction(post.id, LIKE);
-            },
-          )
-        }
+        onPress={(): void => react(heart)}
+        accessibilityLabel={`React with ${heart.content}`}
       >
-        <Text
-          accessibilityLabel="Like"
-          style={liked ? styles.actionOn : styles.action}
-        >
-          {busy === 'like' ? '···' : liked ? '♥' : '♡'}
+        {busy === 'like' ? (
+          <Text style={styles.action}>···</Text>
+        ) : (
+          <QuickReactionGlyph
+            reaction={heart}
+            given={liked}
+            style={liked ? styles.actionOn : styles.action}
+          />
+        )}
+      </Pressable>
+      {/* Any emoji, custom ones included: the heart is one tap, this is a choice. */}
+      <Pressable
+        hitSlop={8}
+        disabled={busy !== null}
+        onPress={(): void => {
+          if (guardWrite()) setPicking(true);
+        }}
+      >
+        <Text accessibilityLabel="Add reaction" style={styles.action}>
+          {'\u263A\uFE0E'}
         </Text>
       </Pressable>
+      <EmojiPickerSheet
+        visible={picking}
+        viewer={getSession().pubkey}
+        onClose={(): void => setPicking(false)}
+        onPick={react}
+      />
       {/* The rare and consequential things, one step further in. Deleting is
           irreversible and used to sit a stray tap from reply. */}
       <Pressable hitSlop={8} onPress={(): void => setMenuOpen(true)}>
