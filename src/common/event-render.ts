@@ -21,6 +21,7 @@ import { avatarErrorAttribute, fallbackAvatarUrl } from './avatar.js';
 import { loadableOnThisPage, setAvatar } from './avatar-dom.js';
 import { setCapped } from './capped-map.js';
 import { readClientName, withClientTag } from './client-tag.js';
+import { quotePost } from './compose.js';
 import {
   normalizeHttpUrl,
   type RenderedContent,
@@ -46,6 +47,7 @@ import {
 } from './events-queries.js';
 import { describeLink, type LinkCard } from './link-card.js';
 import { isMachineContent } from './machine-content.js';
+import { createMoreMenu } from './more-menu.js';
 import { isMuted } from './mute-state.js';
 import { verifiedNip05 } from './nip05.js';
 import { noteRenderedCard, recordOwnReaction } from './own-reactions-dom.js';
@@ -1293,36 +1295,48 @@ export function renderEvent(
   const repostButton: HTMLButtonElement | null = div.querySelector(
     '.repost-event-btn',
   ) as HTMLButtonElement | null;
-  if (repostButton) {
-    repostButton.addEventListener(
-      'click',
-      async (e: MouseEvent): Promise<void> => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!isLoggedIn) {
-          alert('Sign in to repost.');
-          return;
-        }
-        repostButton.disabled = true;
-        repostButton.classList.add('opacity-60', 'cursor-not-allowed');
-        try {
-          if (await publishRepost(event)) {
-            recordOwnReaction(
-              storedPubkey as PubkeyHex,
-              event.id,
-              'repost',
-              true,
-            );
-          }
-        } catch (error: unknown) {
-          console.error('Failed to repost:', error);
-          alert('Failed to repost. Please try again.');
-        } finally {
-          repostButton.disabled = false;
-          repostButton.classList.remove('opacity-60', 'cursor-not-allowed');
-        }
-      },
+  // Repost as it is, or quote it with words of one's own (NIP-18). The
+  // arrows open a menu of the two rather than reposting on the first tap,
+  // which also leaves room to change one's mind.
+  const repost = async (): Promise<void> => {
+    if (!repostButton) return;
+    repostButton.disabled = true;
+    repostButton.classList.add('opacity-60', 'cursor-not-allowed');
+    try {
+      if (await publishRepost(event)) {
+        recordOwnReaction(storedPubkey as PubkeyHex, event.id, 'repost', true);
+      }
+    } catch (error: unknown) {
+      console.error('Failed to repost:', error);
+      alert('Failed to repost. Please try again.');
+    } finally {
+      repostButton.disabled = false;
+      repostButton.classList.remove('opacity-60', 'cursor-not-allowed');
+    }
+  };
+  if (repostButton && !isLoggedIn) {
+    repostButton.addEventListener('click', (e: MouseEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      alert('Sign in to repost.');
+    });
+  } else if (repostButton) {
+    // The menu replaces the button in the row and takes the button with it.
+    const placeholder: Comment = document.createComment('repost');
+    repostButton.replaceWith(placeholder);
+    const menu: HTMLElement = createMoreMenu({
+      label: 'Repost or quote',
+      trigger: repostButton,
+      items: [
+        { label: 'Repost', onSelect: (): void => void repost() },
+        { label: 'Quote', onSelect: (): void => quotePost(event) },
+      ],
+    });
+    // A click inside the menu is the menu's, not the card's.
+    menu.addEventListener('click', (e: MouseEvent): void =>
+      e.stopPropagation(),
     );
+    placeholder.replaceWith(menu);
   }
 
   const reactButton: HTMLButtonElement | null = div.querySelector(

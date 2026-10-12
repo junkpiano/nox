@@ -2544,3 +2544,41 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   vertical-align: -0.2em;
   object-fit: contain;
 }
+
+/* The post being quoted, named under the words being written: one line of
+   it, enough to know which, removable without closing the composer. */
+.nox-quote-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--nox-border);
+  border-left: 3px solid var(--nox-accent);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.nox-quote-preview[hidden] {
+  display: none;
+}
+
+.nox-quote-label {
+  flex: none;
+  color: var(--nox-accent-strong);
+  font-weight: 600;
+}
+
+.nox-quote-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--nox-text-muted);
+}
+
+.nox-quote-remove {
+  flex: none;
+  color: var(--nox-text-dim);
+}

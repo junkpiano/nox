@@ -28,6 +28,11 @@ export interface MoreMenuOptions {
    * of a row opens leftwards, or it opens into the wall.
    */
   align?: 'start' | 'end';
+  /**
+   * A button already drawn to open the menu - the repost arrows, say -
+   * instead of the three dots. It keeps its look and gains the menu.
+   */
+  trigger?: HTMLButtonElement;
 }
 
 let openMenu: (() => void) | null = null;
@@ -62,11 +67,14 @@ export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
   const wrap: HTMLDivElement = document.createElement('div');
   wrap.className = 'nox-more';
 
-  const trigger: HTMLButtonElement = document.createElement('button');
-  trigger.type = 'button';
-  trigger.className = 'nox-more-trigger';
-  trigger.textContent = '···';
-  trigger.title = 'More';
+  const trigger: HTMLButtonElement =
+    options.trigger ?? document.createElement('button');
+  if (!options.trigger) {
+    trigger.type = 'button';
+    trigger.className = 'nox-more-trigger';
+    trigger.textContent = '···';
+    trigger.title = 'More';
+  }
   trigger.setAttribute('aria-label', options.label);
   trigger.setAttribute('aria-haspopup', 'menu');
   trigger.setAttribute('aria-expanded', 'false');
@@ -118,6 +126,9 @@ export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
     // One menu at a time: opening this one closes whichever was open.
     openMenu?.();
     openMenu = close;
+    // Measured while the menu is still hidden: shown, it adds its own height
+    // to the box around it, which then looks like it scrolls.
+    const bounds = visibleBounds(wrap);
     menu.hidden = false;
     menu.classList.remove('nox-menu-up');
     trigger.setAttribute('aria-expanded', 'true');
@@ -126,7 +137,6 @@ export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
     // list. If it does not fit below but fits above, open upward. If it fits
     // in neither direction it stays below, where the panel's own scrolling
     // still reaches it.
-    const bounds = visibleBounds(wrap);
     const triggerRect: DOMRect = trigger.getBoundingClientRect();
     const height: number = menu.getBoundingClientRect().height + MENU_GAP_PX;
     const below: number = bounds.bottom - triggerRect.bottom;
