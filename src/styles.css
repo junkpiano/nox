@@ -2424,9 +2424,21 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   border-bottom: 1px solid var(--nox-border);
 }
 
-.nox-emoji-grid {
-  max-height: 14rem;
+/* Yours and all the rest scroll together under the search and the quick row. */
+.nox-emoji-body {
+  max-height: 16rem;
   overflow-y: auto;
+}
+
+.nox-emoji-heading {
+  padding: 0.375rem 0.25rem 0.25rem;
+  color: var(--nox-text-dim);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.nox-emoji-common[hidden] {
+  display: none;
 }
 
 .nox-emoji-choice {
