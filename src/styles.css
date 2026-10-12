@@ -2268,6 +2268,27 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   fill: currentColor;
 }
 
+/* A chosen reaction in place of the ♡: quiet until given, as the outline
+   is, and in full colour once it is - the same two states the ♡ has. */
+.nox-quick-emoji {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  object-fit: contain;
+  opacity: 0.55;
+  filter: grayscale(0.8);
+  transition:
+    opacity 120ms ease,
+    filter 120ms ease;
+}
+
+.event-actions .react-event-btn[aria-pressed="true"] .nox-quick-emoji {
+  opacity: 1;
+  filter: none;
+}
+
 .event-actions .repost-event-btn[aria-pressed="true"] {
   color: #34d399;
 }
@@ -2513,4 +2534,13 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
 .nox-emoji-add:disabled {
   color: var(--nox-text-dim);
   cursor: default;
+}
+
+/* The quick reaction named inside its caption: the size of the words. */
+#quick-reaction-inline img {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -0.2em;
+  object-fit: contain;
 }

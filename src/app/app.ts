@@ -8,6 +8,7 @@ import { setupNavigation } from '../common/navigation.js';
 import { setupImageOverlay } from '../common/overlays.js';
 import { applyPlatformClass } from '../common/platform-class.js';
 import { publishEventToRelays } from '../common/publish-event.js';
+import { refreshQuickReaction } from '../common/quick-reaction.js';
 import { clearRelayAuthPermissions } from '../common/relay-socket.js';
 import {
   disconnectRemoteSigner,
@@ -367,6 +368,13 @@ function boot(): void {
       // Refreshed in the background: the cached list already filters the first
       // render, and a relay round-trip should not delay it.
       void refreshMuteListFromRelays(appState.relays);
+      // The ♡'s reaction, as the account last chose it on any device.
+      const viewer: string | null = localStorage.getItem('nostr_pubkey');
+      if (viewer) {
+        void refreshQuickReaction(viewer as PubkeyHex, appState.relays).catch(
+          (): void => {},
+        );
+      }
     });
 }
 
