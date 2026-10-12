@@ -84,6 +84,9 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   let selectedImageFile: File | null = null;
   // The post being quoted, while the composer is open for a quote.
   let quoting: NostrEvent | null = null;
+  // Which opening of the composer this is; a send that finishes after it
+  // was closed (and perhaps opened again) leaves the new draft alone.
+  let draftNumber: number = 0;
   const quotePreview: HTMLElement | null = document.getElementById(
     'compose-quote-preview',
   );
@@ -122,6 +125,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   };
 
   const openOverlay = (): void => {
+    draftNumber += 1;
     overlay.style.display = '';
     updateContentWarningReasonState();
     document.body.classList.add('overflow-hidden');
@@ -197,6 +201,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   };
 
   const closeOverlay = (): void => {
+    draftNumber += 1;
     setQuoting(null);
     overlay.style.display = 'none';
     document.body.classList.remove('overflow-hidden');
@@ -356,10 +361,14 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
 
     isSubmitting = true;
     refreshStatus();
-    // Which post this quotes is fixed now: the upload below takes time, and
-    // closing the composer or starting another quote meanwhile must not
-    // change what this post says.
+    // Everything this post says is fixed now: the upload below takes time,
+    // and the composer may be closed and opened for another post meanwhile.
     const quoted: NostrEvent | null = quoting;
+    const text: string = textarea.value.trim();
+    const warned: boolean = contentWarningToggle.checked;
+    const warningReason: string = contentWarningReason.value;
+    const imageFile: File | null = selectedImageFile;
+    const draft: number = draftNumber;
 
     try {
       const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
@@ -368,10 +377,10 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
       }
 
       let imageUrl: string | null = null;
-      if (selectedImageFile) {
+      if (imageFile) {
         statusEl.textContent = 'Uploading image...';
         const result: ImageUploadResult = await uploadImage(
-          selectedImageFile,
+          imageFile,
           storedPubkey as PubkeyHex,
           options.getSessionPrivateKey,
         );
@@ -381,14 +390,12 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
       statusEl.textContent = 'Posting...';
 
       const tags: string[][] = [
-        ...(contentWarningToggle.checked
-          ? contentWarningTags(contentWarningReason.value)
-          : []),
+        ...(warned ? contentWarningTags(warningReason) : []),
         ...(quoted ? quoteTags(quoted) : []),
       ];
 
       // Words, then the picture, then the quoted post: each on its own line.
-      const parts: string[] = [textarea.value.trim(), imageUrl ?? ''];
+      const parts: string[] = [text, imageUrl ?? ''];
       const content: string = quoted
         ? quoteContent(parts, quoted)
         : parts.filter((part: string): boolean => part.length > 0).join('\n\n');
@@ -405,6 +412,12 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
 
       await options.publishEvent(signedEvent, options.getRelays());
       await storeEvent(signedEvent, { isHomeTimeline: false });
+      // A newer draft opened while this was sending is someone else's work:
+      // only the composer this post came from is cleared and closed.
+      if (draft !== draftNumber) {
+        await options.refreshTimeline();
+        return;
+      }
       textarea.value = '';
       contentWarningToggle.checked = false;
       contentWarningReason.value = '';

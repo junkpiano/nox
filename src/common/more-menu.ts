@@ -177,17 +177,23 @@ export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
       if (!trigger.isConnected) close();
     }, 1000);
     signal.addEventListener('abort', (): void => clearInterval(watch));
+    // In the capture phase: a control that stops its own clicks (the emoji
+    // button, say) would otherwise open on top of a menu that never heard.
     document.addEventListener(
       'click',
       (event: MouseEvent): void => {
         const target: Node = event.target as Node;
         if (!wrap.contains(target) && !menu.contains(target)) close();
       },
-      { signal },
+      { signal, capture: true },
     );
     document.addEventListener(
       'keydown',
       (event: KeyboardEvent): void => {
+        // Keys are the menu's only while it, or its trigger, has focus: typed
+        // into a search box elsewhere they belong there.
+        const focused: Element | null = document.activeElement;
+        if (focused !== trigger && !menu.contains(focused)) return;
         const current: number = enabledItems().findIndex(
           (button: HTMLButtonElement): boolean =>
             button === document.activeElement,
