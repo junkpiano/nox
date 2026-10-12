@@ -1,6 +1,7 @@
 import type { PubkeyHex } from '../../../types/nostr';
 import { showKeyBackupNotice } from '../../common/key-backup.js';
 import { isNativeRuntime } from '../../common/native-http.js';
+import { connectRemoteSigner } from '../../common/remote-signer.js';
 import {
   beginSignedInSession,
   InvalidPublicKeyError,
@@ -83,6 +84,22 @@ export async function showInputForm(
             <p id="public-key-error" class="nox-auth-error" hidden></p>
             <p class="nox-auth-note">A public key is safe to share. Browsing shows what that key sees; nothing can be posted.</p>
           </div>
+
+          <details class="nox-reveal">
+            <summary class="nox-reveal-summary">I use a signer app</summary>
+            <div class="nox-reveal-body space-y-2">
+              <p class="nox-auth-note">Your key stays in the signer (Amber, nsec.app and others). nox asks it to sign.</p>
+              <label for="bunker-input" class="sr-only">Signer address</label>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <input id="bunker-input" type="text" autocomplete="off" spellcheck="false" placeholder="bunker://… or name@domain"
+                  class="nox-input px-4 py-3 text-sm" />
+                <button id="bunker-connect" class="nox-secondary-button py-3 px-5 whitespace-nowrap">
+                  Connect
+                </button>
+              </div>
+              <p id="bunker-status" class="nox-auth-note" role="status" hidden></p>
+            </div>
+          </details>
 
           <details class="nox-reveal">
             <summary class="nox-reveal-summary">I have a secret key</summary>
@@ -198,6 +215,61 @@ export async function showInputForm(
       if (e.key === 'Enter' && privateKeyLoginBtn) {
         privateKeyLoginBtn.click();
       }
+    });
+  }
+
+  // A remote signer: the connection can wait on the person approving it in
+  // another app, so the button says what is happening rather than freezing.
+  const bunkerInput = document.getElementById(
+    'bunker-input',
+  ) as HTMLInputElement | null;
+  const bunkerConnect = document.getElementById(
+    'bunker-connect',
+  ) as HTMLButtonElement | null;
+  const bunkerStatus: HTMLElement | null =
+    document.getElementById('bunker-status');
+  const showBunkerStatus = (text: string, isError: boolean = false): void => {
+    if (!bunkerStatus) return;
+    bunkerStatus.hidden = false;
+    bunkerStatus.className = isError ? 'nox-auth-error' : 'nox-auth-note';
+    bunkerStatus.textContent = text;
+  };
+  if (bunkerConnect && bunkerInput) {
+    bunkerConnect.addEventListener('click', async (): Promise<void> => {
+      const address: string = bunkerInput.value.trim();
+      if (!address) return;
+      bunkerConnect.disabled = true;
+      showBunkerStatus('Waiting for your signer…');
+      try {
+        await connectRemoteSigner(address, (url: string): void => {
+          // A popup opened after a network wait is blocked; a link is not.
+          if (!bunkerStatus) return;
+          bunkerStatus.hidden = false;
+          bunkerStatus.className = 'nox-auth-note';
+          bunkerStatus.textContent = '';
+          const link: HTMLAnchorElement = document.createElement('a');
+          link.href = url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.className = 'underline';
+          link.textContent = 'Approve in your signer';
+          bunkerStatus.append(link, ', then come back here.');
+        });
+        bunkerInput.value = '';
+        options.updateLogoutButton(options.composeButton);
+        window.history.pushState(null, '', '/home');
+        options.handleRoute();
+      } catch (error: unknown) {
+        showBunkerStatus(
+          error instanceof Error ? error.message : 'Could not connect.',
+          true,
+        );
+      } finally {
+        bunkerConnect.disabled = false;
+      }
+    });
+    bunkerInput.addEventListener('keypress', (e: KeyboardEvent): void => {
+      if (e.key === 'Enter') bunkerConnect.click();
     });
   }
 
