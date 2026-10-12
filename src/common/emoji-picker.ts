@@ -99,26 +99,41 @@ export function openEmojiPicker(options: {
     ).join('')}</div>
     <div class="nox-emoji-body">
       <div class="nox-emoji-custom"><p class="nox-emoji-note">Loading your emoji…</p></div>
-      <p class="nox-emoji-heading">All emoji</p>
-      <div class="nox-emoji-grid nox-emoji-standard">${standardEmojiHtml()}</div>
+      <div class="nox-emoji-standard-section">
+        <p class="nox-emoji-heading">All emoji</p>
+        <div class="nox-emoji-grid nox-emoji-standard">${standardEmojiHtml()}</div>
+      </div>
     </div>
   `;
 
   // One box for both: custom emoji by shortcode, standard ones by name.
   const search = panel.querySelector<HTMLInputElement>('.nox-emoji-filter');
   const common = panel.querySelector<HTMLElement>('.nox-emoji-common');
+  // A match starts a word: "cat" finds smiley_cat, not multiplication.
+  const matches = (text: string, query: string): boolean =>
+    ` ${text} ${text.replace(/[_-]/g, ' ')}`.includes(` ${query}`);
   const applySearch = (): void => {
     const query: string = (search?.value ?? '').trim().toLowerCase();
-    if (common) common.hidden = query.length > 0;
+    const searching: boolean = query.length > 0;
+    if (common) common.hidden = searching;
     for (const button of panel.querySelectorAll<HTMLButtonElement>(
       '.nox-emoji-body button.nox-emoji-choice',
     )) {
-      const words: string = (
+      const text: string = (
         button.dataset.shortcode ??
         button.dataset.name ??
         ''
       ).toLowerCase();
-      button.hidden = query.length > 0 && !words.includes(query);
+      button.hidden = searching && !matches(text, query);
+    }
+    // A heading over nothing, or the empty-list note, says nothing while
+    // searching; each section shows only when something in it matches.
+    for (const section of panel.querySelectorAll<HTMLElement>(
+      '.nox-emoji-custom, .nox-emoji-standard-section',
+    )) {
+      section.hidden =
+        searching &&
+        !section.querySelector('button.nox-emoji-choice:not([hidden])');
     }
   };
   search?.addEventListener('input', applySearch);

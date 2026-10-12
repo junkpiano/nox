@@ -2437,8 +2437,18 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   font-weight: 600;
 }
 
-.nox-emoji-common[hidden] {
+.nox-emoji-common[hidden],
+.nox-emoji-custom[hidden],
+.nox-emoji-standard-section[hidden] {
   display: none;
+}
+
+/* A finger, not a pointer: the panel takes the screen's width, up to a
+   size where each emoji is still a comfortable target. */
+@media (max-width: 1023px) {
+  .nox-emoji-picker {
+    width: min(26rem, calc(100vw - 1rem));
+  }
 }
 
 .nox-emoji-choice {
