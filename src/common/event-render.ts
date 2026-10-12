@@ -32,10 +32,12 @@ import {
   contentWarningSummary,
   getContentWarning,
 } from './content-warning.js';
+import { readEmojiTags } from './custom-emoji.js';
 import { deleteEvents, removeEventFromTimeline } from './db/index.js';
 import { requestDeletion } from './delete-event.js';
 import { computeTimelineRemovalTargets } from './deletion-targets.js';
-import { openEmojiPicker } from './emoji-picker.js';
+import { addToEmojiList, type CustomEmoji } from './emoji-list.js';
+import { forgetEmojiList, openEmojiPicker } from './emoji-picker.js';
 import { escapeHtml } from './escape-html.js';
 import {
   cacheDeletionStatus,
@@ -661,6 +663,43 @@ export async function loadReactionsForEvent(
   }
 }
 
+/**
+ * Someone else's custom emoji, taken into the viewer's own list. The label
+ * says what happened in place, rather than in a dialog that has to be shut.
+ */
+function addToMyEmojiButton(
+  viewer: PubkeyHex,
+  emoji: CustomEmoji,
+): HTMLButtonElement {
+  const button: HTMLButtonElement = document.createElement('button');
+  button.type = 'button';
+  button.className = 'nox-emoji-add';
+  const picture: HTMLImageElement = document.createElement('img');
+  picture.className = 'nox-emoji';
+  picture.src = emoji.url;
+  picture.alt = `:${emoji.shortcode}:`;
+  const label: HTMLSpanElement = document.createElement('span');
+  label.textContent = 'Add to my emoji';
+  button.append(picture, label);
+  button.addEventListener('click', async (event: MouseEvent): Promise<void> => {
+    event.preventDefault();
+    event.stopPropagation();
+    button.disabled = true;
+    label.textContent = 'Adding…';
+    try {
+      const outcome = await addToEmojiList(viewer, getRelays(), emoji);
+      forgetEmojiList(viewer);
+      label.textContent =
+        outcome === 'added' ? 'Added to your emoji' : 'Already in your emoji';
+    } catch (error: unknown) {
+      console.warn('[emoji] Could not add to the list:', error);
+      label.textContent = 'Could not add. Try again.';
+      button.disabled = false;
+    }
+  });
+  return button;
+}
+
 async function loadReactionDetails(
   eventId: string,
   reactionKey: string,
@@ -685,6 +724,30 @@ async function loadReactionDetails(
     }
 
     container.innerHTML = '';
+    const picked: ReactionAggregate = getReactionAggregate(
+      filtered[0]?.content,
+      filtered[0]?.tags ?? [],
+    );
+    const viewer: string | null = localStorage.getItem('nostr_pubkey');
+    // Only an emoji the list would accept is offered for it.
+    const addable: boolean =
+      Boolean(picked.shortcode && picked.imageUrl) &&
+      readEmojiTags([['emoji', picked.shortcode ?? '', picked.imageUrl ?? '']])
+        .size > 0;
+    if (
+      picked.shortcode &&
+      picked.imageUrl &&
+      addable &&
+      viewer &&
+      canWrite()
+    ) {
+      container.appendChild(
+        addToMyEmojiButton(viewer as PubkeyHex, {
+          shortcode: picked.shortcode,
+          url: picked.imageUrl,
+        }),
+      );
+    }
     const list: HTMLDivElement = document.createElement('div');
     list.className = 'space-y-2 max-h-48 overflow-auto';
     container.appendChild(list);

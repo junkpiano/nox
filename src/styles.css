@@ -2466,3 +2466,29 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   color: var(--nox-text-dim);
   font-size: 0.8125rem;
 }
+
+/* Taking someone's custom emoji into your own list: a quiet pill above the
+   names, the emoji itself in it, so it is plain which one is added. */
+.nox-emoji-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.75rem 0.25rem 0.375rem;
+  border: 1px solid var(--nox-border-strong);
+  border-radius: 999px;
+  color: var(--nox-accent-strong);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.nox-emoji-add img {
+  width: 1.25rem;
+  height: 1.25rem;
+  object-fit: contain;
+}
+
+.nox-emoji-add:disabled {
+  color: var(--nox-text-dim);
+  cursor: default;
+}

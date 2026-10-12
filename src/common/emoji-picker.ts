@@ -39,6 +39,11 @@ function emojiListFor(
   return list;
 }
 
+/** After adding to the list: the next picker reads it afresh. */
+export function forgetEmojiList(viewer: PubkeyHex): void {
+  lists.delete(viewer);
+}
+
 let open: { panel: HTMLElement; close: () => void } | null = null;
 
 export function closeEmojiPicker(): void {
@@ -163,7 +168,7 @@ export function openEmojiPicker(options: {
       if (!custom) return;
       if (emoji.length === 0) {
         custom.innerHTML =
-          '<p class="nox-emoji-note">No custom emoji yet. Emoji lists you make in other apps show up here.</p>';
+          '<p class="nox-emoji-note">You have no custom emoji yet. Add emoji sets in an app like emojito, and they’ll appear here.</p>';
         place();
         return;
       }
