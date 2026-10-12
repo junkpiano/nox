@@ -19,6 +19,19 @@ export async function publishEventToRelays(
   event: NostrEvent,
   relayList: string[],
 ): Promise<void> {
+  await publishAndCount(event, relayList);
+}
+
+/**
+ * The same send, resolving with how many relays accepted the event (`OK`
+ * true for this id). Most callers send and move on; one replacing a list
+ * needs to know it landed somewhere.
+ */
+export async function publishAndCount(
+  event: NostrEvent,
+  relayList: string[],
+): Promise<number> {
+  let accepted: number = 0;
   const promises = relayList.map(async (relayUrl: string): Promise<void> => {
     try {
       const socket: WebSocket = createRelayWebSocket(relayUrl);
@@ -35,7 +48,10 @@ export async function publishEventToRelays(
 
         socket.onmessage = (msg: MessageEvent): void => {
           const arr: any[] = JSON.parse(msg.data);
-          if (arr[0] === 'OK') {
+          // This event's answer only: a relay that asks for AUTH sends an
+          // OK for that first, and closing on it drops the event unanswered.
+          if (arr[0] === 'OK' && arr[1] === event.id) {
+            if (arr[2] === true) accepted += 1;
             clearTimeout(timeout);
             socket.close();
             resolve();
@@ -54,4 +70,5 @@ export async function publishEventToRelays(
   });
 
   await Promise.allSettled(promises);
+  return accepted;
 }

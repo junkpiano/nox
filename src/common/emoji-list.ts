@@ -11,7 +11,15 @@
 
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { readEmojiTags } from './custom-emoji.js';
-import { newestOf, queryEveryRelay, queryRelays } from './relay-query.js';
+import { publishAndCount } from './publish-event.js';
+import {
+  NoRelayAnsweredError,
+  newestOf,
+  queryEveryRelay,
+  queryRelays,
+  queryRelaysDetailed,
+} from './relay-query.js';
+import { signWithSession } from './signer.js';
 
 export interface CustomEmoji {
   /** As the list wrote it; `:shortcode:` in a reaction uses this. */
@@ -116,4 +124,63 @@ export async function fetchEmojiList(
     if (set) add(emojiOf(set));
   }
   return out;
+}
+
+/**
+ * Adds one emoji to someone's own list, and publishes the list.
+ *
+ * The list is replaceable: what is published is the whole of it, so it
+ * starts from the newest copy every relay holds, and is not written at all
+ * when no relay answered - a list rebuilt from nothing would delete every
+ * emoji and set the person already had. Everything already in it, the
+ * `content` with any private entries included, is carried over unchanged.
+ */
+export async function addToEmojiList(
+  viewer: PubkeyHex,
+  relays: string[],
+  emoji: CustomEmoji,
+): Promise<'added' | 'already'> {
+  const result = await queryRelaysDetailed(
+    relays,
+    { kinds: [EMOJI_LIST_KIND], authors: [viewer], limit: 1 },
+    undefined,
+    { everyRelay: true },
+  );
+  // Every relay, not most: the newest copy may sit on the one that did not
+  // answer, and the copy written here would replace it.
+  if (result.answered < new Set(relays).size) {
+    throw new NoRelayAnsweredError(relays);
+  }
+  // Someone else's reaction is where this emoji came from; it is held to
+  // the same rules as one read from a list.
+  const url: string | undefined = readEmojiTags([
+    ['emoji', emoji.shortcode, emoji.url],
+  ]).get(emoji.shortcode.toLowerCase());
+  if (!url) throw new Error('That emoji cannot be added.');
+  const list: NostrEvent | null = newestOf(result.events);
+  const tags: string[][] = list ? list.tags.map((tag) => [...tag]) : [];
+  const shortcode: string = emoji.shortcode.toLowerCase();
+  if (
+    tags.some(
+      (tag: string[]): boolean =>
+        tag[0] === 'emoji' && tag[1]?.toLowerCase() === shortcode,
+    )
+  ) {
+    return 'already';
+  }
+  tags.push(['emoji', emoji.shortcode, url]);
+  const signed: NostrEvent = await signWithSession({
+    kind: EMOJI_LIST_KIND,
+    // Later than the copy it replaces, even on a clock that runs behind.
+    created_at: Math.max(
+      Math.floor(Date.now() / 1000),
+      (list?.created_at ?? 0) + 1,
+    ),
+    tags,
+    content: list?.content ?? '',
+  });
+  if ((await publishAndCount(signed, relays)) === 0) {
+    throw new Error('No relay accepted the list.');
+  }
+  return 'added';
 }

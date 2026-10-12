@@ -6,6 +6,7 @@
  * into it and comes back to the button; Escape or a tap outside closes it.
  */
 
+import emojiDictionary from 'emoji-dictionary';
 import type { PubkeyHex } from '../../types/nostr';
 import { type CustomEmoji, fetchEmojiList } from './emoji-list.js';
 import { escapeHtml } from './escape-html.js';
@@ -16,8 +17,28 @@ import {
 
 /** The ones nearly every client offers; the custom ones are the point. */
 const COMMON: string[] = ['👍', '😂', '🔥', '🎉', '🙏', '👀', '💯', '😢'];
-/** More custom emoji than this, and a filter box helps find one. */
-const FILTER_FROM: number = 24;
+/**
+ * Every standard emoji, once, with all the names it answers to for the
+ * search box. Built on first use: 1,500 buttons are not drawn until someone
+ * opens a picker.
+ */
+let standardHtml: string | null = null;
+function standardEmojiHtml(): string {
+  if (standardHtml) return standardHtml;
+  const names: Map<string, string[]> = new Map();
+  for (const name of emojiDictionary.names) {
+    const emoji: string | undefined = emojiDictionary.getUnicode(name);
+    if (!emoji) continue;
+    names.set(emoji, [...(names.get(emoji) ?? []), name]);
+  }
+  standardHtml = Array.from(names)
+    .map(
+      ([emoji, aliases]): string =>
+        `<button type="button" class="nox-emoji-choice" data-emoji="${emoji}" data-name="${escapeHtml(`${aliases.join(' ')} ${aliases.join(' ').replace(/_/g, ' ')}`)}" aria-label="${escapeHtml(aliases[0] ?? emoji)}" title="${escapeHtml(aliases[0] ?? '')}">${emoji}</button>`,
+    )
+    .join('');
+  return standardHtml;
+}
 
 // ponytail: per-session memory memo; store the kind 10030 list in IndexedDB
 // if fetching it once per session ever shows up as slow.
@@ -37,6 +58,11 @@ function emojiListFor(
     lists.set(viewer, list);
   }
   return list;
+}
+
+/** After adding to the list: the next picker reads it afresh. */
+export function forgetEmojiList(viewer: PubkeyHex): void {
+  lists.delete(viewer);
 }
 
 let open: { panel: HTMLElement; close: () => void } | null = null;
@@ -66,12 +92,51 @@ export function openEmojiPicker(options: {
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Choose a reaction');
   panel.innerHTML = `
+    <input type="search" class="nox-input nox-emoji-filter" placeholder="Search emoji" aria-label="Search emoji" />
     <div class="nox-emoji-common">${COMMON.map(
       (emoji: string): string =>
         `<button type="button" class="nox-emoji-choice" data-emoji="${emoji}" aria-label="${emoji}">${emoji}</button>`,
     ).join('')}</div>
-    <div class="nox-emoji-custom"><p class="nox-emoji-note">Loading your emoji…</p></div>
+    <div class="nox-emoji-body">
+      <div class="nox-emoji-custom"><p class="nox-emoji-note">Loading your emoji…</p></div>
+      <div class="nox-emoji-standard-section">
+        <p class="nox-emoji-heading">All emoji</p>
+        <div class="nox-emoji-grid nox-emoji-standard">${standardEmojiHtml()}</div>
+      </div>
+    </div>
   `;
+
+  // One box for both: custom emoji by shortcode, standard ones by name.
+  const search = panel.querySelector<HTMLInputElement>('.nox-emoji-filter');
+  const common = panel.querySelector<HTMLElement>('.nox-emoji-common');
+  // A match starts a word: "cat" finds smiley_cat, not multiplication.
+  const matches = (text: string, query: string): boolean =>
+    ` ${text} ${text.replace(/[_-]/g, ' ')}`.includes(` ${query}`);
+  const applySearch = (): void => {
+    const query: string = (search?.value ?? '').trim().toLowerCase();
+    const searching: boolean = query.length > 0;
+    if (common) common.hidden = searching;
+    for (const button of panel.querySelectorAll<HTMLButtonElement>(
+      '.nox-emoji-body button.nox-emoji-choice',
+    )) {
+      const text: string = (
+        button.dataset.shortcode ??
+        button.dataset.name ??
+        ''
+      ).toLowerCase();
+      button.hidden = searching && !matches(text, query);
+    }
+    // A heading over nothing, or the empty-list note, says nothing while
+    // searching; each section shows only when something in it matches.
+    for (const section of panel.querySelectorAll<HTMLElement>(
+      '.nox-emoji-custom, .nox-emoji-standard-section',
+    )) {
+      section.hidden =
+        searching &&
+        !section.querySelector('button.nox-emoji-choice:not([hidden])');
+    }
+  };
+  search?.addEventListener('input', applySearch);
   document.body.appendChild(panel);
 
   // Under the button, or over it when the screen ends first.
@@ -154,7 +219,7 @@ export function openEmojiPicker(options: {
   }
   open = { panel, close };
 
-  panel.querySelector<HTMLButtonElement>('button')?.focus();
+  search?.focus();
 
   void emojiListFor(options.viewer, options.relays).then(
     (emoji: CustomEmoji[]): void => {
@@ -163,33 +228,17 @@ export function openEmojiPicker(options: {
       if (!custom) return;
       if (emoji.length === 0) {
         custom.innerHTML =
-          '<p class="nox-emoji-note">No custom emoji yet. Emoji lists you make in other apps show up here.</p>';
-        place();
-        return;
+          '<p class="nox-emoji-note">You have no custom emoji yet. Add emoji sets in an app like emojito, and they’ll appear here.</p>';
+      } else {
+        custom.innerHTML = `<p class="nox-emoji-heading">Yours</p><div class="nox-emoji-grid">${emoji
+          .map(
+            (item: CustomEmoji): string =>
+              `<button type="button" class="nox-emoji-choice" data-shortcode="${escapeHtml(item.shortcode)}" data-url="${escapeHtml(item.url)}" aria-label=":${escapeHtml(item.shortcode)}:" title=":${escapeHtml(item.shortcode)}:"><img class="nox-emoji" src="${escapeHtml(item.url)}" alt=":${escapeHtml(item.shortcode)}:" loading="lazy" decoding="async" /></button>`,
+          )
+          .join('')}</div>`;
+        // Typed before the list arrived: the new buttons are filtered too.
+        applySearch();
       }
-      const grid: string = emoji
-        .map(
-          (item: CustomEmoji): string =>
-            `<button type="button" class="nox-emoji-choice" data-shortcode="${escapeHtml(item.shortcode)}" data-url="${escapeHtml(item.url)}" aria-label=":${escapeHtml(item.shortcode)}:" title=":${escapeHtml(item.shortcode)}:"><img class="nox-emoji" src="${escapeHtml(item.url)}" alt=":${escapeHtml(item.shortcode)}:" loading="lazy" decoding="async" /></button>`,
-        )
-        .join('');
-      custom.innerHTML = `${
-        emoji.length > FILTER_FROM
-          ? '<input type="search" class="nox-input nox-emoji-filter" placeholder="Filter" aria-label="Filter emoji" />'
-          : ''
-      }<div class="nox-emoji-grid">${grid}</div>`;
-      const filter =
-        custom.querySelector<HTMLInputElement>('.nox-emoji-filter');
-      filter?.addEventListener('input', (): void => {
-        const query: string = filter.value.trim().toLowerCase();
-        for (const button of custom.querySelectorAll<HTMLButtonElement>(
-          '.nox-emoji-grid button',
-        )) {
-          button.hidden = !(button.dataset.shortcode ?? '')
-            .toLowerCase()
-            .includes(query);
-        }
-      });
       place();
     },
   );
