@@ -1,3 +1,5 @@
+import * as Clipboard from 'expo-clipboard';
+import { eventId, eventLink } from '../../src/common/permalink';
 import { canWrite } from '../../src/common/signer';
 import { openSignIn } from '../lib/navigation';
 /**
@@ -51,6 +53,15 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
   // and says so once rather than failing three ways.
   const writable: boolean = canWrite();
 
+  const copy = (text: string, done: string): void => {
+    void Clipboard.setStringAsync(text)
+      .then((): void => {
+        onClose();
+        Alert.alert(done);
+      })
+      .catch((): void => Alert.alert('Could not copy'));
+  };
+
   const confirmDelete = (): void => {
     Alert.alert(
       'Ask the relays to delete this post?',
@@ -90,6 +101,19 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
       >
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.sheet}>
+          {/* A post's address needs no key: offered whoever is looking. */}
+          <Pressable
+            onPress={(): void => copy(eventLink(post.event), 'Link copied')}
+            style={styles.row}
+          >
+            <Text style={styles.item}>Copy link</Text>
+          </Pressable>
+          <Pressable
+            onPress={(): void => copy(eventId(post.event), 'ID copied')}
+            style={styles.row}
+          >
+            <Text style={styles.item}>Copy ID</Text>
+          </Pressable>
           {!writable ? (
             <Pressable
               onPress={(): void => {
