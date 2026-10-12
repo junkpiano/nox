@@ -9,6 +9,7 @@
 import type { PubkeyHex } from '../../../types/nostr';
 import { kvGet } from '../../common/kv.js';
 import { isMuted } from '../../common/mute-state.js';
+import { eventId as eventIdCode, eventLink } from '../../common/permalink.js';
 import { muteUser, reportContent, unmuteUser } from './moderation-actions.js';
 import type { ReportType } from './report.js';
 import { REPORT_TYPE_LABELS } from './report.js';
@@ -219,14 +220,27 @@ function showPostActions(
   name: string,
   options: ModerationOverlayOptions,
   onDelete?: () => Promise<void>,
+  extra: { kind: number; canModerate: boolean } = {
+    kind: 1,
+    canModerate: true,
+  },
 ): void {
   const muted: boolean = isMuted(pubkey);
+  const post = { id: eventId, pubkey, kind: extra.kind };
   // Muting yourself is meaningless and reporting yourself is noise for relay
   // operators, so a sheet opened on your own post offers only the deletion.
   const own: boolean = Boolean(onDelete) && pubkey === kvGet('nostr_pubkey');
+  // Signed out, or browsing as a key: nothing here can be signed.
+  const offerModeration: boolean = !own && extra.canModerate;
 
   const overlay: HTMLDivElement = createOverlay(`
     <div class="space-y-2">
+      <button id="action-copy-link" type="button" class="nox-muted-button w-full rounded px-4 py-3 text-left font-semibold">
+        Copy link
+      </button>
+      <button id="action-copy-id" type="button" class="nox-muted-button w-full rounded px-4 py-3 text-left font-semibold">
+        Copy ID
+      </button>
       ${
         onDelete
           ? `<button id="action-delete" type="button" class="nox-danger-button w-full rounded px-4 py-3 text-left font-semibold">
@@ -235,7 +249,7 @@ function showPostActions(
           : ''
       }
       ${
-        own
+        !offerModeration
           ? ''
           : `<button id="action-mute" type="button" class="nox-muted-button w-full rounded px-4 py-3 text-left font-semibold">
         ${muted ? 'Unmute this account' : 'Mute this account'}
@@ -282,6 +296,34 @@ function showPostActions(
     .querySelector('#action-cancel')
     ?.addEventListener('click', closeOverlay);
 
+  // The label says it worked, then the sheet goes: nothing else to do here.
+  const copier =
+    (text: string) =>
+    async (event: Event): Promise<void> => {
+      const button = event.currentTarget as HTMLButtonElement;
+      const label: string = button.textContent ?? '';
+      try {
+        await copyText(text);
+        button.textContent = 'Copied';
+        window.setTimeout(closeOverlay, 600);
+      } catch {
+        button.textContent = 'Could not copy';
+        window.setTimeout((): void => {
+          button.textContent = label;
+        }, 1500);
+      }
+    };
+  overlay
+    .querySelector('#action-copy-link')
+    ?.addEventListener('click', (event: Event): void => {
+      void copier(eventLink(post))(event);
+    });
+  overlay
+    .querySelector('#action-copy-id')
+    ?.addEventListener('click', (event: Event): void => {
+      void copier(eventIdCode(post))(event);
+    });
+
   overlay.querySelector('#action-mute')?.addEventListener('click', (): void => {
     showMuteDialog(pubkey, name, options);
   });
@@ -291,6 +333,24 @@ function showPostActions(
     ?.addEventListener('click', (): void => {
       showReportDialog(pubkey, eventId, options);
     });
+}
+
+/** The clipboard, or the old way where a browser will not grant it. */
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const holder: HTMLTextAreaElement = document.createElement('textarea');
+  holder.value = text;
+  holder.setAttribute('readonly', 'true');
+  holder.style.position = 'fixed';
+  holder.style.left = '-9999px';
+  document.body.appendChild(holder);
+  holder.select();
+  const ok: boolean = document.execCommand('copy');
+  holder.remove();
+  if (!ok) throw new Error('copy refused');
 }
 
 /** Subscribes to the moderation requests dispatched by event cards. */
@@ -305,13 +365,17 @@ export function setupModerationOverlay(
   window.addEventListener('request-post-actions', ((
     event: CustomEvent,
   ): void => {
-    const { pubkey, eventId, name, onDelete } = event.detail;
+    const { pubkey, eventId, kind, name, onDelete, canModerate } = event.detail;
     showPostActions(
       pubkey as PubkeyHex,
       eventId,
       name ?? '',
       options,
       onDelete,
+      {
+        kind: typeof kind === 'number' ? kind : 1,
+        canModerate: canModerate !== false,
+      },
     );
   }) as EventListener);
 

@@ -1046,7 +1046,8 @@ export function renderEvent(
   // reporting are for other people's posts and deleting is for your own, so
   // a mark shown only for the first left your own posts with no way to ask
   // for a deletion at all.
-  const hasMoreActions: boolean = canModerate || canDeletePost;
+  // Copying the post's link needs no account, so the sheet is always there.
+  const hasMoreActions: boolean = true;
 
   const actionBarHtml: string = `
           <div class="event-actions flex items-center">
@@ -1281,7 +1282,9 @@ export function renderEvent(
           detail: {
             pubkey: event.pubkey,
             eventId: event.id,
+            kind: event.kind,
             name,
+            canModerate,
             // Passed as a function rather than a flag: the card owns the
             // cleanup that follows a deletion, and the menu only decides
             // whether it was asked for.
