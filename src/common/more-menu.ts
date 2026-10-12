@@ -37,28 +37,6 @@ export interface MoreMenuOptions {
 
 let openMenu: (() => void) | null = null;
 
-/**
- * The part of the screen a menu can be seen in: the nearest scrolling
- * ancestor's box, cut to the viewport. A menu placed outside it is clipped
- * or only reachable by scrolling the list.
- */
-function visibleBounds(element: HTMLElement): { top: number; bottom: number } {
-  let top: number = 0;
-  let bottom: number = window.innerHeight;
-  let node: HTMLElement | null = element.parentElement;
-  while (node) {
-    const { overflowY } = getComputedStyle(node);
-    if (overflowY === 'auto' || overflowY === 'scroll') {
-      const rect: DOMRect = node.getBoundingClientRect();
-      top = Math.max(top, rect.top);
-      bottom = Math.min(bottom, rect.bottom);
-      break;
-    }
-    node = node.parentElement;
-  }
-  return { top, bottom };
-}
-
 /** The gap between the trigger and the menu, matching `.nox-menu`'s offset. */
 const MENU_GAP_PX: number = 6.4;
 
@@ -89,6 +67,8 @@ export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
   const close = (): void => {
     if (menu.hidden) return;
     menu.hidden = true;
+    // Back beside its trigger, where it lives while closed.
+    wrap.append(menu);
     trigger.setAttribute('aria-expanded', 'false');
     listeners?.abort();
     listeners = null;
@@ -119,37 +99,89 @@ export function createMoreMenu(options: MoreMenuOptions): HTMLElement {
     const enabled: HTMLButtonElement[] = enabledItems();
     if (enabled.length === 0) return;
     const wrapped: number = (index + enabled.length) % enabled.length;
-    enabled[wrapped]?.focus();
+    const item: HTMLButtonElement | undefined = enabled[wrapped];
+    if (!item) return;
+    // Without scrolling the page: the menu is fixed to the screen, so it is
+    // always in view, and a page scroll would close it. A menu capped to the
+    // screen's height scrolls itself instead, to show the item.
+    item.focus({ preventScroll: true });
+    if (item.offsetTop < menu.scrollTop) {
+      menu.scrollTop = item.offsetTop;
+    } else if (
+      item.offsetTop + item.offsetHeight >
+      menu.scrollTop + menu.clientHeight
+    ) {
+      menu.scrollTop = item.offsetTop + item.offsetHeight - menu.clientHeight;
+    }
   };
 
   const open = (): void => {
     // One menu at a time: opening this one closes whichever was open.
     openMenu?.();
     openMenu = close;
-    // Measured while the menu is still hidden: shown, it adds its own height
-    // to the box around it, which then looks like it scrolls.
-    const bounds = visibleBounds(wrap);
+    // Open, it hangs from the page itself: a panel with a backdrop blur or a
+    // transform makes `fixed` relative to that panel, and a scrolling box
+    // clips whatever sits inside it.
+    document.body.append(menu);
     menu.hidden = false;
-    menu.classList.remove('nox-menu-up');
     trigger.setAttribute('aria-expanded', 'true');
-    // A row near the bottom of a scrolling panel would open its menu into
-    // the panel's overflow, where it can only be reached by scrolling the
-    // list. If it does not fit below but fits above, open upward. If it fits
-    // in neither direction it stays below, where the panel's own scrolling
-    // still reaches it.
+    // Placed against the screen, not the row: a card or a panel that clips
+    // its overflow cut a menu off whenever it held a short post or the last
+    // row, and no choice of direction inside it fixed that. Below the trigger
+    // when it fits, above when only that fits, and kept on the screen.
     const triggerRect: DOMRect = trigger.getBoundingClientRect();
-    const height: number = menu.getBoundingClientRect().height + MENU_GAP_PX;
-    const below: number = bounds.bottom - triggerRect.bottom;
-    const above: number = triggerRect.top - bounds.top;
-    if (height > below && height <= above) {
-      menu.classList.add('nox-menu-up');
-    }
+    const box: DOMRect = menu.getBoundingClientRect();
+    const below: number = window.innerHeight - triggerRect.bottom;
+    const above: number = triggerRect.top;
+    const height: number = box.height + MENU_GAP_PX;
+    const top: number =
+      height > below && height <= above
+        ? triggerRect.top - height
+        : triggerRect.bottom + MENU_GAP_PX;
+    const preferredLeft: number =
+      options.align === 'end'
+        ? triggerRect.right - box.width
+        : triggerRect.left;
+    const left: number = Math.min(
+      Math.max(8, preferredLeft),
+      window.innerWidth - box.width - 8,
+    );
+    // On the screen whatever happens: a menu taller than the room scrolls
+    // inside itself (CSS caps its height), rather than running off the edge.
+    const maxTop: number = Math.max(8, window.innerHeight - box.height - 8);
+    Object.assign(menu.style, {
+      position: 'fixed',
+      top: `${Math.min(Math.max(8, top), maxTop)}px`,
+      left: `${left}px`,
+      right: 'auto',
+      bottom: 'auto',
+    });
     listeners = new AbortController();
     const { signal } = listeners;
+    // Fixed to the screen, it would float away from its row on a scroll;
+    // any scroll, of the page or of a panel, closes it instead.
+    window.addEventListener(
+      'scroll',
+      (event: Event): void => {
+        // Its own scrolling, when it is taller than the screen, is not leaving.
+        if (!menu.contains(event.target as Node)) close();
+      },
+      { signal, capture: true, passive: true },
+    );
+    window.addEventListener('resize', close, { signal });
+    // Hung from the page, it no longer goes when its row does: a new route,
+    // Back or Forward, or the row redrawn away closes it.
+    window.addEventListener('app-route-changed', close, { signal });
+    window.addEventListener('popstate', close, { signal });
+    const watch = setInterval((): void => {
+      if (!trigger.isConnected) close();
+    }, 1000);
+    signal.addEventListener('abort', (): void => clearInterval(watch));
     document.addEventListener(
       'click',
       (event: MouseEvent): void => {
-        if (!wrap.contains(event.target as Node)) close();
+        const target: Node = event.target as Node;
+        if (!wrap.contains(target) && !menu.contains(target)) close();
       },
       { signal },
     );

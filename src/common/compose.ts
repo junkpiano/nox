@@ -356,6 +356,10 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
 
     isSubmitting = true;
     refreshStatus();
+    // Which post this quotes is fixed now: the upload below takes time, and
+    // closing the composer or starting another quote meanwhile must not
+    // change what this post says.
+    const quoted: NostrEvent | null = quoting;
 
     try {
       const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
@@ -380,13 +384,13 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
         ...(contentWarningToggle.checked
           ? contentWarningTags(contentWarningReason.value)
           : []),
-        ...(quoting ? quoteTags(quoting) : []),
+        ...(quoted ? quoteTags(quoted) : []),
       ];
 
       // Words, then the picture, then the quoted post: each on its own line.
       const parts: string[] = [textarea.value.trim(), imageUrl ?? ''];
-      const content: string = quoting
-        ? quoteContent(parts, quoting)
+      const content: string = quoted
+        ? quoteContent(parts, quoted)
         : parts.filter((part: string): boolean => part.length > 0).join('\n\n');
 
       const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = withClientTag({
