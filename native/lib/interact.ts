@@ -23,8 +23,10 @@ import {
   fetchLatestFollowListEvent,
   lookupFollowList,
 } from '../../src/common/events-queries';
+import { getQuickReaction } from '../../src/common/quick-reaction';
+import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 import { replyTags, repostTags } from '../../src/common/reply-tags';
-import { getSessionPrivateKey } from '../../src/common/session';
+import { getSession, getSessionPrivateKey } from '../../src/common/session';
 import {
   isFollowing as listHasFollow,
   nextFollowListTags,
@@ -38,8 +40,10 @@ import { NotSignedInError, type PublishResult, publishSigned } from './publish';
  * means the same thing to most clients, but saying it explicitly leaves less
  * to interpretation.
  */
-/** NIP-25: the symbol a like carries. Also what the count shows. */
-export const LIKE = '+';
+/** The heart's reaction: the one chosen in Settings, ❤ until one is. */
+export function quickReaction(): ReactionAggregate {
+  return getQuickReaction(getSession().pubkey);
+}
 
 function requireKey(): Uint8Array {
   if (isReadOnlySession()) {
@@ -60,7 +64,14 @@ function requireKey(): Uint8Array {
  * are required by NIP-25; omitting `p` produces a reaction nobody is told
  * about.
  */
-export async function likeEvent(event: NostrEvent): Promise<PublishResult> {
+/**
+ * Reacts to an event (NIP-25) with `reaction`: an emoji, or a custom one
+ * (NIP-30), which carries its picture in an `emoji` tag.
+ */
+export async function reactWith(
+  event: NostrEvent,
+  reaction: ReactionAggregate,
+): Promise<PublishResult> {
   const key: Uint8Array = requireKey();
 
   const draft = withClientTag({
@@ -70,8 +81,11 @@ export async function likeEvent(event: NostrEvent): Promise<PublishResult> {
     tags: [
       ['e', event.id],
       ['p', event.pubkey],
+      ...(reaction.shortcode && reaction.imageUrl
+        ? [['emoji', reaction.shortcode, reaction.imageUrl]]
+        : []),
     ] as string[][],
-    content: LIKE,
+    content: reaction.content,
   });
 
   const signed = finalizeEvent(

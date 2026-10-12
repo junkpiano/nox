@@ -25,6 +25,12 @@ import { kvGet } from '../../src/common/kv';
 import { getMutedWords } from '../../src/common/mute-state';
 import { hidesWallet } from '../../src/common/platform';
 import {
+  getQuickReaction,
+  refreshQuickReaction,
+  setQuickReaction,
+} from '../../src/common/quick-reaction';
+import type { ReactionAggregate } from '../../src/common/reaction-interactions';
+import {
   getSessionPrivateKey,
   restoreSessionPrivateKey,
 } from '../../src/common/session';
@@ -32,6 +38,8 @@ import { setMutedWords } from '../../src/features/moderation/moderation-actions'
 import { getRelays } from '../../src/features/relays/relays';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import EmojiPickerSheet from '../components/EmojiPickerSheet';
+import QuickReactionGlyph from '../components/QuickReactionGlyph';
 import { relayAuthAllowed, setRelayAuthAllowed } from '../platform/relay-auth';
 import SignIn from './SignIn';
 
@@ -112,6 +120,70 @@ function RelayAuth() {
           accessibilityLabel="Sign relay authentication challenges"
         />
       </View>
+    </View>
+  );
+}
+
+/**
+ * What one tap on the heart sends, kept on the account so it is the same on
+ * every device. The web's Settings shows the same choice.
+ */
+function QuickReaction({ viewer }: { viewer: PubkeyHex }) {
+  const [current, setCurrent] = useState<ReactionAggregate>(
+    (): ReactionAggregate => getQuickReaction(viewer),
+  );
+  const [picking, setPicking] = useState(false);
+  const [note, setNote] = useState('');
+
+  // Another device may have chosen since this one last looked.
+  useEffect((): (() => void) => {
+    let live: boolean = true;
+    void refreshQuickReaction(viewer, getRelays())
+      .then((reaction: ReactionAggregate): void => {
+        if (live) setCurrent(reaction);
+      })
+      .catch((): void => {});
+    return (): void => {
+      live = false;
+    };
+  }, [viewer]);
+
+  return (
+    <View style={styles.compose}>
+      <Text style={styles.section}>Quick reaction</Text>
+      <View style={styles.switchRow}>
+        <Text style={[styles.hint, styles.switchHint]}>
+          What one tap on the heart sends, on every device you use.
+        </Text>
+        <Pressable
+          onPress={(): void => setPicking(true)}
+          accessibilityLabel="Change the quick reaction"
+          style={styles.quickButton}
+        >
+          <QuickReactionGlyph
+            reaction={current}
+            given
+            style={styles.quickGlyph}
+          />
+          <Text style={styles.quickLabel}>Change</Text>
+        </Pressable>
+      </View>
+      {note ? <Text style={styles.hint}>{note}</Text> : null}
+      <EmojiPickerSheet
+        visible={picking}
+        viewer={viewer}
+        onClose={(): void => setPicking(false)}
+        onPick={(reaction: ReactionAggregate): void => {
+          setNote('Saving…');
+          void setQuickReaction(viewer, getRelays(), reaction)
+            .then((): void => {
+              // Whatever won: a newer choice from another device may have.
+              setCurrent(getQuickReaction(viewer));
+              setNote('Saved.');
+            })
+            .catch((): void => setNote('Could not save. Try again.'));
+        }}
+      />
     </View>
   );
 }
@@ -254,6 +326,7 @@ export default function Settings() {
         }}
       />
       <Elsewhere />
+      {canSign && viewing ? <QuickReaction viewer={viewing} /> : null}
       {canSign ? <RelayAuth /> : null}
       {canSign ? <MutedWords /> : null}
     </ScrollView>
@@ -286,6 +359,18 @@ const styles = StyleSheet.create({
   },
   note: { color: '#8ea0c0', fontSize: 12 },
   hint: { color: '#5b6b88', fontSize: 12, lineHeight: 17 },
+  quickButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 999,
+  },
+  quickGlyph: { color: '#f490b6', fontSize: 18 },
+  quickLabel: { color: '#bad0ff', fontSize: 13, fontWeight: '600' },
   walletRow: {
     flexDirection: 'row',
     alignItems: 'center',

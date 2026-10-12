@@ -161,11 +161,15 @@ function scheduleReconcile(): void {
  * relays had already counted this viewer. So the post is asked about again
  * once the reconciler fires, and the relays' answer settles it.
  */
-export function countOwnReaction(eventId: string, content: string): void {
+export function countOwnReaction(
+  eventId: string,
+  reaction: ReactionAggregate,
+): void {
   const entries: ReactionAggregate[] = known.get(eventId) ?? [];
-  // Named the way a reaction from the relays would be, or a like made here
-  // would sit beside the likes already counted instead of joining them.
-  const mine: ReactionAggregate = getReactionAggregate(content, []);
+  // Named the way a reaction from the relays would be - a custom emoji by its
+  // picture as well as its name - or one made here would sit beside the ones
+  // already counted instead of joining them.
+  const mine: ReactionAggregate = { ...reaction, count: 1 };
   const existing: ReactionAggregate | undefined = entries.find(
     (entry: ReactionAggregate): boolean => entry.key === mine.key,
   );
