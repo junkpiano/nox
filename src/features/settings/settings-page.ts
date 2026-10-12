@@ -101,7 +101,7 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
           <div class="flex items-center justify-between gap-3">
             <div>
               <h3 class="font-semibold text-gray-900 mb-1">Quick reaction</h3>
-              <p class="text-xs text-gray-600">What one tap on the ♡ sends, on every device you use.</p>
+              <p class="text-xs text-gray-600">What one tap on <span id="quick-reaction-inline">♡</span> sends, on every device you use.</p>
             </div>
             <button type="button" id="quick-reaction-change" class="nox-emoji-add" aria-haspopup="dialog">
               <span id="quick-reaction-current"></span>
@@ -499,10 +499,16 @@ function wireQuickReaction(getRelays: () => string[]): void {
   }
   section.hidden = false;
 
+  // The caption names the button as it now looks, not as it first did.
+  const inline: HTMLElement | null = document.getElementById(
+    'quick-reaction-inline',
+  );
   const show = (reaction: ReactionAggregate): void => {
-    current.innerHTML = reaction.imageUrl
+    const html: string = reaction.imageUrl
       ? `<img class="nox-emoji" src="${escapeHtml(reaction.imageUrl)}" alt="${escapeHtml(reaction.content)}" />`
       : escapeHtml(reaction.content);
+    current.innerHTML = html;
+    if (inline) inline.innerHTML = html;
   };
   const say = (text: string): void => {
     status.hidden = false;
