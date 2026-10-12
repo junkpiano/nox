@@ -15,7 +15,11 @@
  * add it was the web.
  */
 
-import { useNavigation } from '@react-navigation/native';
+import {
+  type RouteProp,
+  useNavigation,
+  useRoute,
+} from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -30,6 +34,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { emitAppEvent } from '../../src/common/app-events';
 import { contentWarningTags } from '../../src/common/content-warning';
+import { quoteContent, quoteTags } from '../../src/common/quote';
+import type { NostrEvent } from '../../types/nostr';
+import type { RootStackParamList } from '../App';
 import { NotSignedInError, publishNote } from '../lib/publish';
 import { useKeyboardHeight } from '../lib/use-keyboard-height';
 
@@ -43,6 +50,11 @@ export default function Compose() {
   // pads itself by the keyboard's height and the field, being flexible,
   // takes what is left above it.
   const keyboard: number = useKeyboardHeight();
+  // The post being quoted, when this was opened from a post's Quote.
+  const route = useRoute<RouteProp<RootStackParamList, 'Compose'>>();
+  const [quote, setQuote] = useState<NostrEvent | null>(
+    route.params?.quote ?? null,
+  );
   const [text, setText] = useState('');
   const [warned, setWarned] = useState(false);
   const [reason, setReason] = useState('');
@@ -50,15 +62,19 @@ export default function Compose() {
   const [note, setNote] = useState('');
 
   const send = useCallback(async (): Promise<void> => {
-    const content = text.trim();
-    if (!content) return;
+    // A quote with no words of its own still says "this".
+    if (!text.trim() && !quote) return;
+    const content: string = quote ? quoteContent([text], quote) : text.trim();
 
     setBusy(true);
     setNote('');
     try {
       const result = await publishNote(content, {
         // The same tags the web composer writes, from the same function.
-        tags: warned ? contentWarningTags(reason) : [],
+        tags: [
+          ...(warned ? contentWarningTags(reason) : []),
+          ...(quote ? quoteTags(quote) : []),
+        ],
       });
       if (result.accepted.length === 0) {
         // Every relay refused or went quiet, so the note does not exist. The
@@ -86,7 +102,7 @@ export default function Compose() {
     } finally {
       setBusy(false);
     }
-  }, [text, warned, reason, navigation]);
+  }, [text, quote, warned, reason, navigation]);
 
   return (
     <View
@@ -104,6 +120,21 @@ export default function Compose() {
         autoFocus
         style={styles.input}
       />
+      {quote ? (
+        <View style={styles.quoteRow}>
+          <Text style={styles.quoteLabel}>Quoting</Text>
+          <Text style={styles.quoteText} numberOfLines={1}>
+            {quote.content.replace(/\s+/g, ' ').trim()}
+          </Text>
+          <Pressable
+            hitSlop={8}
+            onPress={(): void => setQuote(null)}
+            accessibilityLabel="Remove quote"
+          >
+            <Text style={styles.quoteRemove}>✕</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {/* The warning sits between the words and the button: decided after
           writing, before posting, the way it is read - as a line in front of
           the post. */}
@@ -130,10 +161,10 @@ export default function Compose() {
       {note ? <Text style={styles.note}>{note}</Text> : null}
       <Pressable
         onPress={send}
-        disabled={busy || text.trim().length === 0}
+        disabled={busy || (text.trim().length === 0 && !quote)}
         style={[
           styles.button,
-          (busy || text.trim().length === 0) && styles.buttonOff,
+          (busy || (text.trim().length === 0 && !quote)) && styles.buttonOff,
         ]}
       >
         {busy ? (
@@ -149,6 +180,22 @@ export default function Compose() {
 }
 
 const styles = StyleSheet.create({
+  quoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderLeftWidth: 3,
+    borderColor: '#25406e',
+    borderLeftColor: '#89a8ff',
+    borderRadius: 8,
+  },
+  quoteLabel: { color: '#bad0ff', fontWeight: '600', fontSize: 13 },
+  quoteText: { flex: 1, color: '#9fb0d4', fontSize: 13 },
+  quoteRemove: { color: '#7283aa', fontSize: 14 },
   screen: { flex: 1, backgroundColor: '#0b1220', padding: 20, gap: 12 },
   input: {
     flex: 1,

@@ -5,6 +5,7 @@ import { contentWarningTags } from './content-warning.js';
 import { storeEvent } from './db/index.js';
 import type { ImageUploadResult } from './image-upload.js';
 import { uploadImage } from './image-upload.js';
+import { quoteContent, quoteTags } from './quote.js';
 import { signWithSession } from './signer.js';
 
 interface ComposeOverlayOptions {
@@ -13,6 +14,18 @@ interface ComposeOverlayOptions {
   getRelays: () => string[];
   publishEvent: (event: NostrEvent, relays: string[]) => Promise<void>;
   refreshTimeline: () => Promise<void>;
+}
+
+/** Set once the overlay is wired; the quote action opens it through this. */
+let openWithQuote: ((event: NostrEvent) => void) | null = null;
+
+/**
+ * Opens the composer to quote `event` (NIP-18): the post that is written
+ * ends with a `nostr:` reference to it and carries a `q` tag naming it, so
+ * every client draws the quoted post as a card under the words.
+ */
+export function quotePost(event: NostrEvent): void {
+  openWithQuote?.(event);
 }
 
 export function setupComposeOverlay(options: ComposeOverlayOptions): void {
@@ -69,6 +82,35 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   }
   let isSubmitting: boolean = false;
   let selectedImageFile: File | null = null;
+  // The post being quoted, while the composer is open for a quote.
+  let quoting: NostrEvent | null = null;
+  // Which opening of the composer this is; a send that finishes after it
+  // was closed (and perhaps opened again) leaves the new draft alone.
+  let draftNumber: number = 0;
+  const quotePreview: HTMLElement | null = document.getElementById(
+    'compose-quote-preview',
+  );
+  const quoteText: HTMLElement | null =
+    document.getElementById('compose-quote-text');
+  const title: HTMLElement | null = document.getElementById('compose-title');
+  const setQuoting = (event: NostrEvent | null): void => {
+    quoting = event;
+    if (title) title.textContent = event ? 'Quote post' : 'Create Post';
+    if (quotePreview) quotePreview.hidden = event === null;
+    if (quoteText) {
+      // The words being quoted, on one line; the card under the post is the
+      // full rendering, this only says which post it will be.
+      const words: string = (event?.content ?? '').replace(/\s+/g, ' ').trim();
+      quoteText.textContent =
+        words.length > 140 ? `${words.slice(0, 140)}…` : words;
+    }
+  };
+  document
+    .getElementById('compose-quote-remove')
+    ?.addEventListener('click', (): void => {
+      setQuoting(null);
+      textarea.focus();
+    });
   let previewObjectUrl: string | null = null;
 
   const updateContentWarningReasonState = (): void => {
@@ -83,10 +125,15 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   };
 
   const openOverlay = (): void => {
+    draftNumber += 1;
     overlay.style.display = '';
     updateContentWarningReasonState();
     document.body.classList.add('overflow-hidden');
     textarea.focus();
+  };
+  openWithQuote = (event: NostrEvent): void => {
+    setQuoting(event);
+    openOverlay();
   };
 
   const clearSelectedImage = (): void => {
@@ -154,6 +201,8 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   };
 
   const closeOverlay = (): void => {
+    draftNumber += 1;
+    setQuoting(null);
     overlay.style.display = 'none';
     document.body.classList.remove('overflow-hidden');
     statusEl.textContent = '';
@@ -293,7 +342,8 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
   });
 
   submitBtn.addEventListener('click', async (): Promise<void> => {
-    if (!textarea.value.trim() && !selectedImageFile) {
+    // A quote with no words of its own is still a post: it says "this".
+    if (!textarea.value.trim() && !selectedImageFile && !quoting) {
       textarea.focus();
       return;
     }
@@ -311,6 +361,14 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
 
     isSubmitting = true;
     refreshStatus();
+    // Everything this post says is fixed now: the upload below takes time,
+    // and the composer may be closed and opened for another post meanwhile.
+    const quoted: NostrEvent | null = quoting;
+    const text: string = textarea.value.trim();
+    const warned: boolean = contentWarningToggle.checked;
+    const warningReason: string = contentWarningReason.value;
+    const imageFile: File | null = selectedImageFile;
+    const draft: number = draftNumber;
 
     try {
       const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
@@ -319,10 +377,10 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
       }
 
       let imageUrl: string | null = null;
-      if (selectedImageFile) {
+      if (imageFile) {
         statusEl.textContent = 'Uploading image...';
         const result: ImageUploadResult = await uploadImage(
-          selectedImageFile,
+          imageFile,
           storedPubkey as PubkeyHex,
           options.getSessionPrivateKey,
         );
@@ -331,17 +389,16 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
 
       statusEl.textContent = 'Posting...';
 
-      const tags: string[][] = contentWarningToggle.checked
-        ? contentWarningTags(contentWarningReason.value)
-        : [];
+      const tags: string[][] = [
+        ...(warned ? contentWarningTags(warningReason) : []),
+        ...(quoted ? quoteTags(quoted) : []),
+      ];
 
-      const textContent: string = textarea.value.trim();
-      const content: string =
-        imageUrl !== null
-          ? textContent
-            ? `${textContent}\n\n${imageUrl}`
-            : imageUrl
-          : textContent;
+      // Words, then the picture, then the quoted post: each on its own line.
+      const parts: string[] = [text, imageUrl ?? ''];
+      const content: string = quoted
+        ? quoteContent(parts, quoted)
+        : parts.filter((part: string): boolean => part.length > 0).join('\n\n');
 
       const unsignedEvent: Omit<NostrEvent, 'id' | 'sig'> = withClientTag({
         kind: 1,
@@ -355,6 +412,12 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
 
       await options.publishEvent(signedEvent, options.getRelays());
       await storeEvent(signedEvent, { isHomeTimeline: false });
+      // A newer draft opened while this was sending is someone else's work:
+      // only the composer this post came from is cleared and closed.
+      if (draft !== draftNumber) {
+        await options.refreshTimeline();
+        return;
+      }
       textarea.value = '';
       contentWarningToggle.checked = false;
       contentWarningReason.value = '';

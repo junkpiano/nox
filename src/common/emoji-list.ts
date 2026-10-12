@@ -11,6 +11,7 @@
 
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { readEmojiTags } from './custom-emoji.js';
+import { kvGet } from './kv.js';
 import { publishAndCount } from './publish-event.js';
 import {
   NoRelayAnsweredError,
@@ -19,6 +20,7 @@ import {
   queryRelays,
   queryRelaysDetailed,
 } from './relay-query.js';
+import { VIEWER_KEY } from './session.js';
 import { signWithSession } from './signer.js';
 
 export interface CustomEmoji {
@@ -135,7 +137,30 @@ export async function fetchEmojiList(
  * emoji and set the person already had. Everything already in it, the
  * `content` with any private entries included, is carried over unchanged.
  */
-export async function addToEmojiList(
+/**
+ * One change to a person's list at a time. Two adds started together would
+ * each read the same list and publish their own replacement, and the second
+ * would quietly undo the first.
+ */
+const pending: Map<PubkeyHex, Promise<unknown>> = new Map();
+
+export function addToEmojiList(
+  viewer: PubkeyHex,
+  relays: string[],
+  emoji: CustomEmoji,
+): Promise<'added' | 'already'> {
+  const before: Promise<unknown> = pending.get(viewer) ?? Promise.resolve();
+  const run: Promise<'added' | 'already'> = before
+    .catch((): void => {})
+    .then(() => addNow(viewer, relays, emoji));
+  pending.set(viewer, run);
+  void run.finally((): void => {
+    if (pending.get(viewer) === run) pending.delete(viewer);
+  });
+  return run;
+}
+
+async function addNow(
   viewer: PubkeyHex,
   relays: string[],
   emoji: CustomEmoji,
@@ -169,6 +194,11 @@ export async function addToEmojiList(
     return 'already';
   }
   tags.push(['emoji', emoji.shortcode, url]);
+  // The list read was this person's; the signer is whoever is signed in now.
+  // Another account signing it would replace that account's list with this one.
+  if (kvGet(VIEWER_KEY) !== viewer) {
+    throw new Error('The account changed while the list was read.');
+  }
   const signed: NostrEvent = await signWithSession({
     kind: EMOJI_LIST_KIND,
     // Later than the copy it replaces, even on a clock that runs behind.
@@ -179,6 +209,9 @@ export async function addToEmojiList(
     tags,
     content: list?.content ?? '',
   });
+  if (signed.pubkey !== viewer) {
+    throw new Error('The list was signed by another account.');
+  }
   if ((await publishAndCount(signed, relays)) === 0) {
     throw new Error('No relay accepted the list.');
   }

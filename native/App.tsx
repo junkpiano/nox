@@ -33,7 +33,7 @@ import { resolveNostrLink } from '../src/common/nostr-link';
 import { hidesWallet } from '../src/common/platform';
 import { getSession } from '../src/common/session';
 import { hasAcceptedTerms } from '../src/common/terms';
-import type { PubkeyHex } from '../types/nostr';
+import type { NostrEvent, PubkeyHex } from '../types/nostr';
 import { fetchProfilesForPubkeys } from './lib/home-timeline';
 import { navigationRef } from './lib/navigation';
 import About from './screens/About';
@@ -57,7 +57,8 @@ export type RootStackParamList = {
   Tabs: undefined;
   You: undefined;
   Settings: undefined;
-  Compose: undefined;
+  /** `quote`: the post being quoted (NIP-18), when composing a quote. */
+  Compose: { quote?: NostrEvent } | undefined;
   Relays: undefined;
   Profile: { pubkey: PubkeyHex };
   /**

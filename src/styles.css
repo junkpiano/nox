@@ -2093,6 +2093,9 @@ main {
   border-radius: 0.8rem;
   background: rgba(16, 26, 46, 0.98);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+  /* Never taller than the screen it is placed on; the rest scrolls inside. */
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
 }
 
 .nox-menu-item {
@@ -2543,4 +2546,42 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   height: 1.1em;
   vertical-align: -0.2em;
   object-fit: contain;
+}
+
+/* The post being quoted, named under the words being written: one line of
+   it, enough to know which, removable without closing the composer. */
+.nox-quote-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--nox-border);
+  border-left: 3px solid var(--nox-accent);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.nox-quote-preview[hidden] {
+  display: none;
+}
+
+.nox-quote-label {
+  flex: none;
+  color: var(--nox-accent-strong);
+  font-weight: 600;
+}
+
+.nox-quote-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--nox-text-muted);
+}
+
+.nox-quote-remove {
+  flex: none;
+  color: var(--nox-text-dim);
 }

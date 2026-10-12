@@ -271,14 +271,33 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
       </Pressable>
       <Pressable
         hitSlop={8}
-        disabled={reposted || busy !== null}
-        onPress={(): void =>
-          run(
-            'repost',
-            () => repostEvent(post.event),
-            (by: PubkeyHex) => own.mark(post.id, 'repost', by),
-          )
-        }
+        disabled={busy !== null}
+        // Repost as it is, or quote it with words of one's own (NIP-18).
+        // Already reposted, quoting is still open; reposting again is not.
+        onPress={(): void => {
+          if (!guardWrite()) return;
+          Alert.alert('Repost', undefined, [
+            ...(reposted
+              ? []
+              : [
+                  {
+                    text: 'Repost',
+                    onPress: (): void =>
+                      run(
+                        'repost',
+                        () => repostEvent(post.event),
+                        (by: PubkeyHex) => own.mark(post.id, 'repost', by),
+                      ),
+                  },
+                ]),
+            {
+              text: 'Quote',
+              onPress: (): void =>
+                navigation.navigate('Compose', { quote: post.event }),
+            },
+            { text: 'Cancel', style: 'cancel' },
+          ]);
+        }}
       >
         <Text
           accessibilityLabel="Repost"
