@@ -118,11 +118,22 @@ export async function queryEveryRelay(
   return result.events;
 }
 
+/** Whether `a` replaces `b`: later, or the same second and the lower id (NIP-01). */
+export function supersedes(
+  a: { created_at: number; id: string },
+  b: { created_at: number; id: string },
+): boolean {
+  return (
+    a.created_at > b.created_at ||
+    (a.created_at === b.created_at && a.id < b.id)
+  );
+}
+
 /** The latest of a replaceable kind, or null when no relay had one. */
 export function newestOf(events: NostrEvent[]): NostrEvent | null {
   let newest: NostrEvent | null = null;
   for (const event of events) {
-    if (!newest || event.created_at >= newest.created_at) newest = event;
+    if (!newest || supersedes(event, newest)) newest = event;
   }
   return newest;
 }

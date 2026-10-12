@@ -11,12 +11,21 @@ import {
   countProfiles,
   LIMITS,
 } from '../../common/db/index.js';
+import { openEmojiPicker } from '../../common/emoji-picker.js';
+import { escapeHtml } from '../../common/escape-html.js';
 import {
   clearEventCache,
   EVENT_CACHE_LIMIT,
   getEventCacheStats,
 } from '../../common/event-cache.js';
 import { getMutedPubkeys, getMutedWords } from '../../common/mute-state.js';
+import {
+  getQuickReaction,
+  refreshQuickReaction,
+  setQuickReaction,
+} from '../../common/quick-reaction.js';
+import type { ReactionAggregate } from '../../common/reaction-interactions.js';
+import { canWrite } from '../../common/signer.js';
 import type { SetActiveNavFn } from '../../common/types.js';
 import { setMutedWords, unmuteUser } from '../moderation/moderation-actions.js';
 
@@ -87,6 +96,21 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
 
     options.output.innerHTML = `
       <div class="space-y-6 text-sm">
+        <!-- Quick Reaction Section -->
+        <div id="quick-reaction-section" class="bg-white border border-gray-200 rounded-lg p-4" hidden>
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h3 class="font-semibold text-gray-900 mb-1">Quick reaction</h3>
+              <p class="text-xs text-gray-600">What one tap on the ♡ sends, on every device you use.</p>
+            </div>
+            <button type="button" id="quick-reaction-change" class="nox-emoji-add" aria-haspopup="dialog">
+              <span id="quick-reaction-current"></span>
+              <span>Change</span>
+            </button>
+          </div>
+          <p id="quick-reaction-status" class="text-xs text-gray-600 mt-2" role="status" hidden></p>
+        </div>
+
         <!-- Energy Saving Mode Section -->
         <div class="bg-white border border-gray-200 rounded-lg p-4">
           <div class="flex items-center justify-between">
@@ -167,6 +191,7 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
     `;
   }
 
+  wireQuickReaction(options.getRelays);
   renderMutedAccounts(options.getRelays);
   wireMutedWords(options.getRelays);
 
@@ -448,4 +473,68 @@ function wireMutedWords(getRelays: () => string[]): void {
   });
 
   render();
+}
+
+/**
+ * The ♡'s reaction, chosen here and kept on the account, so it is the same
+ * tap on every device. Only for a session that can sign: the choice is
+ * published.
+ */
+function wireQuickReaction(getRelays: () => string[]): void {
+  const section: HTMLElement | null = document.getElementById(
+    'quick-reaction-section',
+  );
+  const button = document.getElementById(
+    'quick-reaction-change',
+  ) as HTMLButtonElement | null;
+  const current: HTMLElement | null = document.getElementById(
+    'quick-reaction-current',
+  );
+  const status: HTMLElement | null = document.getElementById(
+    'quick-reaction-status',
+  );
+  const viewer = localStorage.getItem('nostr_pubkey') as PubkeyHex | null;
+  if (!section || !button || !current || !status || !viewer || !canWrite()) {
+    return;
+  }
+  section.hidden = false;
+
+  const show = (reaction: ReactionAggregate): void => {
+    current.innerHTML = reaction.imageUrl
+      ? `<img class="nox-emoji" src="${escapeHtml(reaction.imageUrl)}" alt="${escapeHtml(reaction.content)}" />`
+      : escapeHtml(reaction.content);
+  };
+  const say = (text: string): void => {
+    status.hidden = false;
+    status.textContent = text;
+  };
+  show(getQuickReaction(viewer));
+  // The account's copy may be newer than this device's: another device chose.
+  void refreshQuickReaction(viewer, getRelays())
+    .then(show)
+    .catch((): void => {});
+
+  button.addEventListener('click', (): void => {
+    openEmojiPicker({
+      anchor: button,
+      viewer,
+      relays: getRelays(),
+      onPick: async (reaction: ReactionAggregate): Promise<void> => {
+        button.disabled = true;
+        say('Saving…');
+        try {
+          await setQuickReaction(viewer, getRelays(), reaction);
+          // Whatever won: a newer choice from another device may have.
+          show(getQuickReaction(viewer));
+          say('Saved.');
+        } catch (error: unknown) {
+          console.warn('[quick-reaction] Could not save:', error);
+          say('Could not save. Try again.');
+        } finally {
+          button.disabled = false;
+          button.focus();
+        }
+      },
+    });
+  });
 }

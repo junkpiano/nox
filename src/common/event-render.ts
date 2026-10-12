@@ -50,6 +50,7 @@ import { isMuted } from './mute-state.js';
 import { verifiedNip05 } from './nip05.js';
 import { noteRenderedCard, recordOwnReaction } from './own-reactions-dom.js';
 import { publishEventToRelays } from './publish-event.js';
+import { DEFAULT_QUICK_REACTION, getQuickReaction } from './quick-reaction.js';
 import type { ReactionAggregate } from './reaction-interactions.js';
 import {
   applyOptimisticReactionState,
@@ -1010,6 +1011,19 @@ export function renderEvent(
     ? `${actionBtnBase} repost-event-btn ${actionIdle} hover:text-emerald-500 hover:bg-emerald-50`
     : `${actionBtnBase} repost-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
+  // What one tap on it sends: the person's choice, ❤ until they make one.
+  // The button wears that choice, so the tap is never a surprise.
+  const quickReaction: ReactionAggregate = getQuickReaction(
+    storedPubkey ? (storedPubkey as PubkeyHex) : null,
+  );
+  const quickReactionIcon: string =
+    quickReaction.key === DEFAULT_QUICK_REACTION.key
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z" />
+              </svg>`
+      : quickReaction.imageUrl
+        ? `<img class="nox-emoji nox-quick-emoji" src="${escapeHtml(quickReaction.imageUrl)}" alt="${escapeHtml(quickReaction.content)}" />`
+        : `<span class="nox-quick-emoji" aria-hidden="true">${escapeHtml(quickReaction.content)}</span>`;
   const reactButtonTitle: string = isLoggedIn
     ? 'React'
     : 'React (sign-in required)';
@@ -1046,10 +1060,8 @@ export function renderEvent(
                 <path stroke-linecap="round" stroke-linejoin="round" d="M17 17H7l2 2m-2-2l2-2" />
               </svg>
             </button>
-            <button class="${reactButtonClasses}" aria-label="React" title="${reactButtonTitle}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z" />
-              </svg>
+            <button class="${reactButtonClasses}" aria-label="React with ${escapeHtml(quickReaction.content)}" title="${reactButtonTitle}">
+              ${quickReactionIcon}
             </button>
             ${
               isLoggedIn
@@ -1326,11 +1338,7 @@ export function renderEvent(
           alert('Sign in to react.');
           return;
         }
-        const reaction: ReactionAggregate = {
-          count: 1,
-          key: 'text:❤',
-          content: '❤',
-        };
+        const reaction: ReactionAggregate = quickReaction;
         reactButton.disabled = true;
         reactButton.classList.add('opacity-60', 'cursor-not-allowed');
         try {
