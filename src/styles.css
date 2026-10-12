@@ -2585,3 +2585,15 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   flex: none;
   color: var(--nox-text-dim);
 }
+
+/* A bookmarklet looks like the thing it is: a link to drag, not a button. */
+.nox-bookmarklet {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.875rem;
+  border: 1px dashed var(--nox-border-strong);
+  border-radius: 999px;
+  color: var(--nox-accent-strong);
+  font-weight: 600;
+  cursor: grab;
+}

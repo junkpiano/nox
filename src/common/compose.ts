@@ -18,6 +18,17 @@ interface ComposeOverlayOptions {
 
 /** Set once the overlay is wired; the quote action opens it through this. */
 let openWithQuote: ((event: NostrEvent) => void) | null = null;
+let openWithText: ((text: string) => void) | null = null;
+
+/**
+ * Opens the composer with `text` already written: a share link's text,
+ * left for the person to edit and post. False when there is no composer yet.
+ */
+export function composeWithText(text: string): boolean {
+  if (!openWithText) return false;
+  openWithText(text);
+  return true;
+}
 
 /**
  * Opens the composer to quote `event` (NIP-18): the post that is written
@@ -130,6 +141,14 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
     updateContentWarningReasonState();
     document.body.classList.add('overflow-hidden');
     textarea.focus();
+  };
+  openWithText = (text: string): void => {
+    setQuoting(null);
+    openOverlay();
+    textarea.value = text;
+    // At the start: a shared title and link read best with a word in front.
+    textarea.setSelectionRange(0, 0);
+    textarea.scrollTop = 0;
   };
   openWithQuote = (event: NostrEvent): void => {
     setQuoting(event);
