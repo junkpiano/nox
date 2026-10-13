@@ -15,8 +15,8 @@
  * lie would otherwise put a post under "Likes" that you never liked.
  */
 
-import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import { verifySignature } from './event-filter.js';
 import { filterDeletedReactionEvents } from './reaction-interactions.js';
 import { queryRelays } from './relay-query.js';
 
@@ -32,7 +32,7 @@ export interface Like {
 /** Signed by the key it claims. */
 function genuine(event: NostrEvent): boolean {
   try {
-    return verifyEvent(event);
+    return verifySignature(event);
   } catch {
     return false;
   }

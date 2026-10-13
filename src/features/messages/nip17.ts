@@ -1,3 +1,4 @@
+import { verifySignature } from '../../common/event-filter.js';
 import {
   isReadOnlySession,
   ReadOnlySessionError,
@@ -20,7 +21,6 @@ import {
   generateSecretKey,
   getEventHash,
   nip44,
-  verifyEvent,
 } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { getSessionPrivateKey } from '../../common/session.js';
@@ -234,7 +234,7 @@ export async function unwrapChatMessage(
     // sender's key, so this closes a gap with the spec rather than a way to
     // forge a sender - but it is the check the rest of this function relies
     // on when it calls the seal proof of authorship.
-    if (!verifyEvent(seal)) {
+    if (!verifySignature(seal)) {
       return null;
     }
 

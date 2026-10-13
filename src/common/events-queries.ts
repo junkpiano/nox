@@ -1,6 +1,6 @@
-import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { recordRelayFailure } from '../features/relays/relays.js';
+import { verifySignature } from './event-filter.js';
 import { promiseAny, RelayMissError } from './promise-utils.js';
 import { fanOut, type RelayReport } from './relay-fanout.js';
 import { clearRelayTimeout, setRelayTimeout } from './relay-schedule.js';
@@ -88,7 +88,7 @@ export async function lookupFollowList(
               return;
             }
 
-            if (!verifyEvent(event)) {
+            if (!verifySignature(event)) {
               console.warn(
                 `Ignoring invalid follow-list signature from ${relayUrl}`,
               );

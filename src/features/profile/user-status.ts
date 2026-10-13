@@ -1,3 +1,4 @@
+import { verifySignature } from '../../common/event-filter.js';
 import { signWithSession } from '../../common/signer.js';
 /**
  * NIP-38 user status: the line someone puts under their name about right now.
@@ -14,7 +15,6 @@ import { signWithSession } from '../../common/signer.js';
  * make both wrong.
  */
 
-import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import {
   NoRelayAnsweredError,
@@ -243,7 +243,7 @@ function newerThan(candidate: NostrEvent, held: NostrEvent): boolean {
 
 function genuine(event: NostrEvent): boolean {
   try {
-    return verifyEvent(event);
+    return verifySignature(event);
   } catch {
     return false;
   }
