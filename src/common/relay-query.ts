@@ -151,3 +151,57 @@ export async function queryRelays(
   );
   return result.events;
 }
+
+/**
+ * Several filters, as one REQ would OR them: each asked with `bounds`
+ * (`since`, `until`, `limit`) added, the answers merged, each event once.
+ *
+ * A filter that filled its limit may have more just older than its oldest.
+ * Anything older than that, from the other filters, is left for the next
+ * page: a cursor taken from the merged oldest would otherwise step past
+ * what the full filter never got to send.
+ */
+export async function queryRelaysAny(
+  relays: string[],
+  filters: Record<string, unknown> | Array<Record<string, unknown>>,
+  bounds: Record<string, unknown> = {},
+): Promise<NostrEvent[]> {
+  const list = Array.isArray(filters) ? filters : [filters];
+  const results: RelayQueryResult[] = await Promise.all(
+    list.map(
+      (filter: Record<string, unknown>): Promise<RelayQueryResult> =>
+        queryRelaysDetailed(relays, { ...filter, ...bounds }),
+    ),
+  );
+  // Some filters answered and another went unheard: the merged answer has a
+  // hole a cursor would step over. Failing lets the caller ask again.
+  if (
+    results.some((result) => result.answered === 0) &&
+    results.some((result) => result.answered > 0)
+  ) {
+    throw new NoRelayAnsweredError(relays);
+  }
+  const answers: NostrEvent[][] = results.map((result) => result.events);
+  const limit: unknown = bounds.limit;
+  let floor: number = Number.NEGATIVE_INFINITY;
+  // Backward only: a poll's `since` is the floor, and what it drops would
+  // fall below the next poll's.
+  if (
+    typeof limit === 'number' &&
+    bounds.since === undefined &&
+    answers.length > 1
+  ) {
+    for (const answer of answers) {
+      if (answer.length < limit) continue;
+      const oldest: number = Math.min(...answer.map((e) => e.created_at));
+      floor = Math.max(floor, oldest);
+    }
+  }
+  const byId: Map<string, NostrEvent> = new Map();
+  for (const event of answers.flat()) {
+    if (event.created_at >= floor && !byId.has(event.id)) {
+      byId.set(event.id, event);
+    }
+  }
+  return Array.from(byId.values());
+}

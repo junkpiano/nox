@@ -25,6 +25,8 @@ export type AppEventName =
   /** A note of the viewer's own reached a relay. */
   | 'note-published'
   | 'mute-list-updated'
+  /** The viewer followed or unfollowed a hashtag: Home asks again. */
+  | 'interests-updated'
   | 'dm-messages-updated'
   | 'wallet-connection-changed'
   | 'relays-updated'

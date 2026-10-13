@@ -12,6 +12,7 @@ import PostList from '../components/PostList';
 import {
   loadGlobalTimeline,
   loadNewerPosts,
+  type TimelineFilter,
   type TimelinePost,
 } from '../lib/home-timeline';
 import { useNewPosts } from '../lib/use-new-posts';
@@ -25,7 +26,7 @@ export default function Global({ active = true }: { active?: boolean }) {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   // Its own poll and its own waiting posts: Home's do not leak in here.
-  const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
+  const [filter, setFilter] = useState<TimelineFilter | null>(null);
   const { pendingCount, showNew, forget } = useNewPosts(
     filter,
     posts,

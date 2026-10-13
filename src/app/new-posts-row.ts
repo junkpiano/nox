@@ -28,7 +28,7 @@ import {
   newPostsLabel,
   nextSince,
 } from '../common/new-posts.js';
-import { queryRelays } from '../common/relay-query.js';
+import { queryRelaysAny } from '../common/relay-query.js';
 import { unwrapRepost } from '../common/repost.js';
 import { renderIncomingEvent } from '../common/timeline-loader.js';
 import { applyStatusesToTimeline } from '../common/timeline-status.js';
@@ -44,7 +44,7 @@ export interface NewPostsSource {
   /** Whose home timeline, for the cache; absent for global. */
   timelinePubkey?: PubkeyHex;
   /** The question the timeline asked, without `until`, `since` or `limit`. */
-  filter: Record<string, unknown>;
+  filter: Record<string, unknown> | Array<Record<string, unknown>>;
 }
 
 let source: NewPostsSource | null = null;
@@ -138,13 +138,12 @@ export async function pollForNewPosts(): Promise<void> {
   if (since === null) return;
 
   polling = true;
-  const filter: Record<string, unknown> = source.filter;
   try {
-    const events: NostrEvent[] = await queryRelays(appState.relays, {
-      ...filter,
-      since,
-      limit: POLL_LIMIT,
-    });
+    const events: NostrEvent[] = await queryRelaysAny(
+      appState.relays,
+      source.filter,
+      { since, limit: POLL_LIMIT },
+    );
     if (!routeIsActive()) return;
     for (const event of events) {
       if (newestSeen === null || event.created_at > newestSeen) {

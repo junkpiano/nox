@@ -19,6 +19,7 @@ import PostList from '../components/PostList';
 import {
   loadHomeTimeline,
   loadNewerPosts,
+  type TimelineFilter,
   type TimelinePost,
 } from '../lib/home-timeline';
 import { useNewPosts } from '../lib/use-new-posts';
@@ -72,7 +73,7 @@ export default function Home({ active = true }: { active?: boolean }) {
   // the new account's; only the latest load may write.
   const loadGeneration = useRef(0);
   // The question the load asked, so the poll for newer posts asks the same.
-  const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
+  const [filter, setFilter] = useState<TimelineFilter | null>(null);
   const { pendingCount, showNew, forget } = useNewPosts(
     filter,
     posts,
@@ -213,6 +214,19 @@ export default function Home({ active = true }: { active?: boolean }) {
       if (live()) setRefreshing(false);
     }
   }, [pubkey, filter, posts, load, forget]);
+
+  // A hashtag followed or unfollowed changes the question, not just its answer.
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('interests-updated', (): void => {
+        // The old question's poll stops first: a late answer to it would
+        // put posts from an unfollowed tag back in the waiting row.
+        setFilter(null);
+        forget();
+        if (pubkey) void load(pubkey);
+      }),
+    [pubkey, load, forget],
+  );
 
   // A note just posted belongs at the top of this list, which includes the
   // viewer's own. An empty list is reloaded outright, since it has nothing

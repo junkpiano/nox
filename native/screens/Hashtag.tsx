@@ -7,29 +7,101 @@
  */
 
 import { type RouteProp, useIsFocused } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text } from 'react-native';
 import type { TimelineKey } from '../../src/common/db/types';
+import {
+  getFollowedHashtags,
+  normalizeHashtag,
+  refreshFollowedHashtags,
+  setHashtagFollowed,
+} from '../../src/common/interests';
+import { getSession } from '../../src/common/session';
+import { getRelays } from '../../src/features/relays/relays';
+import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
 import PostList from '../components/PostList';
 import {
   loadHashtagTimeline,
   loadNewerPosts,
+  type TimelineFilter,
   type TimelinePost,
 } from '../lib/home-timeline';
+import { guardWrite, hasViewer } from '../lib/read-only';
 import { useNewPosts } from '../lib/use-new-posts';
 import { mergeTimelinePosts, useOlderPosts } from '../lib/use-older-posts';
 
 type HashtagRoute = RouteProp<RootStackParamList, 'Hashtag'>;
 
-export default function Hashtag({ route }: { route: HashtagRoute }) {
+/** Follow / Following in the header: the tag's posts join Home, or leave it. */
+function FollowHashtag({ tag }: { tag: string }) {
+  const viewer: PubkeyHex | null = getSession().pubkey;
+  const name: string = normalizeHashtag(tag);
+  const [following, setFollowing] = useState<boolean>((): boolean =>
+    getFollowedHashtags(viewer).includes(name),
+  );
+  const [busy, setBusy] = useState(false);
+
+  useEffect((): (() => void) | undefined => {
+    if (!viewer) return undefined;
+    let live: boolean = true;
+    void refreshFollowedHashtags(viewer, getRelays())
+      .then((tags: string[]): void => {
+        if (live) setFollowing(tags.includes(name));
+      })
+      .catch((): void => {});
+    return (): void => {
+      live = false;
+    };
+  }, [viewer, name]);
+
+  if (!viewer || !hasViewer()) return null;
+  return (
+    <Pressable
+      disabled={busy}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityState={{ selected: following, busy }}
+      onPress={(): void => {
+        if (!guardWrite()) return;
+        const next: boolean = !following;
+        setBusy(true);
+        void setHashtagFollowed(viewer, getRelays(), name, next)
+          .then((): void => setFollowing(next))
+          .catch((): void =>
+            Alert.alert('Could not save', 'Check your relays and try again.'),
+          )
+          .finally((): void => setBusy(false));
+      }}
+      style={[styles.follow, following && styles.following]}
+    >
+      <Text style={following ? styles.followingText : styles.followText}>
+        {busy ? '···' : following ? 'Following' : 'Follow'}
+      </Text>
+    </Pressable>
+  );
+}
+
+export default function Hashtag({
+  route,
+  navigation,
+}: {
+  route: HashtagRoute;
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Hashtag'>;
+}) {
   const { tag } = route.params;
+
+  useLayoutEffect((): void => {
+    navigation.setOptions({ headerRight: () => <FollowHashtag tag={tag} /> });
+  }, [navigation, tag]);
   const [posts, setPosts] = useState<TimelinePost[]>([]);
   const [stage, setStage] = useState('');
   const [stats, setStats] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
+  const [filter, setFilter] = useState<TimelineFilter | null>(null);
   const { pendingCount, showNew, forget } = useNewPosts(
     filter,
     posts,
@@ -128,3 +200,20 @@ export default function Hashtag({ route }: { route: HashtagRoute }) {
     />
   );
 }
+
+const styles = StyleSheet.create({
+  follow: {
+    marginRight: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: '#89a8ff',
+  },
+  following: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#25406e',
+  },
+  followText: { color: '#0b1220', fontSize: 13, fontWeight: '700' },
+  followingText: { color: '#bad0ff', fontSize: 13, fontWeight: '600' },
+});
