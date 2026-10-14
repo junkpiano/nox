@@ -85,13 +85,20 @@ export function isRepost(event: NostrEvent): boolean {
  * A list is read in several passes, each parsing a repost's note afresh, and
  * the first reading checks its signature - tens of milliseconds a note on a
  * phone, inside one loop, during which nothing on screen can be tapped.
- * Taken one note per turn here instead, between relay traffic and taps; the
- * passes that follow find each answer remembered.
+ * Taken in slices of a few milliseconds here instead, between relay traffic
+ * and taps; the passes that follow find each answer remembered.
  */
 export async function checkRepostNotes(events: NostrEvent[]): Promise<void> {
+  // A turn is given up once this much work has gone by, not per note: with
+  // a fast check, a turn per note is most of the time spent.
+  const sliceMs: number = 8;
+  let since: number = Date.now();
   for (const event of events) {
     if (!isRepost(event)) continue;
-    await nextTask();
+    if (Date.now() - since >= sliceMs) {
+      await nextTask();
+      since = Date.now();
+    }
     readRepost(event);
   }
 }

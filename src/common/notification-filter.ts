@@ -13,8 +13,8 @@
  * apps draw from this; the switch is theirs.
  */
 
-import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import { verifySignature } from './event-filter.js';
 import { kvGet, kvSet } from './kv.js';
 import {
   NoRelayAnsweredError,
@@ -52,7 +52,7 @@ export function fromFollowedAuthors<T extends Authored>(
 
 function genuine(event: NostrEvent): boolean {
   try {
-    return verifyEvent(event);
+    return verifySignature(event);
   } catch {
     return false;
   }

@@ -18,8 +18,8 @@
  * means.
  */
 
-import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
+import { verifySignature } from './event-filter.js';
 import {
   NoRelayAnsweredError,
   queryRelaysDetailed,
@@ -31,7 +31,7 @@ export const DELETION_KIND: number = 5;
 /** Whether this request was signed by the key it claims. */
 function isGenuine(request: NostrEvent): boolean {
   try {
-    return verifyEvent(request);
+    return verifySignature(request);
   } catch {
     return false;
   }

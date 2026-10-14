@@ -16,8 +16,8 @@
  * same rules `liked-posts.ts` applies to the Likes page.
  */
 
-import { verifyEvent } from 'nostr-tools';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import { verifySignature } from './event-filter.js';
 import { filterDeletedReactionEvents } from './reaction-interactions.js';
 import {
   NoRelayAnsweredError,
@@ -40,7 +40,7 @@ const IDS_PER_QUERY: number = 100;
 
 function genuine(event: NostrEvent): boolean {
   try {
-    return verifyEvent(event);
+    return verifySignature(event);
   } catch {
     return false;
   }

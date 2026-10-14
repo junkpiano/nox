@@ -4,15 +4,16 @@
  * `crypto.getRandomValues`, which Hermes does not provide on its own, and a
  * later import would be exactly that - later than the module needing it.
  */
-import { refreshQuickReaction } from '../src/common/quick-reaction';
 import 'react-native-get-random-values';
 
 import { registerRootComponent } from 'expo';
 import { Platform } from 'react-native';
 import { onAppEvent } from '../src/common/app-events';
+import { setSignatureCheck } from '../src/common/event-filter';
 import { kvGet } from '../src/common/kv';
 import { clearMuteList, loadCachedMuteList } from '../src/common/mute-state';
 import { setPlatform } from '../src/common/platform';
+import { refreshQuickReaction } from '../src/common/quick-reaction';
 import {
   getSessionPrivateKey,
   restoreSessionPrivateKey,
@@ -23,6 +24,7 @@ import { getRelays, reloadRelays } from '../src/features/relays/relays';
 import { clearWalletConnection } from '../src/features/wallet/wallet-store';
 import App from './App';
 import { beginMessages, endMessages } from './lib/messages';
+import NoxCrypto from './modules/nox-crypto';
 import { installNativeDatabase } from './platform/database';
 import { installNativeHttp } from './platform/http';
 import { installNativeRelayAuth } from './platform/relay-auth';
@@ -89,6 +91,13 @@ function startForCurrentSession() {
   }
 }
 
+// Signatures checked natively where the module exists: before any relay
+// is read, so every event goes through the same check.
+if (NoxCrypto) {
+  setSignatureCheck((signature, id, pubkey) =>
+    NoxCrypto.verifySchnorr(signature, id, pubkey),
+  );
+}
 void restoreSessionPrivateKey().then(startForCurrentSession);
 
 /**

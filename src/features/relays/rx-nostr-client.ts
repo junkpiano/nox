@@ -1,5 +1,5 @@
-import { verifyEvent } from 'nostr-tools';
 import { createRxBackwardReq, createRxNostr, type RxNostr } from 'rx-nostr';
+import { verifySignature } from '../../common/event-filter.js';
 import { getRelays, recordRelayFailure, recordRelaySuccess } from './relays.js';
 
 let rxNostr: RxNostr | null = null;
@@ -12,7 +12,7 @@ export function getRxNostr(): RxNostr {
     rxNostr = createRxNostr({
       skipFetchNip11: true,
       skipVerify: false,
-      verifier: async (event) => verifyEvent(event),
+      verifier: async (event) => verifySignature(event),
     });
 
     // Set up relay monitoring

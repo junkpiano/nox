@@ -50,6 +50,47 @@ function rememberVerified(id: string): void {
  * hundreds of them. The copy is this module's own object, so the mark says
  * only what was checked.
  */
+/** A BIP-340 check of `signature` over the event id, by `pubkey`. */
+type SignatureCheck = (
+  signature: string,
+  id: string,
+  pubkey: string,
+) => boolean;
+
+let signatureCheck: SignatureCheck | null = null;
+
+/**
+ * Puts a faster signature check in place of nostr-tools'. The phone's JS
+ * engine has no JIT, and there the JavaScript one takes tens of
+ * milliseconds a post; it passes libsecp256k1 here.
+ */
+export function setSignatureCheck(check: SignatureCheck): void {
+  // Only what nostr-tools would read as a signature reaches the check, so a
+  // lenient parser on the other side cannot accept what it refuses.
+  signatureCheck = (signature, id, pubkey): boolean =>
+    /^[0-9a-f]{128}$/.test(signature) &&
+    /^[0-9a-f]{64}$/.test(id) &&
+    /^[0-9a-f]{64}$/.test(pubkey) &&
+    check(signature, id, pubkey);
+}
+
+/**
+ * Whether `event` is signed by its pubkey and its id is its content's hash:
+ * nostr-tools' `verifyEvent`, through the faster check where one is in place.
+ * Every signature check in the app goes through here.
+ */
+export function verifySignature(event: NostrEvent): boolean {
+  if (!signatureCheck) return verifyEvent(event);
+  try {
+    return (
+      getEventHash(event) === event.id &&
+      signatureCheck(event.sig, event.id, event.pubkey)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function markVerified(event: NostrEvent): NostrEvent {
   (event as NostrEvent & { [verifiedSymbol]?: boolean })[verifiedSymbol] = true;
   return event;
@@ -77,7 +118,7 @@ export function hasGenuineSignature(event: NostrEvent): boolean {
     } as NostrEvent;
     if (getEventHash(plain) !== plain.id) return false;
     if (verified.has(plain.id)) return true;
-    if (!verifyEvent(plain)) return false;
+    if (!verifySignature(plain)) return false;
     rememberVerified(plain.id);
     return true;
   } catch {
@@ -182,7 +223,12 @@ export function verifiedEvent(
     // The id having just been confirmed as this content's hash, a
     // remembered id is a signature already checked against this content.
     if (verified.has(plain.id)) return markVerified(plain);
-    if (!verifyEvent(plain)) return null;
+    // The id was checked as this content's hash just above, so a signature
+    // over the id is a signature over the content.
+    const ok: boolean = signatureCheck
+      ? signatureCheck(plain.sig, plain.id, plain.pubkey)
+      : verifyEvent(plain);
+    if (!ok) return null;
     rememberVerified(plain.id);
     return markVerified(plain);
   } catch {
