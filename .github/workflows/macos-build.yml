@@ -1,14 +1,11 @@
 name: macOS
 
-# The desktop app had never been built for macOS. This builds it on every
-# change that can break it, as a universal binary so it runs on Apple
-# silicon and Intel Macs alike.
+# Builds the desktop app for macOS as a universal binary, so it runs on Apple
+# silicon and Intel Macs alike. Built when something reaches main, and on
+# demand; pull requests do not wait for it.
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 concurrency:
