@@ -1,5 +1,6 @@
 import type { PubkeyHex } from '../../../types/nostr';
 import { fetchFollowList } from '../../common/events-queries.js';
+import { refreshFollowedHashtags } from '../../common/interests.js';
 import { isReadOnlySession } from '../../common/session.js';
 import { loadHomeTimeline } from './home-timeline.js';
 
@@ -54,10 +55,14 @@ export async function loadUserHomeTimeline(
       options.profileSection.className = '';
     }
 
-    const followedPubkeys: PubkeyHex[] = await fetchFollowList(
-      options.pubkeyHex,
-      options.relays,
-    );
+    // Followed hashtags beside follows; a list that cannot be read leaves
+    // the copy this device already has.
+    const [followedPubkeys] = await Promise.all([
+      fetchFollowList(options.pubkeyHex, options.relays),
+      refreshFollowedHashtags(options.pubkeyHex, options.relays).catch(
+        (): string[] => [],
+      ),
+    ]);
     if (!isRouteActive()) {
       return;
     }

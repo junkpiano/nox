@@ -1,4 +1,5 @@
 import { canWrite } from '../../src/common/signer';
+import type { TimelineFilter } from '../lib/home-timeline';
 import { guardWrite, signInPrompt } from '../lib/read-only';
 /**
  * One person's profile and recent posts.
@@ -490,7 +491,7 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   } | null>(null);
   const [rows, setRows] = useState<TimelinePost[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Record<string, unknown> | null>(null);
+  const [filter, setFilter] = useState<TimelineFilter | null>(null);
   const [oldestCreatedAt, setOldestCreatedAt] = useState<number | null>(null);
   const [cacheKey, setCacheKey] = useState<TimelineKey | null>(null);
   const [decorating, setDecorating] = useState(true);

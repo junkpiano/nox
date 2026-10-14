@@ -55,7 +55,7 @@ export interface TimelineRuntimeContext {
   relayConnectionCount: number;
   relayCompletionCount: number;
   isInitialLoad: boolean;
-  filter: NostrFilter;
+  filter: NostrFilter | NostrFilter[];
   limit: number;
   output: HTMLElement;
   getUntilTimestamp: () => number;
@@ -70,7 +70,7 @@ interface LoadTimelineOptions {
   seenEventIds: Set<string>;
   output: HTMLElement;
   connectingMsg: HTMLElement | null;
-  createFilter: (untilTimestamp: number) => NostrFilter;
+  createFilter: (untilTimestamp: number) => NostrFilter | NostrFilter[];
   activeTimeouts?: number[] | undefined;
   isRouteActive?: (() => boolean) | undefined;
   cache?: TimelineCacheOptions | undefined;
@@ -303,7 +303,9 @@ export async function loadTimeline(
     currentUntilTimestamp >= Date.now() / 1000 - 60;
   const originalUntilTimestamp: number = currentUntilTimestamp;
 
-  let filter: NostrFilter = options.createFilter(currentUntilTimestamp);
+  let filter: NostrFilter | NostrFilter[] = options.createFilter(
+    currentUntilTimestamp,
+  );
 
   const getContext = (): TimelineRuntimeContext => ({
     relays,

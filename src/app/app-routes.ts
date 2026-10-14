@@ -1014,6 +1014,57 @@ export async function loadGlobalPage(
   }
 }
 
+/** Follow / Unfollow for a hashtag: its posts join Home, or leave it. */
+async function drawHashtagFollow(
+  section: HTMLElement,
+  viewer: PubkeyHex,
+  tag: string,
+  isRouteActive: () => boolean,
+): Promise<void> {
+  const {
+    getFollowedHashtags,
+    normalizeHashtag,
+    refreshFollowedHashtags,
+    setHashtagFollowed,
+  } = await import('../common/interests.js');
+  if (!isRouteActive()) return;
+  const name: string = normalizeHashtag(tag);
+  section.className = 'mb-4 flex items-center gap-3';
+  section.innerHTML = `<button type="button" id="hashtag-follow"></button><span id="hashtag-follow-note" class="text-sm text-gray-500" role="status"></span>`;
+  const button = section.querySelector<HTMLButtonElement>('#hashtag-follow');
+  const note = section.querySelector<HTMLElement>('#hashtag-follow-note');
+  if (!button || !note) return;
+  const draw = (following: boolean): void => {
+    button.dataset.following = String(following);
+    button.textContent = following ? 'Unfollow' : 'Follow';
+    button.className = `${following ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'} text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow`;
+  };
+  draw(getFollowedHashtags(viewer).includes(name));
+  void refreshFollowedHashtags(viewer, appState.relays)
+    .then((tags: string[]): void => {
+      if (isRouteActive() && !button.disabled) draw(tags.includes(name));
+    })
+    .catch((): void => {});
+  button.addEventListener('click', (): void => {
+    const follow: boolean = button.dataset.following !== 'true';
+    button.disabled = true;
+    note.textContent = follow ? 'Following…' : 'Unfollowing…';
+    void setHashtagFollowed(viewer, appState.relays, name, follow)
+      .then((): void => {
+        draw(follow);
+        note.textContent = follow
+          ? `Posts tagged #${name} now appear in Home.`
+          : '';
+      })
+      .catch((): void => {
+        note.textContent = 'Could not save. Check your relays and try again.';
+      })
+      .finally((): void => {
+        button.disabled = false;
+      });
+  });
+}
+
 async function loadHashtagPage(
   tag: string,
   isRouteActive: () => boolean,
@@ -1043,6 +1094,15 @@ async function loadHashtagPage(
   if (profileSection) {
     profileSection.innerHTML = '';
     profileSection.className = '';
+    const viewer: string | null = localStorage.getItem('nostr_pubkey');
+    if (viewer && canWrite()) {
+      void drawHashtagFollow(
+        profileSection,
+        viewer as PubkeyHex,
+        tag,
+        isRouteActive,
+      );
+    }
   }
 
   seenEventIds.clear();

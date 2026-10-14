@@ -17,6 +17,7 @@ import {
   type NewPostsBuffer,
   nextSince,
 } from '../../src/common/new-posts';
+import type { TimelineFilter } from './home-timeline';
 import { loadNewerPosts, type TimelinePost } from './home-timeline';
 
 const POLL_MS: number = 30000;
@@ -31,7 +32,7 @@ export interface NewPosts {
 }
 
 export function useNewPosts(
-  filter: Record<string, unknown> | null,
+  filter: TimelineFilter | null,
   posts: TimelinePost[],
   setPosts: (update: (previous: TimelinePost[]) => TimelinePost[]) => void,
 ): NewPosts {

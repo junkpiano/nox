@@ -154,9 +154,11 @@ export function addToEmojiList(
     .catch((): void => {})
     .then(() => addNow(viewer, relays, emoji));
   pending.set(viewer, run);
-  void run.finally((): void => {
+  // Both ways: a failed add is the caller's to report, not unhandled here.
+  const forget = (): void => {
     if (pending.get(viewer) === run) pending.delete(viewer);
-  });
+  };
+  run.then(forget, forget);
   return run;
 }
 

@@ -21,6 +21,7 @@ import {
   nextUntil,
 } from '../../src/common/timeline-paging';
 import type { NostrEvent } from '../../types/nostr';
+import type { TimelineFilter } from './home-timeline';
 import { loadOlderPosts, type TimelinePost } from './home-timeline';
 
 export interface OlderPosts {
@@ -49,7 +50,7 @@ export function useOlderPosts(args: {
    * The question the timeline asked. A new object means a new timeline -
    * another account, other relays, another tag - and resets the reading.
    */
-  filter: Record<string, unknown> | null;
+  filter: TimelineFilter | null;
   /** The oldest raw event the first load brought back. */
   oldestCreatedAt: number | null;
   /** Where the timeline lives in the cache, so pages are recorded there. */

@@ -1,7 +1,9 @@
 import type { PubkeyHex } from '../../types/nostr';
+import { onAppEvent } from '../common/app-events.js';
 import { setupBottomTabs } from '../common/bottom-tabs.js';
 import { setupComposeOverlay } from '../common/compose.js';
 import { installEmojiFallback } from '../common/content-html.js';
+import { getFollowedHashtags, homeFilters } from '../common/interests.js';
 import { kvRemove } from '../common/kv.js';
 import { clearMuteList, loadCachedMuteList } from '../common/mute-state.js';
 import { setupNavigation } from '../common/navigation.js';
@@ -119,7 +121,11 @@ function startBackgroundFetch(followedPubkeys: PubkeyHex[]): void {
   startNewPostsPolling({
     timelineType: 'home',
     ...(storedPubkey ? { timelinePubkey: storedPubkey as PubkeyHex } : {}),
-    filter: { kinds: homeKinds, authors: followedPubkeys },
+    filter: homeFilters(
+      homeKinds,
+      followedPubkeys,
+      getFollowedHashtags(storedPubkey as PubkeyHex | null),
+    ),
   });
 
   if (storedPubkey) {
@@ -386,6 +392,12 @@ window.addEventListener('beforeunload', (): void => {
 });
 
 // Handle browser back/forward buttons
+// Followed hashtags changed - here, or found changed on another device:
+// Home asks its question again. Its own reload finds the list unchanged.
+onAppEvent('interests-updated', (): void => {
+  if (['/', '/home'].includes(window.location.pathname)) handleRoute();
+});
+
 window.addEventListener('popstate', (event: PopStateEvent): void => {
   // Not while the gate is up. The overlay covers the page, but a route run
   // behind it would still open sockets and fetch posts - and "covered" is a

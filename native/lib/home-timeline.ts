@@ -40,10 +40,22 @@ import {
   findDeletedIds,
   getCachedDeletionStatus,
 } from '../../src/common/deletion-gate';
+import { matchesFilter } from '../../src/common/event-filter';
+import {
+  getFollowedHashtags,
+  homeFilters,
+  refreshFollowedHashtags,
+} from '../../src/common/interests';
 import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { fetchFollowSet } from '../../src/common/notification-filter';
-import { queryRelays } from '../../src/common/relay-query';
+import { queryRelays, queryRelaysAny } from '../../src/common/relay-query';
+
+/** What a timeline asks: one filter, or several ORed as one REQ would. */
+export type TimelineFilter =
+  | Record<string, unknown>
+  | Array<Record<string, unknown>>;
+
 import {
   checkRepostNotes,
   isRepost,
@@ -123,7 +135,7 @@ export interface TimelineResult {
    * The question the relays were asked, without `limit` or `since`, so a
    * later poll for newer posts can ask the same one from a later moment.
    */
-  filter: Record<string, unknown>;
+  filter: TimelineFilter;
   /**
    * The oldest raw event this load brought back - the cursor for reading
    * further. Raw rather than shown: a repost's own time is what the relay
@@ -257,7 +269,14 @@ export async function loadHomeTimeline(
   onStage('follow list...');
   // The shared reader: silence from every relay is an error, and relays
   // that answered without a list give null - neither is "follows nobody".
-  const followSet: Set<PubkeyHex> | null = await fetchFollowSet(viewer, relays);
+  // Followed hashtags beside follows; a list that cannot be read leaves the
+  // copy this device already has.
+  const [followSet, hashtags] = await Promise.all([
+    fetchFollowSet(viewer, relays),
+    refreshFollowedHashtags(viewer, relays).catch((): string[] =>
+      getFollowedHashtags(viewer),
+    ),
+  ]);
   const follows: PubkeyHex[] = followSet ? Array.from(followSet) : [];
   // Seeing your own posts in your own timeline is the web app's behaviour too.
   const authors: PubkeyHex[] = Array.from(new Set([viewer, ...follows])).slice(
@@ -266,13 +285,27 @@ export async function loadHomeTimeline(
   );
 
   onStage(`posts from ${authors.length} people...`);
-  const filter: Record<string, unknown> = { kinds: HOME_KINDS, authors };
-  const fetched: NostrEvent[] = await queryRelays(relays, {
-    ...filter,
+  const filter: Array<Record<string, unknown>> = homeFilters(
+    HOME_KINDS,
+    authors,
+    hashtags,
+  );
+  const fetched: NostrEvent[] = await queryRelaysAny(relays, filter, {
     limit: POST_LIMIT,
   });
   rememberTimeline(cacheKey, fetched);
-  const events: NostrEvent[] = union(fetched, cachedEvents);
+  // Only what the current question admits: a hashtag since unfollowed,
+  // or a person, leaves with it.
+  const events: NostrEvent[] = union(
+    fetched,
+    cachedEvents.filter(
+      (event: NostrEvent): boolean =>
+        filter.some((one): boolean => matchesFilter(one, event)) &&
+        // Below the fetched page lies what the relays have not sent yet; cached
+        // posts there would carry the cursor past it. Paging fetches them.
+        (fetched.length === 0 || event.created_at >= (oldestOf(fetched) ?? 0)),
+    ),
+  );
 
   if (options.onFetched) {
     try {
@@ -693,12 +726,11 @@ export async function loadHashtagTimeline(
  * back is what a row saying "12 new posts" will actually add.
  */
 export async function loadNewerPosts(
-  filter: Record<string, unknown>,
+  filter: TimelineFilter,
   since: number,
 ): Promise<TimelinePost[]> {
   const relays: string[] = getRelays();
-  const events: NostrEvent[] = await queryRelays(relays, {
-    ...filter,
+  const events: NostrEvent[] = await queryRelaysAny(relays, filter, {
     since,
     limit: NEWER_LIMIT,
   });
@@ -718,7 +750,7 @@ export async function loadNewerPosts(
  * the end of the timeline are judged on those rather than on what survived.
  */
 export async function loadOlderPosts(
-  filter: Record<string, unknown>,
+  filter: TimelineFilter,
   until: number,
   cacheKey: TimelineKey | null = null,
 ): Promise<{ posts: TimelinePost[]; raw: NostrEvent[] }> {
@@ -729,8 +761,7 @@ export async function loadOlderPosts(
     cached.map((event: NostrEvent): [string, NostrEvent] => [event.id, event]),
   );
   if (cached.length < PAGE_LIMIT) {
-    const remote: NostrEvent[] = await queryRelays(relays, {
-      ...filter,
+    const remote: NostrEvent[] = await queryRelaysAny(relays, filter, {
       until,
       limit: PAGE_LIMIT,
     });
@@ -768,9 +799,15 @@ export async function loadOlderPosts(
  * cache is not indexed to answer, so it is passed straight to the relays.
  */
 async function readOlderFromCache(
-  filter: Record<string, unknown>,
+  filters: TimelineFilter,
   until: number,
 ): Promise<NostrEvent[]> {
+  // ponytail: Home with followed hashtags pages from the relays alone; read
+  // the authors part from the cache too if older pages feel slow.
+  if (Array.isArray(filters) && filters.length !== 1) return [];
+  const filter: Record<string, unknown> = Array.isArray(filters)
+    ? (filters[0] ?? {})
+    : filters;
   if ('#t' in filter) return [];
   const kinds: number[] | undefined = Array.isArray(filter.kinds)
     ? (filter.kinds as number[])

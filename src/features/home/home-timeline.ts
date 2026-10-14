@@ -1,4 +1,5 @@
 import type { PubkeyHex } from '../../../types/nostr';
+import { getFollowedHashtags, homeFilters } from '../../common/interests.js';
 import { loadTimeline } from '../../common/timeline-loader.js';
 import { getRelays } from '../relays/relays.js';
 
@@ -34,6 +35,7 @@ export async function loadHomeTimeline(
   }
 
   const relays = getRelays();
+  const hashtags: string[] = getFollowedHashtags(userPubkey ?? null);
   await loadTimeline({
     logPrefix: 'HomeTimeline',
     timelineType: 'home',
@@ -45,12 +47,12 @@ export async function loadHomeTimeline(
     connectingMsg,
     activeTimeouts,
     isRouteActive: routeIsActive,
-    createFilter: (currentUntilTimestamp) => ({
-      kinds,
-      authors: followedPubkeys,
-      until: currentUntilTimestamp,
-      limit,
-    }),
+    createFilter: (currentUntilTimestamp) =>
+      homeFilters(kinds, followedPubkeys, hashtags).map((filter) => ({
+        ...filter,
+        until: currentUntilTimestamp,
+        limit,
+      })),
     cache: {
       enabled: Boolean(userPubkey),
       limit: 50,
