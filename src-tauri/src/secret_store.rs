@@ -39,7 +39,7 @@ fn create_store() -> Result<(), String> {
     let store = windows_native_keyring_store::Store::new();
 
     #[cfg(target_os = "linux")]
-    let store = linux_keyutils_keyring_store::Store::new();
+    let store = zbus_secret_service_keyring_store::Store::new();
 
     keyring_core::set_default_store(store.map_err(|e| e.to_string())?);
     Ok(())

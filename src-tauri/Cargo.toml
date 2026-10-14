@@ -41,8 +41,11 @@ apple-native-keyring-store = { version = "1.0.2", features = ["protected"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-native-keyring-store = "1.1"
 
+# The desktop's Secret Service (GNOME Keyring, KWallet), which outlives a
+# reboot; the kernel keyring does not. Pure Rust, and no async runtime: the
+# commands that use it are synchronous.
 [target.'cfg(target_os = "linux")'.dependencies]
-linux-keyutils-keyring-store = "1.0.0"
+zbus-secret-service-keyring-store = { version = "1.0.1", features = ["crypto-rust"] }
 
 # No [profile.release] overrides are set, and one in particular must not be.
 #
