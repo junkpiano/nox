@@ -1,0 +1,72 @@
+name: macOS
+
+# The desktop app had never been built for macOS. This builds it on every
+# change that can break it, as a universal binary so it runs on Apple
+# silicon and Intel Macs alike.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust with both Mac targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: bun install --frozen-lockfile
+
+      # Catches type and lint breakage before spending minutes on Rust,
+      # which is where the time goes.
+      - name: Check the web build
+        run: |
+          bun run build
+          bun run test
+
+      # Ad-hoc signed ("-"): an Apple silicon Mac will not run an unsigned
+      # binary at all. It is not a Developer ID signature, so a downloaded
+      # copy still has to be opened with right-click > Open the first time.
+      - name: Build
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+        run: bunx tauri build --target universal-apple-darwin --bundles app,dmg
+
+      - name: Report the artifact size
+        run: |
+          DMG=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)
+          if [ -z "$DMG" ]; then
+            echo "::error::Build reported success but produced no DMG"
+            exit 1
+          fi
+          echo "### macOS build" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$(basename "$DMG")\` — $(du -h "$DMG" | cut -f1), $(lipo -archs src-tauri/target/universal-apple-darwin/release/nox)" >> "$GITHUB_STEP_SUMMARY"
+          echo "DMG_PATH=$DMG" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nox-macos-universal
+          path: ${{ env.DMG_PATH }}
+          retention-days: 14
