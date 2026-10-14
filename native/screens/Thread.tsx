@@ -2,6 +2,7 @@ import { addToEmojiList } from '../../src/common/emoji-list';
 import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
+import ActionButton from '../components/ActionButton';
 import EmojiPickerSheet, {
   forgetEmojiList,
 } from '../components/EmojiPickerSheet';
@@ -567,72 +568,46 @@ export default function Thread({ route }: { route: ThreadRoute }) {
           {hasViewer() && !data.deleted ? (
             <View style={[styles.actions, !canWrite() && styles.actionsOff]}>
               <View style={styles.actionRow}>
-                <Pressable
+                {/* The same button whether the box is open or shut. It
+                    relabelled itself "Cancel", which reads as cancelling
+                    the post rather than closing a composer. */}
+                <ActionButton
+                  icon="reply"
+                  label="Reply"
+                  done={replying}
                   onPress={(): void => {
                     if (!guardWrite()) return;
                     setReplying((open) => !open);
                   }}
-                  style={styles.action}
-                >
-                  {/* The same button whether the box is open or shut. It
-                      relabelled itself "Cancel", which reads as cancelling
-                      the post rather than closing a composer. */}
-                  <Text
-                    accessibilityLabel="Reply"
-                    style={replying ? styles.actionDone : styles.actionText}
-                  >
-                    ↩
-                  </Text>
-                </Pressable>
-                <Pressable
+                />
+                <ActionButton
+                  icon="repost"
+                  label="Repost"
+                  done={reposted}
+                  busy={reposting}
+                  disabled={reposted}
                   onPress={(): void => {
                     if (guardWrite()) void repost();
                   }}
-                  disabled={reposting || reposted}
-                  style={[
-                    styles.action,
-                    (reposting || reposted) && styles.actionOff,
-                  ]}
-                >
-                  <Text
-                    accessibilityLabel="Repost"
-                    style={reposted ? styles.actionDone : styles.actionText}
-                  >
-                    {reposting ? '···' : '⇄'}
-                  </Text>
-                </Pressable>
-                {/* A post can be reported by anyone who can sign, including
-                    somebody who does not want to mute the author - so it sits
-                    with the other post actions rather than on the profile. */}
-                <Pressable
+                />
+                <ActionButton
+                  icon={liked ? 'liked' : 'like'}
+                  label={`React with ${quickReaction().content}`}
+                  done={liked}
+                  busy={liking}
+                  disabled={liked}
                   onPress={(): void => {
                     if (guardWrite()) void like();
                   }}
-                  disabled={liking || liked}
-                  style={[styles.action, (liking || liked) && styles.actionOff]}
-                >
-                  {liking ? (
-                    <Text style={styles.actionText}>···</Text>
-                  ) : (
-                    <Text style={liked ? styles.actionDone : styles.actionText}>
-                      {liked ? '\u2665\uFE0E' : '\u2661'}
-                    </Text>
-                  )}
-                </Pressable>
-                <Pressable
+                />
+                <ActionButton
+                  icon="react"
+                  label="Add reaction"
+                  disabled={liking}
                   onPress={(): void => {
                     if (guardWrite()) setPicking(true);
                   }}
-                  disabled={liking}
-                  style={styles.action}
-                >
-                  <Text
-                    accessibilityLabel="Add reaction"
-                    style={styles.actionText}
-                  >
-                    {'\u263A\uFE0E'}
-                  </Text>
-                </Pressable>
+                />
                 <EmojiPickerSheet
                   visible={picking}
                   viewer={getSession().pubkey}
@@ -641,16 +616,16 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                     void like(reaction);
                   }}
                 />
-                <Pressable
+                {/* A post can be reported by anyone who can sign, including
+                    somebody who does not want to mute the author - so it sits
+                    with the other post actions rather than on the profile. */}
+                <ActionButton
+                  icon="report"
+                  label="Report"
                   onPress={(): void => {
                     if (guardWrite()) setReporting(true);
                   }}
-                  style={styles.action}
-                >
-                  <Text accessibilityLabel="Report" style={styles.reportText}>
-                    ⚑
-                  </Text>
-                </Pressable>
+                />
               </View>
 
               {replying ? (
@@ -768,13 +743,16 @@ const styles = StyleSheet.create({
   actionsOff: { opacity: 0.45 },
   // No box. Four boxed buttons across the width read as a toolbar louder
   // than the post; a card's row is bare marks, and this is a card's row.
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 28 },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    maxWidth: 300,
+    marginHorizontal: -11,
+  },
   action: { paddingVertical: 6 },
   actionOff: { opacity: 0.5 },
   link: { color: '#89a8ff' },
-  reportText: { color: '#5b6b88', fontSize: 15 },
-  actionText: { color: '#5b6b88', fontSize: 17 },
-  actionDone: { color: '#73f0c1', fontSize: 17 },
   replyInput: {
     borderWidth: 1,
     borderColor: '#25406e',

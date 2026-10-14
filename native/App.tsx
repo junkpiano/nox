@@ -15,7 +15,10 @@
  * expo-modules-core, `no member named 'executeSync'`, after two and a half
  * minutes of compiling. `expo-linking` still gives us the deep links.
  */
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import {
+  createNativeBottomTabNavigator,
+  type NativeBottomTabIcon,
+} from '@react-navigation/bottom-tabs/unstable';
 import {
   type LinkingOptions,
   NavigationContainer,
@@ -24,16 +27,19 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { unstable_getMaterialSymbolSourceAsync } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { Image, Pressable, Text } from 'react-native';
+import { Image, Platform, Pressable, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { emitAppEvent, onAppEvent } from '../src/common/app-events';
+import { ICONS, type IconName } from '../src/common/icons';
 import { kvGet } from '../src/common/kv';
 import { resolveNostrLink } from '../src/common/nostr-link';
 import { hidesWallet } from '../src/common/platform';
 import { getSession } from '../src/common/session';
 import { hasAcceptedTerms } from '../src/common/terms';
 import type { NostrEvent, PubkeyHex } from '../types/nostr';
+import Icon from './components/Icon';
 import { fetchProfilesForPubkeys } from './lib/home-timeline';
 import { navigationRef } from './lib/navigation';
 import About from './screens/About';
@@ -90,7 +96,64 @@ export type TabParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tabs = createBottomTabNavigator<TabParamList>();
+// The platform's own tab bar: UITabBarController on iOS, Material's bottom
+// navigation on Android. One navigator for both; only where the icon comes
+// from differs.
+const Tabs = createNativeBottomTabNavigator<TabParamList>();
+
+const TAB_ICONS: Record<keyof TabParamList, IconName> = {
+  Feed: 'home',
+  Search: 'search',
+  Messages: 'messages',
+  Alerts: 'alerts',
+};
+
+/**
+ * The tab icons, from the shared table. iOS names an SF Symbol directly;
+ * Android's tab bar takes images, so its Material Symbols are drawn once at
+ * start-up. Null until they are.
+ */
+function useTabIcons(): Record<keyof TabParamList, NativeBottomTabIcon> | null {
+  const sfIcons = (): Record<keyof TabParamList, NativeBottomTabIcon> =>
+    Object.fromEntries(
+      Object.entries(TAB_ICONS).map(([tab, name]) => [
+        tab,
+        // biome-ignore lint/suspicious/noExplicitAny: names from the shared table
+        { type: 'sfSymbol', name: ICONS[name].sf as any },
+      ]),
+    ) as Record<keyof TabParamList, NativeBottomTabIcon>;
+  const [icons, setIcons] = useState<Record<
+    keyof TabParamList,
+    NativeBottomTabIcon
+  > | null>(Platform.OS === 'ios' ? sfIcons : null);
+  useEffect((): void => {
+    if (Platform.OS === 'ios') return;
+    void Promise.all(
+      Object.entries(TAB_ICONS).map(async ([tab, name]) => {
+        const source = await unstable_getMaterialSymbolSourceAsync(
+          // biome-ignore lint/suspicious/noExplicitAny: names from the shared table
+          ICONS[name].material as any,
+          24,
+          '#ffffff',
+        );
+        return [tab, source ? { type: 'image', source } : undefined] as const;
+      }),
+    )
+      .then((entries): void => {
+        setIcons(
+          Object.fromEntries(entries) as Record<
+            keyof TabParamList,
+            NativeBottomTabIcon
+          >,
+        );
+      })
+      // Undrawn icons are no reason to have no tabs: they go up without.
+      .catch((): void => {
+        setIcons({} as Record<keyof TabParamList, NativeBottomTabIcon>);
+      });
+  }, []);
+  return icons;
+}
 
 /**
  * Links into the app.
@@ -152,12 +215,6 @@ const theme = {
 };
 
 /** An emoji stands in for an icon set until the app has one of its own. */
-function icon(glyph: string) {
-  return ({ color }: { color: string }) => (
-    <Text style={{ fontSize: 18, color }}>{glyph}</Text>
-  );
-}
-
 /**
  * Your profile, which the tab bar no longer has room to name.
  *
@@ -240,12 +297,14 @@ function SettingsButton() {
       hitSlop={12}
       style={{ paddingHorizontal: 16 }}
     >
-      <Text style={{ fontSize: 20 }}>⚙️</Text>
+      <Icon name="settings" size={22} color="#f5f8ff" />
     </Pressable>
   );
 }
 
 function TabBar() {
+  const icons = useTabIcons();
+  if (!icons) return null;
   return (
     <Tabs.Navigator
       // iOS scrolls a list to the top when the status bar is tapped; Android
@@ -257,36 +316,35 @@ function TabBar() {
         },
       })}
       screenOptions={{
+        headerShown: true,
         headerStyle: { backgroundColor: '#0b1220' },
         headerTintColor: '#f5f8ff',
         headerRight: () => <AccountButton />,
-        tabBarStyle: {
-          backgroundColor: '#0b1220',
-          borderTopColor: '#25406e',
-        },
+        // iOS 26 draws its own glass and ignores the background.
+        tabBarStyle: { backgroundColor: '#0b1220' },
         tabBarActiveTintColor: '#89a8ff',
-        tabBarInactiveTintColor: '#5b6b88',
+        tabBarInactiveTintColor: '#7283aa',
       }}
     >
       <Tabs.Screen
         name="Feed"
         component={Feed}
-        options={{ title: 'Home', tabBarIcon: icon('🏠') }}
+        options={{ title: 'Home', tabBarIcon: icons.Feed }}
       />
       <Tabs.Screen
         name="Search"
         component={Search}
-        options={{ title: 'Search', tabBarIcon: icon('🔍') }}
+        options={{ title: 'Search', tabBarIcon: icons.Search }}
       />
       <Tabs.Screen
         name="Messages"
         component={Messages}
-        options={{ title: 'DMs', tabBarIcon: icon('✉️') }}
+        options={{ title: 'DMs', tabBarIcon: icons.Messages }}
       />
       <Tabs.Screen
         name="Alerts"
         component={Notifications}
-        options={{ title: 'Alerts', tabBarIcon: icon('🔔') }}
+        options={{ title: 'Alerts', tabBarIcon: icons.Alerts }}
       />
     </Tabs.Navigator>
   );
