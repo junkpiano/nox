@@ -45,13 +45,34 @@ jobs:
           bun run build
           bun run test
 
-      # Ad-hoc signed ("-"): an Apple silicon Mac will not run an unsigned
-      # binary at all. It is not a Developer ID signature, so a downloaded
-      # copy still has to be opened with right-click > Open the first time.
+      # Signed with the Developer ID and notarized when the secrets are there,
+      # so any run's DMG opens without a warning. Without them - a fork's pull
+      # request - it is ad-hoc signed ("-"), since an Apple silicon Mac will
+      # not run an unsigned binary at all.
       - name: Build
         env:
-          APPLE_SIGNING_IDENTITY: '-'
-        run: bunx tauri build --target universal-apple-darwin --bundles app,dmg
+          SIGN_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          SIGN_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGN_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          NOTARY_KEY: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [ -n "$SIGN_CERTIFICATE" ]; then
+            export APPLE_CERTIFICATE="$SIGN_CERTIFICATE"
+            export APPLE_CERTIFICATE_PASSWORD="$SIGN_CERTIFICATE_PASSWORD"
+            export APPLE_SIGNING_IDENTITY="$SIGN_IDENTITY"
+            if [ -n "$NOTARY_KEY" ]; then
+              KEY_PATH="$RUNNER_TEMP/AuthKey_$NOTARY_KEY_ID.p8"
+              printf '%s\n' "$NOTARY_KEY" > "$KEY_PATH"
+              export APPLE_API_KEY="$NOTARY_KEY_ID"
+              export APPLE_API_ISSUER="$NOTARY_ISSUER"
+              export APPLE_API_KEY_PATH="$KEY_PATH"
+            fi
+          else
+            export APPLE_SIGNING_IDENTITY='-'
+          fi
+          bunx tauri build --target universal-apple-darwin --bundles app,dmg
 
       - name: Report the artifact size
         run: |
@@ -63,10 +84,17 @@ jobs:
           echo "### macOS build" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "\`$(basename "$DMG")\` — $(du -h "$DMG" | cut -f1), $(lipo -archs src-tauri/target/universal-apple-darwin/release/nox)" >> "$GITHUB_STEP_SUMMARY"
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/nox.app
+          {
+            echo ""
+            echo "Signature: $(codesign -dv "$APP" 2>&1 | grep -E '^Authority=' | head -1 || echo none)"
+            echo ""
+            echo "Gatekeeper: $(spctl --assess --type execute "$APP" 2>&1 && echo accepted || true)"
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "DMG_PATH=$DMG" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nox-macos-universal
+          name: nox-macos
           path: ${{ env.DMG_PATH }}
           retention-days: 14
