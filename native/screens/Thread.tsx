@@ -5,7 +5,6 @@ import { canWrite } from '../../src/common/signer';
 import EmojiPickerSheet, {
   forgetEmojiList,
 } from '../components/EmojiPickerSheet';
-import QuickReactionGlyph from '../components/QuickReactionGlyph';
 import { guardWrite, hasViewer, signInPrompt } from '../lib/read-only';
 /**
  * One post and its replies.
@@ -615,11 +614,9 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                   {liking ? (
                     <Text style={styles.actionText}>···</Text>
                   ) : (
-                    <QuickReactionGlyph
-                      reaction={quickReaction()}
-                      given={liked}
-                      style={liked ? styles.actionDone : styles.actionText}
-                    />
+                    <Text style={liked ? styles.actionDone : styles.actionText}>
+                      {liked ? '\u2665\uFE0E' : '\u2661'}
+                    </Text>
                   )}
                 </Pressable>
                 <Pressable

@@ -160,11 +160,7 @@ function QuickReaction({ viewer }: { viewer: PubkeyHex }) {
           accessibilityLabel="Change the quick reaction"
           style={styles.quickButton}
         >
-          <QuickReactionGlyph
-            reaction={current}
-            given
-            style={styles.quickGlyph}
-          />
+          <QuickReactionGlyph reaction={current} style={styles.quickGlyph} />
           <Text style={styles.quickLabel}>Change</Text>
         </Pressable>
       </View>

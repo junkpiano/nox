@@ -2,7 +2,6 @@ import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
 import { guardWrite, hasViewer } from '../lib/read-only';
 import EmojiPickerSheet from './EmojiPickerSheet';
-import QuickReactionGlyph from './QuickReactionGlyph';
 /**
  * The list both timelines draw.
  *
@@ -330,11 +329,11 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
         {busy === 'like' ? (
           <Text style={styles.action}>···</Text>
         ) : (
-          <QuickReactionGlyph
-            reaction={heart}
-            given={liked}
-            style={liked ? styles.actionOn : styles.action}
-          />
+          // A heart, like the other line icons; text presentation keeps
+          // Android from drawing ♥ as a colour emoji.
+          <Text style={liked ? styles.actionOn : styles.action}>
+            {liked ? '\u2665\uFE0E' : '\u2661'}
+          </Text>
         )}
       </Pressable>
       {/* Any emoji, custom ones included: the heart is one tap, this is a choice. */}
