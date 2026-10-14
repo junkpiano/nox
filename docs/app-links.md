@@ -65,9 +65,8 @@ the app claims: people, notes, and hashtags, matching what
 `src/common/nostr-link.ts` resolves. Everything else on the site stays in
 Safari.
 
-The Team ID in the file is a placeholder, `XXXXXXXXXX`, because the app has
-no Apple developer registration yet. Universal links will not work until it
-is replaced with the real ten-character Team ID and the App ID has the
-Associated Domains capability turned on in the developer portal. Apple's
-CDN fetches the file on first install and caches it; after changing it,
-reinstall the app to make it look again.
+The Team ID is `KHFXF6N2QE`, and the App ID has the Associated Domains
+capability turned on in the developer portal; the app's entitlement claims
+`applinks:nox.garden`. Apple's CDN fetches the file when the app is
+installed and caches it; after changing it, reinstall the app to make it
+look again.
