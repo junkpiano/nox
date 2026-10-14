@@ -1,19 +1,11 @@
 name: iOS TestFlight
 
-# Building for iOS needs macOS, which no maintainer machine here has. This
-# workflow is the only way to produce an iOS build, so it also has to be the
-# place where iOS breakage is noticed.
-# Not run on pull requests. The unsigned compile check this used to attempt
-# does not exist: xcodebuild refuses to build without a development team, so
-# every PR run failed with "Signing for nox_iOS requires a development team"
-# and told us nothing. A check that cannot pass is noise, not a safety net.
-#
-# Once an Apple account is configured, adding `pull_request` back will give a
-# real check, because the credentials it needs will be there.
+# Builds the phone app (React Native, native/) for iOS and uploads it to
+# TestFlight. No maintainer machine runs macOS, so this is the only place an
+# iOS build is made.
 on:
   push:
     tags: ['v*']
-  # Upload to TestFlight on demand.
   workflow_dispatch:
     inputs:
       upload:
@@ -30,100 +22,156 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
 
+    env:
+      BUNDLE_ID: garden.nox.rn
+      PROFILE_NAME: nox RN App Store
+
     steps:
       - uses: actions/checkout@v4
+
+      # The newest Xcode on the image: an older one can lack the iOS SDK that
+      # App Store Connect currently requires.
+      - name: Select Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Install Rust with iOS targets
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
         with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+          node-version: '22'
 
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - run: bun install --frozen-lockfile
-
-      # Decides whether this run can sign and upload. Pull requests from forks
-      # cannot read secrets, and the credentials may simply not be set up yet,
-      # so the workflow degrades to a compile check instead of failing.
-      - name: Resolve run mode
-        id: mode
-        env:
-          HAS_API_KEY: ${{ secrets.APPLE_API_KEY_CONTENT != '' }}
+      # Both: the app imports the shared code in ../src, whose dependencies
+      # live in the repository root.
+      - name: Install dependencies
         run: |
-          if [ "$HAS_API_KEY" = "true" ]; then
-            echo "signed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No Apple credentials configured - nothing to build. See docs/ios-testflight.md."
+          bun install --frozen-lockfile
+          npm ci --prefix native
+
+      # native/ios is not committed; it is generated fresh, so it cannot drift
+      # from app.json.
+      - name: Generate the iOS project
+        working-directory: native
+        run: |
+          npx expo prebuild --platform ios --no-install
+          (cd ios && pod install)
+
+      # Each upload needs a build number App Store Connect has not seen.
+      - name: Set the build number
+        working-directory: native
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" ios/nox/Info.plist
+
+      - name: Install the signing certificate and profile
+        env:
+          CERTIFICATE: ${{ secrets.IOS_DIST_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_DIST_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/dist.p12" -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/dist.p12"
+
+          PROFILES="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES"
+          echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/app.mobileprovision"
+          UUID=$(security cms -D -i "$RUNNER_TEMP/app.mobileprovision" | plutil -extract UUID raw -)
+          cp "$RUNNER_TEMP/app.mobileprovision" "$PROFILES/$UUID.mobileprovision"
+
+      # Manual signing on the app target only. Set on the command line, these
+      # would reach the Pods targets too, which cannot take a profile.
+      - name: Sign the app target with the profile
+        working-directory: native
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          PBX=ios/nox.xcodeproj/project.pbxproj
+          sed -i '' "s|CODE_SIGN_ENTITLEMENTS = nox/nox.entitlements;|&\n\t\t\t\tCODE_SIGN_STYLE = Manual;\n\t\t\t\tDEVELOPMENT_TEAM = $TEAM_ID;\n\t\t\t\t\"CODE_SIGN_IDENTITY[sdk=iphoneos*]\" = \"Apple Distribution\";\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_NAME\";|" "$PBX"
+          if ! grep -q "PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_NAME\"" "$PBX"; then
+            echo "::error::Could not find the app target's signing settings in $PBX"
+            exit 1
           fi
 
-      # gen/apple is not committed, so it is created fresh on every run. This
-      # also means a stale generated project can never drift from the config.
-      - name: Initialise the iOS project
-        if: steps.mode.outputs.signed == 'true'
-        run: bunx tauri ios init --ci
+      - name: Archive
+        working-directory: native/ios
+        run: |
+          xcodebuild archive \
+            -workspace nox.xcworkspace -scheme nox -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/nox.xcarchive" | tail -50
+          test -d "$RUNNER_TEMP/nox.xcarchive"
 
-
-      - name: Write App Store Connect API key
-        if: steps.mode.outputs.signed == 'true'
+      - name: Write the App Store Connect API key
         env:
           KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
           KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
         run: |
-          mkdir -p ~/private_keys
-          # The key is only downloadable once from App Store Connect, so it is
-          # stored base64-encoded in the secret rather than pasted raw.
-          echo "$KEY_CONTENT" | base64 --decode > ~/private_keys/AuthKey_${KEY_ID}.p8
-          echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey_${KEY_ID}.p8" >> "$GITHUB_ENV"
-
-      - name: Build and sign for App Store Connect
-        if: steps.mode.outputs.signed == 'true'
-        env:
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
-        run: bunx tauri ios build --ci --export-method app-store-connect
-
-      - name: Locate the IPA
-        if: steps.mode.outputs.signed == 'true'
-        id: ipa
-        run: |
-          IPA=$(find src-tauri/gen/apple/build -name '*.ipa' -print -quit)
-          if [ -z "$IPA" ]; then
-            echo "::error::Build reported success but produced no .ipa"
-            exit 1
+          KEY_PATH="$RUNNER_TEMP/AuthKey_$KEY_ID.p8"
+          # Stored either as the .p8 itself or base64-encoded.
+          if printf '%s' "$KEY_CONTENT" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$KEY_CONTENT" > "$KEY_PATH"
+          else
+            printf '%s' "$KEY_CONTENT" | base64 --decode > "$KEY_PATH"
           fi
-          echo "path=$IPA" >> "$GITHUB_OUTPUT"
+          echo "KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
-      - name: Upload to TestFlight
-        if: >-
-          steps.mode.outputs.signed == 'true' &&
-          (github.event_name != 'workflow_dispatch' || inputs.upload)
+      # Exported and, unless asked not to, uploaded in the same step.
+      - name: Export and upload to TestFlight
         env:
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          DESTINATION: ${{ (github.event_name == 'workflow_dispatch' && !inputs.upload) && 'export' || 'upload' }}
         run: |
-          xcrun altool --upload-app --type ios \
-            --file "${{ steps.ipa.outputs.path }}" \
-            --apiKey "$APPLE_API_KEY_ID" \
-            --apiIssuer "$APPLE_API_ISSUER"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>$DESTINATION</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict><key>$BUNDLE_ID</key><string>$PROFILE_NAME</string></dict>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/nox.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER"
+          echo "### iOS build ${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Destination: $DESTINATION" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep the IPA as an artifact
-        if: steps.mode.outputs.signed == 'true'
+        if: hashFiles(format('{0}/export/*.ipa', runner.temp)) != ''
         uses: actions/upload-artifact@v4
         with:
           name: nox-ios
-          path: ${{ steps.ipa.outputs.path }}
+          path: ${{ runner.temp }}/export/*.ipa
           retention-days: 14
 
-      # The private key must not outlive the job, even though the runner is
-      # ephemeral.
-      - name: Remove the API key
+      # Nothing secret outlives the job, even on an ephemeral runner.
+      - name: Clean up
         if: always()
-        run: rm -rf ~/private_keys
+        run: |
+          rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
