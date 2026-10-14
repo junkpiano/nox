@@ -12,6 +12,7 @@
  * back.
  */
 
+import { emitAppEvent } from '../../src/common/app-events';
 import { readClientName } from '../../src/common/client-tag';
 import type { EmojiMap } from '../../src/common/content-segments';
 import {
@@ -31,6 +32,7 @@ import {
 import { getCachedTimeline } from '../../src/common/db/timeline-queries';
 import {
   appendEventsToTimeline,
+  deleteTimeline,
   prependEventsToTimeline,
   removeEventFromTimeline,
 } from '../../src/common/db/timelines-store';
@@ -41,6 +43,7 @@ import {
   getCachedDeletionStatus,
 } from '../../src/common/deletion-gate';
 import { matchesFilter } from '../../src/common/event-filter';
+import { rememberedFollows } from '../../src/common/events-queries';
 import {
   getFollowedHashtags,
   homeFilters,
@@ -203,23 +206,26 @@ async function showFromCache(
   key: TimelineKey,
   relays: string[],
   onCached: LoadOptions['onCached'],
+  keep: (event: NostrEvent) => boolean = (): boolean => true,
 ): Promise<NostrEvent[]> {
   if (!onCached) return [];
   try {
     const cached = await getCachedTimeline(key.type, key.pubkey, {
       limit: PAGE_LIMIT,
     });
-    if (!cached.hasCache || cached.events.length === 0) return [];
-    const ageMinutes: number =
-      (Date.now() / 1000 - cached.newestTimestamp) / 60;
+    const kept: NostrEvent[] = cached.events.filter(keep);
+    if (!cached.hasCache || kept.length === 0) return [];
+    // Since it was saved, not since its newest post: people who post
+    // rarely would otherwise never have their timeline shown from cache.
+    const ageMinutes: number = (Date.now() - cached.savedAt) / 60000;
     if (ageMinutes > CACHE_MAX_AGE_MINUTES[key.type]) return [];
-    const decorated: Decorated = await decorateEvents(relays, cached.events, {
+    const decorated: Decorated = await decorateEvents(relays, kept, {
       profiles: 'cached',
       deletions: 'remembered',
       cacheKey: key,
     });
     if (decorated.posts.length > 0) onCached(decorated.posts);
-    return cached.events;
+    return kept;
   } catch (error: unknown) {
     console.warn('[timeline] cache could not be read', error);
     return [];
@@ -260,23 +266,57 @@ export async function loadHomeTimeline(
   const started: number = Date.now();
   const relays: string[] = getRelays();
   const cacheKey: TimelineKey = { type: 'home', pubkey: viewer };
+  // The list this device remembers starts the timeline at once; the relays'
+  // is asked for alongside, and Home reloads only if it turns out different.
+  const remembered: PubkeyHex[] | null = rememberedFollows(viewer);
+  // Cached posts that no longer answer Home's question - by someone
+  // unfollowed, under a hashtag dropped - stay off screen, whenever the cache
+  // was written and whatever was still in flight when it was.
+  const remembers: Array<Record<string, unknown>> = homeFilters(
+    HOME_KINDS,
+    [viewer, ...(remembered ?? [])],
+    getFollowedHashtags(viewer),
+  );
+  // Without a remembered list there is no telling which cached posts still
+  // belong, so that one load - the first after install - waits for the relays.
+  const followed = (event: NostrEvent): boolean =>
+    remembered !== null &&
+    remembers.some((one): boolean => matchesFilter(one, event));
   const cachedEvents: NostrEvent[] = await showFromCache(
     cacheKey,
     relays,
     options.onCached,
+    followed,
   );
 
   onStage('follow list...');
   // The shared reader: silence from every relay is an error, and relays
   // that answered without a list give null - neither is "follows nobody".
-  // Followed hashtags beside follows; a list that cannot be read leaves the
-  // copy this device already has.
-  const [followSet, hashtags] = await Promise.all([
-    fetchFollowSet(viewer, relays),
-    refreshFollowedHashtags(viewer, relays).catch((): string[] =>
-      getFollowedHashtags(viewer),
-    ),
-  ]);
+  const asked: Promise<Set<PubkeyHex> | null> = fetchFollowSet(viewer, relays);
+  // Announces its own change, which reloads Home.
+  const refreshed: Promise<string[]> = refreshFollowedHashtags(
+    viewer,
+    relays,
+  ).catch((): string[] => getFollowedHashtags(viewer));
+  let followSet: Set<PubkeyHex> | null;
+  let hashtags: string[];
+  if (remembered) {
+    followSet = new Set(remembered);
+    hashtags = getFollowedHashtags(viewer);
+    void asked
+      .then((): void => {
+        // What the device now keeps: an older list on a relay is not kept,
+        // and comparing against it would reload Home over and over.
+        const now: PubkeyHex[] | null = rememberedFollows(viewer);
+        if (now && [...now].sort().join() !== [...remembered].sort().join()) {
+          emitAppEvent('follows-updated');
+        }
+      })
+      .catch((): void => {});
+  } else {
+    // Nothing remembered yet: the first load waits for both.
+    [followSet, hashtags] = await Promise.all([asked, refreshed]);
+  }
   const follows: PubkeyHex[] = followSet ? Array.from(followSet) : [];
   // Seeing your own posts in your own timeline is the web app's behaviour too.
   const authors: PubkeyHex[] = Array.from(new Set([viewer, ...follows])).slice(

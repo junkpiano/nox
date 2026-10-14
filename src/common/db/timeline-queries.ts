@@ -12,6 +12,8 @@ export interface CachedTimelineResult {
   newestTimestamp: number;
   oldestTimestamp: number;
   hasCache: boolean;
+  /** When the timeline was last saved (ms); 0 without one. */
+  savedAt: number;
 }
 
 /**
@@ -33,6 +35,7 @@ export async function getCachedTimeline(
       newestTimestamp: 0,
       oldestTimestamp: 0,
       hasCache: false,
+      savedAt: 0,
     };
   }
 
@@ -44,6 +47,7 @@ export async function getCachedTimeline(
       newestTimestamp: 0,
       oldestTimestamp: 0,
       hasCache: false,
+      savedAt: 0,
     };
   }
 
@@ -66,6 +70,7 @@ export async function getCachedTimeline(
     newestTimestamp: timeline.newestTimestamp,
     oldestTimestamp: timeline.oldestTimestamp,
     hasCache: true,
+    savedAt: timeline.updatedAt,
   };
 }
 

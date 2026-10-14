@@ -228,6 +228,18 @@ export default function Home({ active = true }: { active?: boolean }) {
     [pubkey, load, forget],
   );
 
+  // The follow list on the relays differed from the one this load started
+  // with: the question changes, so the timeline is asked again.
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('follows-updated', (): void => {
+        setFilter(null);
+        forget();
+        if (pubkey) void load(pubkey);
+      }),
+    [pubkey, load, forget],
+  );
+
   // A note just posted belongs at the top of this list, which includes the
   // viewer's own. An empty list is reloaded outright, since it has nothing
   // to be newer than and the poll does not run on it.

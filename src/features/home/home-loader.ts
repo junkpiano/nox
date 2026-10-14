@@ -1,5 +1,9 @@
 import type { PubkeyHex } from '../../../types/nostr';
-import { fetchFollowList } from '../../common/events-queries.js';
+import { emitAppEvent } from '../../common/app-events.js';
+import {
+  fetchFollowList,
+  rememberedFollows,
+} from '../../common/events-queries.js';
 import { refreshFollowedHashtags } from '../../common/interests.js';
 import { isReadOnlySession } from '../../common/session.js';
 import { loadHomeTimeline } from './home-timeline.js';
@@ -55,14 +59,35 @@ export async function loadUserHomeTimeline(
       options.profileSection.className = '';
     }
 
-    // Followed hashtags beside follows; a list that cannot be read leaves
-    // the copy this device already has.
-    const [followedPubkeys] = await Promise.all([
-      fetchFollowList(options.pubkeyHex, options.relays),
-      refreshFollowedHashtags(options.pubkeyHex, options.relays).catch(
-        (): string[] => [],
-      ),
-    ]);
+    // The lists this device remembers start Home at once; the relays' are
+    // asked for alongside, and Home reloads only if one turns out
+    // different. Followed hashtags announce their own change.
+    const remembered: PubkeyHex[] | null = rememberedFollows(options.pubkeyHex);
+    const fetched: Promise<PubkeyHex[]> = fetchFollowList(
+      options.pubkeyHex,
+      options.relays,
+    );
+    const hashtags: Promise<string[]> = refreshFollowedHashtags(
+      options.pubkeyHex,
+      options.relays,
+    ).catch((): string[] => []);
+    let followedPubkeys: PubkeyHex[];
+    if (remembered) {
+      followedPubkeys = remembered;
+      void fetched
+        .then((): void => {
+          const now: PubkeyHex[] | null = rememberedFollows(options.pubkeyHex);
+          // Whatever page is showing: the in-memory list is dropped either
+          // way, and only Home reloads.
+          if (now && [...now].sort().join() !== [...remembered].sort().join()) {
+            emitAppEvent('follows-updated');
+          }
+        })
+        .catch((): void => {});
+    } else {
+      // Nothing remembered yet: the first Home waits for both.
+      [followedPubkeys] = await Promise.all([fetched, hashtags]);
+    }
     if (!isRouteActive()) {
       return;
     }

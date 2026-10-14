@@ -15,9 +15,11 @@
 
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { verifySignature } from './event-filter.js';
+import { rememberFollowList } from './events-queries.js';
 import { kvGet, kvSet } from './kv.js';
 import {
   NoRelayAnsweredError,
+  newestOf,
   queryRelaysDetailed,
   type SubscriptionOpener,
 } from './relay-query.js';
@@ -108,6 +110,13 @@ export async function fetchFollowSet(
   if (answered === 0) {
     throw new NoRelayAnsweredError(relays);
   }
+  const newest: NostrEvent | null = newestOf(
+    events.filter(
+      (event: NostrEvent): boolean =>
+        event.kind === 3 && event.pubkey === viewer && genuine(event),
+    ),
+  );
+  if (newest) rememberFollowList(viewer, newest);
   return collectFollowSet(viewer, events);
 }
 

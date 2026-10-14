@@ -29,7 +29,11 @@ import {
   removeEventFromTimeline,
   storeEvents,
 } from './db/index.js';
-import { createDeletionGate, findDeletedIds } from './deletion-gate.js';
+import {
+  createDeletionGate,
+  findDeletedIds,
+  getCachedDeletionStatus,
+} from './deletion-gate.js';
 import { renderEvent, showVerifiedNip05 } from './event-render.js';
 import { fetchingProfiles, profileCache } from './timeline-cache.js';
 import { applyStatusesToTimeline } from './timeline-status.js';
@@ -43,7 +47,8 @@ interface TimelineCacheOptions {
   enabled?: boolean | undefined;
   limit?: number | undefined;
   maxAgeMinutes: number;
-  getNewestTimestamp?: ((cached: CachedTimelineResult) => number) | undefined;
+  /** Which cached events still answer the question; all, when absent. */
+  keep?: ((event: NostrEvent) => boolean) | undefined;
 }
 
 export interface TimelineRuntimeContext {
@@ -347,17 +352,20 @@ export async function loadTimeline(
         options.timelinePubkey,
         { limit: activeCacheOptions.limit || 50 },
       );
-      const newestTimestamp: number =
-        activeCacheOptions.getNewestTimestamp?.(cached) ??
-        cached.newestTimestamp;
+      // Since it was saved, not since its newest post: people who post
+      // rarely would otherwise never have their timeline shown from cache.
       const cacheAgeMinutes = cached.hasCache
-        ? Math.floor((Date.now() / 1000 - newestTimestamp) / 60)
+        ? Math.floor((Date.now() - cached.savedAt) / 60000)
         : 0;
       const isCacheStale = cacheAgeMinutes > activeCacheOptions.maxAgeMinutes;
 
-      if (cached.hasCache && cached.events.length > 0) {
+      const keep = activeCacheOptions.keep;
+      const cachedEvents: NostrEvent[] = keep
+        ? cached.events.filter(keep)
+        : cached.events;
+      if (cached.hasCache && cachedEvents.length > 0) {
         console.log(
-          `[${options.logPrefix}] Loaded ${cached.events.length} events from cache (age: ${cacheAgeMinutes} minutes, ${isCacheStale ? 'STALE' : 'fresh'})`,
+          `[${options.logPrefix}] Loaded ${cachedEvents.length} events from cache (age: ${cacheAgeMinutes} minutes, ${isCacheStale ? 'STALE' : 'fresh'})`,
         );
 
         if (isCacheStale) {
@@ -368,20 +376,21 @@ export async function loadTimeline(
           if (!routeIsActive()) {
             return;
           }
-          // Withdrawn since it was cached, for all the cache knows. Asked
-          // once for the whole batch before any of it is drawn.
-          const withdrawn: Set<string> = await findDeletedIds(
-            relays,
-            cached.events,
+          // Drawn with what is remembered about withdrawals, not after a
+          // round trip: the relays are asked once the cards are up, and any
+          // withdrawn since it was cached is taken down again.
+          const withdrawn: Set<string> = new Set(
+            cachedEvents
+              .filter((event) => getCachedDeletionStatus(event.id) === true)
+              .map((event) => event.id),
           );
-          if (withdrawn.size > 0) forgetWithdrawn(Array.from(withdrawn));
           // One lookup per author, all at once, before anything is drawn:
           // the loop below then finds every profile in the memo instead of
           // waiting on the database once per card.
           await Promise.all(
             Array.from(
               new Set(
-                cached.events.map(
+                cachedEvents.map(
                   (event: NostrEvent): PubkeyHex => event.pubkey as PubkeyHex,
                 ),
               ),
@@ -401,7 +410,7 @@ export async function loadTimeline(
           options.output.innerHTML = '';
 
           if (routeIsActive()) {
-            for (const event of cached.events) {
+            for (const event of cachedEvents) {
               if (
                 withdrawn.has(event.id) ||
                 renderedEventIds.has(event.id) ||
@@ -427,6 +436,21 @@ export async function loadTimeline(
 
           currentUntilTimestamp = originalUntilTimestamp;
           options.onUntilTimestampChange?.(currentUntilTimestamp);
+
+          void findDeletedIds(relays, cachedEvents)
+            .then((ids: Set<string>): void => {
+              if (ids.size === 0) return;
+              forgetWithdrawn(Array.from(ids));
+              if (!routeIsActive()) return;
+              for (const id of ids) {
+                options.output
+                  .querySelector(`.event-container[data-event-id="${id}"]`)
+                  ?.remove();
+              }
+            })
+            .catch((): void => {
+              // Unanswered: the cards stay, as they would have before.
+            });
         }
       }
     } catch (error) {

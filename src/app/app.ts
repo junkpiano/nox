@@ -398,6 +398,13 @@ onAppEvent('interests-updated', (): void => {
   if (['/', '/home'].includes(window.location.pathname)) handleRoute();
 });
 
+// The follow list on the relays differed from the one Home started with.
+onAppEvent('follows-updated', (): void => {
+  // The in-memory copy holds the old list; Home would reuse it otherwise.
+  appState.cachedHomeTimeline = null;
+  if (['/', '/home'].includes(window.location.pathname)) handleRoute();
+});
+
 window.addEventListener('popstate', (event: PopStateEvent): void => {
   // Not while the gate is up. The overlay covers the page, but a route run
   // behind it would still open sockets and fetch posts - and "covered" is a
