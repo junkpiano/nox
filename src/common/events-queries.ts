@@ -1,11 +1,14 @@
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { recordRelayFailure } from '../features/relays/relays.js';
 import { verifySignature } from './event-filter.js';
+import { kvGet, kvSet } from './kv.js';
 import { promiseAny, RelayMissError } from './promise-utils.js';
 import { fanOut, type RelayReport } from './relay-fanout.js';
+import { supersedes } from './relay-query.js';
 import { clearRelayTimeout, setRelayTimeout } from './relay-schedule.js';
 import { openRelaySubscription } from './relay-socket.js';
 import { descendantsOf, threadRootOf } from './reply-target.js';
+import { VIEWER_KEY } from './session.js';
 
 const FOLLOW_LIST_MAX_FUTURE_SKEW_SECONDS: number = 5 * 60;
 /** A relay silent for this long is recorded as failing and given up on. */
@@ -213,7 +216,68 @@ export async function fetchFollowList(
       followedPubkeys.add(tag[1] as PubkeyHex);
     }
   });
+  rememberFollowList(pubkeyHex, event);
   return Array.from(followedPubkeys);
+}
+
+function followsKey(pubkey: PubkeyHex): string {
+  return `nostr_follows:${pubkey}`;
+}
+
+/** Keeps `event`'s follows, unless this device already has a newer list. */
+export function rememberFollowList(pubkey: PubkeyHex, event: NostrEvent): void {
+  // Only the signed-in account's: profiles ask about everyone else's too.
+  if (event.kind !== 3 || event.pubkey !== pubkey) return;
+  if (kvGet(VIEWER_KEY) !== pubkey) return;
+  // A list dated in the future would outrank every honest one after it.
+  if (
+    event.created_at >
+    Math.floor(Date.now() / 1000) + FOLLOW_LIST_MAX_FUTURE_SKEW_SECONDS
+  ) {
+    return;
+  }
+  const follows: PubkeyHex[] = Array.from(
+    new Set(
+      event.tags
+        .filter((tag: string[]): boolean => tag[0] === 'p' && Boolean(tag[1]))
+        .map((tag: string[]): PubkeyHex => tag[1] as PubkeyHex),
+    ),
+  );
+  try {
+    const saved = JSON.parse(kvGet(followsKey(pubkey)) ?? 'null');
+    if (
+      saved &&
+      typeof saved.created_at === 'number' &&
+      typeof saved.id === 'string' &&
+      !supersedes(event, saved)
+    ) {
+      return;
+    }
+    kvSet(
+      followsKey(pubkey),
+      JSON.stringify({ id: event.id, created_at: event.created_at, follows }),
+    );
+  } catch {
+    // A device that cannot keep it asks the relays every time, as before.
+  }
+}
+
+/**
+ * The follow list this device last found, or null before it found one.
+ * Home starts from it rather than waiting a round trip for the relays'.
+ */
+export function rememberedFollows(pubkey: PubkeyHex): PubkeyHex[] | null {
+  try {
+    const saved = JSON.parse(kvGet(followsKey(pubkey)) ?? 'null');
+    return saved && Array.isArray(saved.follows)
+      ? saved.follows.filter(
+          (follow: unknown): follow is PubkeyHex =>
+            typeof follow === 'string' && /^[0-9a-f]{64}$/.test(follow),
+        )
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchEventFromRelay(

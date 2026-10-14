@@ -1,4 +1,5 @@
 import type { PubkeyHex } from '../../../types/nostr';
+import { matchesFilter } from '../../common/event-filter.js';
 import { getFollowedHashtags, homeFilters } from '../../common/interests.js';
 import { loadTimeline } from '../../common/timeline-loader.js';
 import { getRelays } from '../relays/relays.js';
@@ -36,6 +37,7 @@ export async function loadHomeTimeline(
 
   const relays = getRelays();
   const hashtags: string[] = getFollowedHashtags(userPubkey ?? null);
+  const filters = homeFilters(kinds, followedPubkeys, hashtags);
   await loadTimeline({
     logPrefix: 'HomeTimeline',
     timelineType: 'home',
@@ -48,19 +50,19 @@ export async function loadHomeTimeline(
     activeTimeouts,
     isRouteActive: routeIsActive,
     createFilter: (currentUntilTimestamp) =>
-      homeFilters(kinds, followedPubkeys, hashtags).map((filter) => ({
+      filters.map((filter) => ({
         ...filter,
         until: currentUntilTimestamp,
         limit,
       })),
     cache: {
       enabled: Boolean(userPubkey),
+      // Cached posts that no longer answer Home's question - by someone
+      // unfollowed, under a hashtag dropped - stay off screen, whenever the
+      // cache was written and whatever was in flight when it was.
+      keep: (event) => filters.some((filter) => matchesFilter(filter, event)),
       limit: 50,
       maxAgeMinutes: 30,
-      getNewestTimestamp: (cached) =>
-        cached.events.length > 0
-          ? Math.max(...cached.events.map((event) => event.created_at))
-          : cached.newestTimestamp,
     },
     renderMode: 'sorted-batch',
     receiveMode: 'buffered',

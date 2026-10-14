@@ -27,6 +27,8 @@ export type AppEventName =
   | 'mute-list-updated'
   /** The viewer followed or unfollowed a hashtag: Home asks again. */
   | 'interests-updated'
+  /** The viewer's follow list, found on the relays, differs from the one remembered. */
+  | 'follows-updated'
   | 'dm-messages-updated'
   | 'wallet-connection-changed'
   | 'relays-updated'
