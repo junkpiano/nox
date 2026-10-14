@@ -2,10 +2,11 @@ name: iOS TestFlight
 
 # Builds the phone app (React Native, native/) for iOS and uploads it to
 # TestFlight. No maintainer machine runs macOS, so this is the only place an
-# iOS build is made.
+# iOS build is made. Every merge to main reaches TestFlight; a newer merge
+# cancels a build still running for an older one.
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
     inputs:
       upload:

@@ -8,7 +8,7 @@ the only place it is built, on a GitHub macOS runner.
 
 | Trigger | Behaviour |
 |---|---|
-| Tag `v*` | Signed build, uploaded to TestFlight. |
+| Merge to `main` | Signed build, uploaded to TestFlight. |
 | Manual run (Actions → iOS TestFlight → Run workflow) | Signed build; the `upload` input decides whether it goes to TestFlight or is only kept as an artifact. |
 
 The build number is the workflow's run number, so every upload is new to App

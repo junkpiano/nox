@@ -1,14 +1,10 @@
 name: Android
 
-# Android is built on maintainer machines, so nothing catches a break until
-# someone happens to run a build. iOS already has this safety net; Android had
-# none, despite being the platform that ships first.
+# Built when something reaches main, and on demand; pull requests do not wait
+# for it.
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 concurrency:
