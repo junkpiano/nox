@@ -106,12 +106,25 @@ jobs:
 
       - name: Archive
         working-directory: native/ios
+        # The full log is long; on failure the errors are printed and the
+        # whole log is kept as an artifact.
         run: |
-          xcodebuild archive \
+          if ! xcodebuild archive \
             -workspace nox.xcworkspace -scheme nox -configuration Release \
             -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/nox.xcarchive" | tail -50
-          test -d "$RUNNER_TEMP/nox.xcarchive"
+            -archivePath "$RUNNER_TEMP/nox.xcarchive" > "$RUNNER_TEMP/xcodebuild.log" 2>&1; then
+            grep -nE -B2 -A8 "error:|Command PhaseScriptExecution failed" "$RUNNER_TEMP/xcodebuild.log" | head -200
+            exit 1
+          fi
+          tail -5 "$RUNNER_TEMP/xcodebuild.log"
+
+      - name: Keep the build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: ${{ runner.temp }}/xcodebuild.log
+          retention-days: 7
 
       - name: Write the App Store Connect API key
         env:
