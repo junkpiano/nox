@@ -52,7 +52,7 @@ import { isMuted } from './mute-state.js';
 import { verifiedNip05 } from './nip05.js';
 import { noteRenderedCard, recordOwnReaction } from './own-reactions-dom.js';
 import { publishEventToRelays } from './publish-event.js';
-import { DEFAULT_QUICK_REACTION, getQuickReaction } from './quick-reaction.js';
+import { getQuickReaction } from './quick-reaction.js';
 import type { ReactionAggregate } from './reaction-interactions.js';
 import {
   applyOptimisticReactionState,
@@ -1014,18 +1014,14 @@ export function renderEvent(
     : `${actionBtnBase} repost-event-btn text-gray-400 hover:text-gray-500 ${actionBtnDisabled}`;
 
   // What one tap on it sends: the person's choice, ❤ until they make one.
-  // The button wears that choice, so the tap is never a surprise.
   const quickReaction: ReactionAggregate = getQuickReaction(
     storedPubkey ? (storedPubkey as PubkeyHex) : null,
   );
-  const quickReactionIcon: string =
-    quickReaction.key === DEFAULT_QUICK_REACTION.key
-      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
+  // The button is a heart, as the other actions are line icons; what it
+  // sends is the person's choice, named in its label.
+  const quickReactionIcon: string = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 block" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z" />
-              </svg>`
-      : quickReaction.imageUrl
-        ? `<img class="nox-emoji nox-quick-emoji" src="${escapeHtml(quickReaction.imageUrl)}" alt="${escapeHtml(quickReaction.content)}" />`
-        : `<span class="nox-quick-emoji" aria-hidden="true">${escapeHtml(quickReaction.content)}</span>`;
+              </svg>`;
   const reactButtonTitle: string = isLoggedIn
     ? 'React'
     : 'React (sign-in required)';

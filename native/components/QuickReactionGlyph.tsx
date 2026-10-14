@@ -1,9 +1,6 @@
 /**
- * What the heart button shows: the reaction one tap sends.
- *
- * ❤ - the default - keeps the ♡ / ♥ it always had. A chosen emoji or custom
- * picture takes its place, quiet until given and in full once it is: the
- * same two states the heart has.
+ * The quick reaction itself, as Settings shows it: the emoji, the custom
+ * picture, or ♥ for the default. The heart button on a post stays a heart.
  */
 
 import { Image, StyleSheet, Text } from 'react-native';
@@ -12,34 +9,27 @@ import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 
 export default function QuickReactionGlyph({
   reaction,
-  given,
   style,
 }: {
   reaction: ReactionAggregate;
-  given: boolean;
   style: object;
 }) {
   if (reaction.key === DEFAULT_QUICK_REACTION.key) {
-    return <Text style={style}>{given ? '♥' : '♡'}</Text>;
+    return <Text style={style}>{'\u2665\uFE0E'}</Text>;
   }
   if (reaction.imageUrl) {
     return (
       <Image
         source={{ uri: reaction.imageUrl }}
-        style={[styles.picture, !given && styles.quiet]}
+        style={styles.picture}
         accessibilityLabel={reaction.content}
       />
     );
   }
-  return (
-    <Text style={[style, styles.emoji, !given && styles.quiet]}>
-      {reaction.content}
-    </Text>
-  );
+  return <Text style={[style, styles.emoji]}>{reaction.content}</Text>;
 }
 
 const styles = StyleSheet.create({
   picture: { width: 20, height: 20, resizeMode: 'contain' },
   emoji: { fontSize: 18 },
-  quiet: { opacity: 0.5 },
 });
