@@ -1,13 +1,11 @@
 name: Windows and Linux
 
-# The desktop app had never been built for Windows or Linux. This builds both
-# on every change that can break them and keeps the installers.
+# Builds the desktop app for Windows and Linux and keeps the installers.
+# Built when something reaches main, and on demand; pull requests do not wait
+# for it.
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 concurrency:
