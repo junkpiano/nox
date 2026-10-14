@@ -26,8 +26,14 @@ fn create_store() -> Result<(), String> {
     #[cfg(target_os = "android")]
     let store = android_native_keyring_store::Store::new();
 
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    let store = apple_native_keyring_store::Store::new();
+    // The login keychain: the desktop app is not signed with a provisioning
+    // profile, and the protected store refuses apps that are not.
+    #[cfg(target_os = "macos")]
+    let store = apple_native_keyring_store::keychain::Store::new();
+
+    // iOS has only the protected store.
+    #[cfg(target_os = "ios")]
+    let store = apple_native_keyring_store::protected::Store::new();
 
     #[cfg(target_os = "windows")]
     let store = windows_native_keyring_store::Store::new();
