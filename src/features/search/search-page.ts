@@ -19,11 +19,11 @@ import {
   getStoredPubkey,
 } from '../profile/profile.js';
 import { getRelays } from '../relays/relays.js';
+import { fetchUserSearchHits } from './user-query.js';
 import {
   decodePubkeyQuery,
   rankUserResults,
   renderUserResults,
-  searchUsers,
   type UserSearchResult,
 } from './user-search.js';
 
@@ -136,7 +136,6 @@ interface UserResultsParams {
   query: string;
   relays: string[];
   container: HTMLElement;
-  activeWebSockets: WebSocket[];
   routeIsActive: () => boolean;
 }
 
@@ -170,7 +169,7 @@ async function loadFollowedSet(): Promise<Set<PubkeyHex>> {
  * own container, so a slow or empty people search never holds up the posts.
  */
 async function loadUserResults(params: UserResultsParams): Promise<void> {
-  const { query, relays, container, activeWebSockets, routeIsActive } = params;
+  const { query, relays, container, routeIsActive } = params;
 
   const pastedPubkey: PubkeyHex | null = decodePubkeyQuery(query);
   if (pastedPubkey) {
@@ -205,14 +204,7 @@ async function loadUserResults(params: UserResultsParams): Promise<void> {
   // wants it, but a slow kind 3 must not delay the query.
   const [results, followed]: [UserSearchResult[], Set<PubkeyHex>] =
     await Promise.all([
-      searchUsers({
-        query,
-        relays,
-        limit: USER_SEARCH_LIMIT,
-        followed: new Set<PubkeyHex>(),
-        activeWebSockets,
-        isRouteActive: routeIsActive,
-      }),
+      fetchUserSearchHits(query, relays, USER_SEARCH_LIMIT, routeIsActive),
       loadFollowedSet(),
     ]);
 
@@ -284,7 +276,6 @@ export async function loadSearchPage(
     query,
     relays,
     container: usersContainer,
-    activeWebSockets,
     routeIsActive,
   });
 
