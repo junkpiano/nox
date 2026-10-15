@@ -14,25 +14,24 @@ import {
   type ContentHtmlOptions,
   renderContentHtml,
 } from '../../common/content-html.js';
-import {
-  getProfile,
-  getProfiles,
-  storeProfile,
-} from '../../common/db/index.js';
+import { getProfile } from '../../common/db/index.js';
 import { escapeHtml } from '../../common/escape-html.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
 import { fetchFollowSet } from '../../common/notification-filter.js';
-import { newestOf, queryRelays } from '../../common/relay-query.js';
 import {
-  clearRelayTimeout,
-  setRelayTimeout,
-} from '../../common/relay-schedule.js';
-import { openRelaySubscription } from '../../common/relay-socket.js';
+  cacheResolvedProfile,
+  fetchProfile,
+  fetchProfiles,
+  getAuthoritativeProfile,
+} from '../../common/profile-fetch.js';
 import { signWithSession } from '../../common/signer.js';
 import { openZapComposer } from '../../common/zap.js';
 import { getAvatarURL, getDisplayName } from '../../utils/utils.js';
-import { getRelays, recordRelayFailure } from '../relays/relays.js';
+import { getRelays } from '../relays/relays.js';
 import { fetchUserStatus } from './user-status.js';
+
+// Moved to the shared core; re-exported for this module's importers.
+export { fetchProfile, fetchProfiles, getAuthoritativeProfile };
 
 function normalizeHttpUrl(url: string): string | null {
   try {
@@ -65,25 +64,8 @@ function normalizeProfileWebsiteUrl(
   return normalizeHttpUrl(withProtocol);
 }
 
-interface FetchProfileOptions {
-  usePersistentCache?: boolean;
-  forceRefresh?: boolean;
-}
-
-import {
-  promiseAny,
-  RelayMissError as RelayProfileMissError,
-} from '../../common/promise-utils.js';
 import { getSessionPrivateKey } from '../../common/session.js';
 
-const PROFILE_MEM_CACHE_TTL_MS: number = 5 * 60 * 1000;
-const PROFILE_RETRY_INTERVAL_MS: number = 30 * 1000;
-const profileMemoryCache: Map<
-  PubkeyHex,
-  { profile: NostrProfile | null; expiresAt: number }
-> = new Map();
-const profileInFlight: Map<PubkeyHex, Promise<NostrProfile | null>> = new Map();
-const profileLastAttempt: Map<PubkeyHex, number> = new Map();
 const PROFILE_EDITABLE_FIELDS: Array<
   | 'display_name'
   | 'name'
@@ -114,31 +96,6 @@ interface WindowWithNostr extends Window {
   nostr?: {
     signEvent: (event: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent>;
   };
-}
-
-async function cacheResolvedProfile(
-  pubkeyHex: PubkeyHex,
-  profile: NostrProfile,
-): Promise<void> {
-  await storeProfile(pubkeyHex, profile);
-  profileMemoryCache.set(pubkeyHex, {
-    profile,
-    expiresAt: Date.now() + PROFILE_MEM_CACHE_TTL_MS,
-  });
-}
-
-export function getAuthoritativeProfile(
-  pubkeyHex: PubkeyHex,
-  remoteProfile: NostrProfile | null,
-): NostrProfile | null {
-  const cachedMem:
-    | { profile: NostrProfile | null; expiresAt: number }
-    | undefined = profileMemoryCache.get(pubkeyHex);
-  if (cachedMem?.profile) {
-    return cachedMem.profile;
-  }
-
-  return remoteProfile;
 }
 
 export function getStoredPubkey(): PubkeyHex | null {
@@ -201,287 +158,12 @@ async function signProfileMetadataEvent(
   return signWithSession(unsignedEvent);
 }
 
-export async function fetchProfile(
-  pubkeyHex: PubkeyHex,
-  relays: string[],
-  options: FetchProfileOptions = {},
-): Promise<NostrProfile | null> {
-  const usePersistentCache: boolean = options.usePersistentCache !== false;
-  const forceRefresh: boolean = options.forceRefresh === true;
-  const now: number = Date.now();
-
-  if (!forceRefresh) {
-    const cachedMem:
-      | { profile: NostrProfile | null; expiresAt: number }
-      | undefined = profileMemoryCache.get(pubkeyHex);
-    if (cachedMem && cachedMem.expiresAt > now) {
-      return cachedMem.profile;
-    }
-
-    if (usePersistentCache) {
-      const cachedProfile: NostrProfile | null = await getProfile(pubkeyHex);
-      if (cachedProfile) {
-        profileMemoryCache.set(pubkeyHex, {
-          profile: cachedProfile,
-          expiresAt: now + PROFILE_MEM_CACHE_TTL_MS,
-        });
-        return cachedProfile;
-      }
-    }
-  }
-
-  if (relays.length === 0) {
-    return null;
-  }
-
-  const existing: Promise<NostrProfile | null> | undefined =
-    profileInFlight.get(pubkeyHex);
-  if (existing) {
-    return await existing;
-  }
-
-  const lastAttempt: number | undefined = profileLastAttempt.get(pubkeyHex);
-  if (
-    !forceRefresh &&
-    lastAttempt &&
-    now - lastAttempt < PROFILE_RETRY_INTERVAL_MS
-  ) {
-    return null;
-  }
-  profileLastAttempt.set(pubkeyHex, now);
-
-  const request: Promise<NostrProfile | null> =
-    (async (): Promise<NostrProfile | null> => {
-      const profileRequests: Promise<NostrProfile>[] = relays.map(
-        async (relayUrl: string): Promise<NostrProfile> => {
-          try {
-            const profile: NostrProfile | null =
-              await new Promise<NostrProfile | null>((resolve) => {
-                let settled: boolean = false;
-                let unsubscribe: (() => void) | null = null;
-
-                const finish = (value: NostrProfile | null): void => {
-                  if (settled) return;
-                  settled = true;
-                  clearRelayTimeout(timeout);
-                  unsubscribe?.();
-                  resolve(value);
-                };
-
-                const timeout = setRelayTimeout((): void => {
-                  recordRelayFailure(relayUrl);
-                  finish(null);
-                }, 5000);
-
-                void openRelaySubscription(
-                  relayUrl,
-                  { kinds: [0], authors: [pubkeyHex], limit: 1 },
-                  {
-                    onEvent: (eventPayload: NostrEvent): void => {
-                      if (eventPayload.kind !== 0) {
-                        return;
-                      }
-
-                      try {
-                        if (typeof eventPayload.content !== 'string') {
-                          finish(null);
-                          return;
-                        }
-
-                        const parsed: NostrProfile = JSON.parse(
-                          eventPayload.content,
-                        );
-                        const emojiTags: string[][] = Array.isArray(
-                          eventPayload.tags,
-                        )
-                          ? eventPayload.tags.filter(
-                              (tag: unknown): tag is string[] =>
-                                Array.isArray(tag) && tag[0] === 'emoji',
-                            )
-                          : [];
-                        parsed.emojiTags = emojiTags;
-                        finish(parsed);
-                      } catch (e) {
-                        console.warn('Failed to parse profile JSON', e);
-                      }
-                    },
-                    onEose: (): void => {
-                      finish(null);
-                    },
-                    onClosed: (): void => {
-                      finish(null);
-                    },
-                  },
-                )
-                  .then((nextUnsubscribe: () => void): void => {
-                    unsubscribe = nextUnsubscribe;
-                  })
-                  .catch((err: unknown): void => {
-                    console.error(`WebSocket error [${relayUrl}]`, err);
-                    finish(null);
-                  });
-              });
-
-            if (!profile) {
-              throw new RelayProfileMissError();
-            }
-            return profile;
-          } catch (e) {
-            if (!(e instanceof RelayProfileMissError)) {
-              console.warn(`Failed to fetch profile from ${relayUrl}`, e);
-            }
-            throw e;
-          }
-        },
-      );
-
-      try {
-        const profile: NostrProfile = await promiseAny(profileRequests);
-        await cacheResolvedProfile(pubkeyHex, profile);
-        return profile;
-      } catch {
-        // All relays missed or failed. Do NOT cache null in profileMemoryCache —
-        // profileLastAttempt (30s throttle) prevents relay hammering, while
-        // avoiding a 5-minute stale null that would block parent/repost card fetches.
-      }
-      return null;
-    })();
-
-  profileInFlight.set(pubkeyHex, request);
-  try {
-    return await request;
-  } finally {
-    profileInFlight.delete(pubkeyHex);
-  }
-}
-
-/**
- * Several people's profiles with one question to the relays.
- *
- * The same caches as `fetchProfile` - memory, then the profile store - and
- * the same thirty-second throttle per person; whoever is left is asked about
- * together, a hundred to a query, instead of one subscription each. A post
- * naming twenty people otherwise sent twenty queries to every relay.
- */
-export async function fetchProfiles(
-  pubkeys: PubkeyHex[],
-  relays: string[],
-): Promise<Map<PubkeyHex, NostrProfile>> {
-  const found: Map<PubkeyHex, NostrProfile> = new Map();
-  const now: number = Date.now();
-  let wanted: PubkeyHex[] = [];
-  for (const pubkey of new Set(pubkeys)) {
-    const cached = profileMemoryCache.get(pubkey);
-    if (cached && cached.expiresAt > now) {
-      if (cached.profile) found.set(pubkey, cached.profile);
-    } else {
-      wanted.push(pubkey);
-    }
-  }
-  if (wanted.length === 0) return found;
-
-  try {
-    const stored: Map<PubkeyHex, NostrProfile> = await getProfiles(wanted);
-    for (const [pubkey, profile] of stored) {
-      found.set(pubkey, profile);
-      profileMemoryCache.set(pubkey, {
-        profile,
-        expiresAt: now + PROFILE_MEM_CACHE_TTL_MS,
-      });
-    }
-    wanted = wanted.filter((pubkey: PubkeyHex): boolean => !stored.has(pubkey));
-  } catch (error: unknown) {
-    console.warn('[profile] Profile store could not be read', error);
-  }
-
-  // Someone already asking - an author lookup, an earlier batch - is waited
-  // for rather than skipped, or this caller would go without the name.
-  const pending: PubkeyHex[] = wanted.filter((pubkey: PubkeyHex): boolean =>
-    profileInFlight.has(pubkey),
-  );
-  // Taken now: by the time this batch is answered, they may have finished
-  // and left the map.
-  const pendingAnswers: Array<Promise<NostrProfile | null>> = pending.map(
-    (pubkey: PubkeyHex) =>
-      (profileInFlight.get(pubkey) ?? Promise.resolve(null)).catch(
-        (): null => null,
-      ),
-  );
-  wanted = wanted.filter((pubkey: PubkeyHex): boolean => {
-    if (profileInFlight.has(pubkey)) return false;
-    const last: number | undefined = profileLastAttempt.get(pubkey);
-    return !last || now - last >= PROFILE_RETRY_INTERVAL_MS;
-  });
-
-  const asking: PubkeyHex[] = relays.length === 0 ? [] : wanted;
-  for (const pubkey of asking) profileLastAttempt.set(pubkey, now);
-
-  /** One query per hundred people, all at once; each settles on its own. */
-  const askChunk = async (
-    chunk: PubkeyHex[],
-  ): Promise<Map<PubkeyHex, NostrProfile>> => {
-    const fetched: Map<PubkeyHex, NostrProfile> = new Map();
-    let events: NostrEvent[] = [];
-    try {
-      events = await queryRelays(relays, { kinds: [0], authors: chunk });
-    } catch (error: unknown) {
-      console.warn('[profile] Profiles could not be fetched', error);
-      return fetched;
-    }
-    for (const pubkey of chunk) {
-      const newest: NostrEvent | null = newestOf(
-        events.filter((event: NostrEvent): boolean => event.pubkey === pubkey),
-      );
-      if (!newest) continue;
-      try {
-        const profile: NostrProfile = JSON.parse(newest.content);
-        profile.emojiTags = newest.tags.filter(
-          (tag: string[]): boolean => tag[0] === 'emoji',
-        );
-        await cacheResolvedProfile(pubkey, profile);
-        fetched.set(pubkey, profile);
-      } catch {
-        // Not a profile anyone could read; the short identifier stays.
-      }
-    }
-    return fetched;
-  };
-
-  // Registered per person, so a `fetchProfile` for any of them waits on
-  // that person's chunk and no other.
-  const registered: Map<PubkeyHex, Promise<NostrProfile | null>> = new Map();
-  const chunks: Array<Promise<Map<PubkeyHex, NostrProfile>>> = [];
-  for (let index = 0; index < asking.length; index += 100) {
-    const chunk: PubkeyHex[] = asking.slice(index, index + 100);
-    const answer = askChunk(chunk);
-    chunks.push(answer);
-    for (const pubkey of chunk) {
-      const one = answer.then((map) => map.get(pubkey) ?? null);
-      registered.set(pubkey, one);
-      profileInFlight.set(pubkey, one);
-    }
-  }
-  try {
-    for (const map of await Promise.all(chunks)) {
-      for (const [pubkey, profile] of map) found.set(pubkey, profile);
-    }
-  } finally {
-    for (const [pubkey, one] of registered) {
-      if (profileInFlight.get(pubkey) === one) profileInFlight.delete(pubkey);
-    }
-  }
-  const others: Array<NostrProfile | null> = await Promise.all(pendingAnswers);
-  pending.forEach((pubkey: PubkeyHex, index: number): void => {
-    const profile: NostrProfile | null | undefined = others[index];
-    if (profile) found.set(pubkey, profile);
-  });
-  return found;
-}
-
 /** A mentioned person's name, when it is already in memory. */
 function knownName(pubkey: PubkeyHex): string | null {
-  const profile: NostrProfile | null | undefined =
-    profileMemoryCache.get(pubkey)?.profile;
+  const profile: NostrProfile | null | undefined = getAuthoritativeProfile(
+    pubkey,
+    null,
+  );
   return profile
     ? `@${getDisplayName(nip19.npubEncode(pubkey), profile)}`
     : null;
