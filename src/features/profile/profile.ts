@@ -14,10 +14,15 @@ import {
   type ContentHtmlOptions,
   renderContentHtml,
 } from '../../common/content-html.js';
-import { getProfile, storeProfile } from '../../common/db/index.js';
+import {
+  getProfile,
+  getProfiles,
+  storeProfile,
+} from '../../common/db/index.js';
 import { escapeHtml } from '../../common/escape-html.js';
 import { isNip05Identifier, resolveNip05 } from '../../common/nip05.js';
 import { fetchFollowSet } from '../../common/notification-filter.js';
+import { newestOf, queryRelays } from '../../common/relay-query.js';
 import {
   clearRelayTimeout,
   setRelayTimeout,
@@ -348,6 +353,129 @@ export async function fetchProfile(
   } finally {
     profileInFlight.delete(pubkeyHex);
   }
+}
+
+/**
+ * Several people's profiles with one question to the relays.
+ *
+ * The same caches as `fetchProfile` - memory, then the profile store - and
+ * the same thirty-second throttle per person; whoever is left is asked about
+ * together, a hundred to a query, instead of one subscription each. A post
+ * naming twenty people otherwise sent twenty queries to every relay.
+ */
+export async function fetchProfiles(
+  pubkeys: PubkeyHex[],
+  relays: string[],
+): Promise<Map<PubkeyHex, NostrProfile>> {
+  const found: Map<PubkeyHex, NostrProfile> = new Map();
+  const now: number = Date.now();
+  let wanted: PubkeyHex[] = [];
+  for (const pubkey of new Set(pubkeys)) {
+    const cached = profileMemoryCache.get(pubkey);
+    if (cached && cached.expiresAt > now) {
+      if (cached.profile) found.set(pubkey, cached.profile);
+    } else {
+      wanted.push(pubkey);
+    }
+  }
+  if (wanted.length === 0) return found;
+
+  try {
+    const stored: Map<PubkeyHex, NostrProfile> = await getProfiles(wanted);
+    for (const [pubkey, profile] of stored) {
+      found.set(pubkey, profile);
+      profileMemoryCache.set(pubkey, {
+        profile,
+        expiresAt: now + PROFILE_MEM_CACHE_TTL_MS,
+      });
+    }
+    wanted = wanted.filter((pubkey: PubkeyHex): boolean => !stored.has(pubkey));
+  } catch (error: unknown) {
+    console.warn('[profile] Profile store could not be read', error);
+  }
+
+  // Someone already asking - an author lookup, an earlier batch - is waited
+  // for rather than skipped, or this caller would go without the name.
+  const pending: PubkeyHex[] = wanted.filter((pubkey: PubkeyHex): boolean =>
+    profileInFlight.has(pubkey),
+  );
+  // Taken now: by the time this batch is answered, they may have finished
+  // and left the map.
+  const pendingAnswers: Array<Promise<NostrProfile | null>> = pending.map(
+    (pubkey: PubkeyHex) =>
+      (profileInFlight.get(pubkey) ?? Promise.resolve(null)).catch(
+        (): null => null,
+      ),
+  );
+  wanted = wanted.filter((pubkey: PubkeyHex): boolean => {
+    if (profileInFlight.has(pubkey)) return false;
+    const last: number | undefined = profileLastAttempt.get(pubkey);
+    return !last || now - last >= PROFILE_RETRY_INTERVAL_MS;
+  });
+
+  const asking: PubkeyHex[] = relays.length === 0 ? [] : wanted;
+  for (const pubkey of asking) profileLastAttempt.set(pubkey, now);
+
+  /** One query per hundred people, all at once; each settles on its own. */
+  const askChunk = async (
+    chunk: PubkeyHex[],
+  ): Promise<Map<PubkeyHex, NostrProfile>> => {
+    const fetched: Map<PubkeyHex, NostrProfile> = new Map();
+    let events: NostrEvent[] = [];
+    try {
+      events = await queryRelays(relays, { kinds: [0], authors: chunk });
+    } catch (error: unknown) {
+      console.warn('[profile] Profiles could not be fetched', error);
+      return fetched;
+    }
+    for (const pubkey of chunk) {
+      const newest: NostrEvent | null = newestOf(
+        events.filter((event: NostrEvent): boolean => event.pubkey === pubkey),
+      );
+      if (!newest) continue;
+      try {
+        const profile: NostrProfile = JSON.parse(newest.content);
+        profile.emojiTags = newest.tags.filter(
+          (tag: string[]): boolean => tag[0] === 'emoji',
+        );
+        await cacheResolvedProfile(pubkey, profile);
+        fetched.set(pubkey, profile);
+      } catch {
+        // Not a profile anyone could read; the short identifier stays.
+      }
+    }
+    return fetched;
+  };
+
+  // Registered per person, so a `fetchProfile` for any of them waits on
+  // that person's chunk and no other.
+  const registered: Map<PubkeyHex, Promise<NostrProfile | null>> = new Map();
+  const chunks: Array<Promise<Map<PubkeyHex, NostrProfile>>> = [];
+  for (let index = 0; index < asking.length; index += 100) {
+    const chunk: PubkeyHex[] = asking.slice(index, index + 100);
+    const answer = askChunk(chunk);
+    chunks.push(answer);
+    for (const pubkey of chunk) {
+      const one = answer.then((map) => map.get(pubkey) ?? null);
+      registered.set(pubkey, one);
+      profileInFlight.set(pubkey, one);
+    }
+  }
+  try {
+    for (const map of await Promise.all(chunks)) {
+      for (const [pubkey, profile] of map) found.set(pubkey, profile);
+    }
+  } finally {
+    for (const [pubkey, one] of registered) {
+      if (profileInFlight.get(pubkey) === one) profileInFlight.delete(pubkey);
+    }
+  }
+  const others: Array<NostrProfile | null> = await Promise.all(pendingAnswers);
+  pending.forEach((pubkey: PubkeyHex, index: number): void => {
+    const profile: NostrProfile | null | undefined = others[index];
+    if (profile) found.set(pubkey, profile);
+  });
+  return found;
 }
 
 /** A mentioned person's name, when it is already in memory. */

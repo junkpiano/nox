@@ -8,6 +8,7 @@ import type {
 } from '../../types/nostr';
 import {
   fetchProfile,
+  fetchProfiles,
   getAuthoritativeProfile,
 } from '../features/profile/profile.js';
 import { getRelays, normalizeRelayUrl } from '../features/relays/relays.js';
@@ -1742,45 +1743,63 @@ function checkDeletionAsync(
     });
 }
 
+/**
+ * Mentioned people waiting for a profile, asked about together.
+ *
+ * Cards drawn in the same moment - a page of a timeline - share one
+ * question to the relays rather than one per mention per card. A ranking
+ * post naming twenty people, on a page of eleven such posts, otherwise
+ * sent two hundred profile queries and redrew each card twenty times.
+ */
+const mentionQueue: Map<
+  PubkeyHex,
+  Array<(profile: NostrProfile | null) => void>
+> = new Map();
+let mentionFlush: ReturnType<typeof setTimeout> | null = null;
+
+function mentionedProfile(pubkey: PubkeyHex): Promise<NostrProfile | null> {
+  return new Promise((resolve): void => {
+    const waiting = mentionQueue.get(pubkey) ?? [];
+    waiting.push(resolve);
+    mentionQueue.set(pubkey, waiting);
+    mentionFlush ??= setTimeout((): void => {
+      mentionFlush = null;
+      const batch = new Map(mentionQueue);
+      mentionQueue.clear();
+      void fetchProfiles(Array.from(batch.keys()), getRelays())
+        .catch((): Map<PubkeyHex, NostrProfile> => new Map())
+        .then((profiles): void => {
+          for (const [pubkey, resolvers] of batch) {
+            for (const done of resolvers) done(profiles.get(pubkey) ?? null);
+          }
+        });
+    }, 50);
+  });
+}
+
 async function enrichMentionDisplayNames(
   eventContainer: HTMLElement,
   mentionNpubToPubkey: Map<string, PubkeyHex>,
 ): Promise<void> {
-  const relays: string[] = getRelays();
-
-  for (const [mentionedRef, mentionedPubkey] of mentionNpubToPubkey.entries()) {
-    try {
-      const mentionedProfile: NostrProfile | null = await fetchProfile(
-        mentionedPubkey,
-        relays,
-      );
-      const renderProfile: NostrProfile | null = getAuthoritativeProfile(
-        mentionedPubkey,
-        mentionedProfile,
-      );
-      const mentionedNpub: Npub = nip19.npubEncode(mentionedPubkey);
-      const displayName: string = getDisplayName(mentionedNpub, renderProfile);
-
-      // Handle both npub and nprofile mentions
-      const npubAnchors: NodeListOf<HTMLAnchorElement> =
-        eventContainer.querySelectorAll(
-          `a.mention-link[data-mention-npub="${mentionedRef}"]`,
-        );
-      const nprofileAnchors: NodeListOf<HTMLAnchorElement> =
-        eventContainer.querySelectorAll(
-          `a.mention-link[data-mention-nprofile="${mentionedRef}"]`,
-        );
-
-      npubAnchors.forEach((anchor: HTMLAnchorElement): void => {
-        anchor.textContent = `@${displayName}`;
-      });
-      nprofileAnchors.forEach((anchor: HTMLAnchorElement): void => {
-        anchor.textContent = `@${displayName}`;
-      });
-    } catch (error: unknown) {
-      console.warn('Failed to resolve mentioned profile:', error);
+  const entries = Array.from(mentionNpubToPubkey.entries());
+  const profiles: Array<NostrProfile | null> = await Promise.all(
+    entries.map(([, pubkey]) => mentionedProfile(pubkey)),
+  );
+  // Every name in one pass, so the card changes height once rather than
+  // once per name.
+  entries.forEach(([mentionedRef, mentionedPubkey], index: number): void => {
+    const renderProfile: NostrProfile | null = getAuthoritativeProfile(
+      mentionedPubkey,
+      profiles[index] ?? null,
+    );
+    if (!renderProfile) return;
+    const label = `@${getDisplayName(nip19.npubEncode(mentionedPubkey), renderProfile)}`;
+    for (const anchor of eventContainer.querySelectorAll<HTMLAnchorElement>(
+      `a.mention-link[data-mention-npub="${mentionedRef}"], a.mention-link[data-mention-nprofile="${mentionedRef}"]`,
+    )) {
+      if (anchor.textContent !== label) anchor.textContent = label;
     }
-  }
+  });
 }
 
 async function renderReferencedEventCards(
