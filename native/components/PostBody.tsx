@@ -26,6 +26,7 @@ import type {
 } from '../../src/common/content-segments';
 import { partitionContent } from '../../src/common/content-segments';
 import { cardWorthyUrls } from '../../src/common/link-card';
+import { TYPE } from '../lib/type';
 
 import ImageViewer from './ImageViewer';
 import LinkCard from './LinkCard';
@@ -148,6 +149,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#101a2e',
     gap: 3,
   },
-  videoText: { color: '#89a8ff', fontSize: 14, fontWeight: '700' },
-  videoHost: { color: '#5b6b88', fontSize: 11 },
+  videoText: { color: '#89a8ff', fontSize: TYPE.label, fontWeight: '700' },
+  videoHost: { color: '#5b6b88', fontSize: TYPE.small },
 });
