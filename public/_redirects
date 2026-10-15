@@ -1,0 +1,3 @@
+# /app is the obvious guess for the apps page.
+/app   /apps  301
+/app/  /apps  301
