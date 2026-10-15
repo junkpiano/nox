@@ -15,7 +15,7 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import { nip19 } from 'nostr-tools';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -32,6 +32,7 @@ import type { TimelineKey } from '../../src/common/db/types';
 import { kvGet } from '../../src/common/kv';
 import { isMuted } from '../../src/common/mute-state';
 import { fetchFollowSet } from '../../src/common/notification-filter';
+import { replyParentOf } from '../../src/common/reply-target';
 import {
   muteUser,
   unmuteUser,
@@ -495,7 +496,18 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   const [oldestCreatedAt, setOldestCreatedAt] = useState<number | null>(null);
   const [cacheKey, setCacheKey] = useState<TimelineKey | null>(null);
   const [decorating, setDecorating] = useState(true);
+  const [replies, setReplies] = useState(false);
   const active: boolean = useIsFocused();
+  // Both kinds come in one timeline; the switch only chooses which is shown.
+  // A repost is a post: it answers nobody.
+  const shown: TimelinePost[] = useMemo(
+    (): TimelinePost[] =>
+      rows.filter(
+        (row: TimelinePost): boolean =>
+          (!row.repostedBy && replyParentOf(row.event) !== null) === replies,
+      ),
+    [rows, replies],
+  );
   // A profile is a timeline, and reads further back like one.
   const older = useOlderPosts({
     filter,
@@ -614,11 +626,39 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
   return (
     <FlatList
       style={styles.screen}
-      data={rows}
+      data={shown}
       keyExtractor={(post: TimelinePost) => post.key}
-      ListHeaderComponent={<Header profile={data.profile} />}
+      ListHeaderComponent={
+        <>
+          <Header profile={data.profile} />
+          <View style={styles.switcher}>
+            {[false, true].map((option: boolean) => {
+              const on: boolean = option === replies;
+              return (
+                <Pressable
+                  key={String(option)}
+                  onPress={(): void => setReplies(option)}
+                  // Drawn like Following / Global; touched like a 48 dp target.
+                  hitSlop={{ top: 7, bottom: 7 }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={[styles.segment, on && styles.segmentOn]}
+                >
+                  <Text style={on ? styles.segmentTextOn : styles.segmentText}>
+                    {option ? 'Replies' : 'Posts'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      }
       ListEmptyComponent={
-        <Text style={styles.empty}>No posts found on these relays.</Text>
+        <Text style={styles.empty}>
+          {replies
+            ? 'No replies found on these relays.'
+            : 'No posts found on these relays.'}
+        </Text>
       }
       ItemSeparatorComponent={() => <View style={styles.sep} />}
       {...olderPostsListProps(older)}
@@ -691,6 +731,26 @@ const styles = StyleSheet.create({
   zapLink: { color: '#ffd79a', fontSize: 12, fontWeight: '700' },
   quietActions: { flexDirection: 'row', gap: 18, marginTop: 12 },
   divider: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
+  // The Following / Global switch, so the two read as the same control.
+  switcher: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#25406e',
+  },
+  segment: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 999,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  segmentOn: { borderColor: '#89a8ff', backgroundColor: '#16233f' },
+  segmentText: { color: '#8ea0c0', fontSize: 13, fontWeight: '600' },
+  segmentTextOn: { color: '#e8eeff', fontSize: 13, fontWeight: '700' },
   post: { paddingHorizontal: 16, paddingVertical: 14 },
   postContent: { color: '#b9c6de', fontSize: 14, lineHeight: 20 },
   link: { color: '#89a8ff' },
