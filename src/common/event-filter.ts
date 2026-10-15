@@ -13,7 +13,12 @@
  * does not know is ignored rather than failing everything.
  */
 
-import { getEventHash, verifiedSymbol, verifyEvent } from 'nostr-tools';
+import {
+  getEventHash,
+  serializeEvent,
+  verifiedSymbol,
+  verifyEvent,
+} from 'nostr-tools';
 import type { NostrEvent } from '../../types/nostr';
 
 /**
@@ -74,6 +79,33 @@ export function setSignatureCheck(check: SignatureCheck): void {
     check(signature, id, pubkey);
 }
 
+let sha256Hex: ((text: string) => string) | null = null;
+
+/**
+ * Puts a faster SHA-256 in place of nostr-tools' for event ids. Some events
+ * carry thousands of tags, and hashing one in JavaScript on a phone took
+ * 75 ms - each time a relay delivered it.
+ */
+export function setSha256(hash: (text: string) => string): void {
+  sha256Hex = hash;
+}
+
+/**
+ * A lone surrogate is encoded as U+FFFD by JavaScript and as `?` by the JVM.
+ * JSON.stringify escapes one, so none should reach the hash; should an engine
+ * not, that text keeps nostr-tools' hash rather than get a different id.
+ */
+const LONE_SURROGATE: RegExp =
+  /[\ud800-\udbff](?![\udc00-\udfff])|(?:^|[^\ud800-\udbff])[\udc00-\udfff]/;
+
+/** nostr-tools' `getEventHash`, through the faster hash where one is in place. */
+function eventHash(event: NostrEvent): string {
+  if (!sha256Hex) return getEventHash(event);
+  const serialized: string = serializeEvent(event);
+  if (LONE_SURROGATE.test(serialized)) return getEventHash(event);
+  return sha256Hex(serialized);
+}
+
 /**
  * Whether `event` is signed by its pubkey and its id is its content's hash:
  * nostr-tools' `verifyEvent`, through the faster check where one is in place.
@@ -83,7 +115,7 @@ export function verifySignature(event: NostrEvent): boolean {
   if (!signatureCheck) return verifyEvent(event);
   try {
     return (
-      getEventHash(event) === event.id &&
+      eventHash(event) === event.id &&
       signatureCheck(event.sig, event.id, event.pubkey)
     );
   } catch {
@@ -116,7 +148,7 @@ export function hasGenuineSignature(event: NostrEvent): boolean {
       content: event.content,
       sig: event.sig,
     } as NostrEvent;
-    if (getEventHash(plain) !== plain.id) return false;
+    if (eventHash(plain) !== plain.id) return false;
     if (verified.has(plain.id)) return true;
     if (!verifySignature(plain)) return false;
     rememberVerified(plain.id);
@@ -217,7 +249,7 @@ export function verifiedEvent(
     // An id is the hash of the signed fields. An event whose id is not
     // that hash is refused before anything else is considered: it is the
     // check that makes remembering an id sound at all.
-    if (getEventHash(plain) !== plain.id) return null;
+    if (eventHash(plain) !== plain.id) return null;
     // The same event from a second relay is a second object, and
     // nostr-tools remembers its work per object rather than per event.
     // The id having just been confirmed as this content's hash, a

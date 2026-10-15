@@ -4,6 +4,7 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import fr.acinq.secp256k1.Hex
 import fr.acinq.secp256k1.Secp256k1
+import java.security.MessageDigest
 
 /**
  * BIP-340 signatures checked by libsecp256k1. Hermes has no JIT, and the same
@@ -35,6 +36,13 @@ class NoxCryptoModule : Module() {
       } catch (e: Exception) {
         false
       }
+    }
+
+    // An event id: SHA-256 of the serialized event's UTF-8, in lowercase hex.
+    Function("sha256Hex") { text: String ->
+      MessageDigest.getInstance("SHA-256")
+        .digest(text.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
     }
   }
 }
