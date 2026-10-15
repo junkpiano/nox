@@ -6,12 +6,14 @@
  * one layout to maintain rather than three. This file was deliberately not
  * written while adding iOS support, because nothing needed it yet.
  *
- * What needed it: the App Store treats a connected Lightning wallet as a
- * wallet, and asks that wallets come from developers registered as
- * organisations. Android has no such rule - Google's policy exempts
- * non-custodial wallets - so the feature stays there. The distinction is about
- * the store rather than the device, which is why a browser is `web` even on an
- * iPhone: nobody using Safari went through App Review.
+ * What needed it: a store may treat the connected Lightning wallet as a
+ * wallet app, and ask for a status an individual developer cannot have (an
+ * organisation account on the App Store, a financial licence on Google Play).
+ * nox holds no funds and no keys to them - it asks the user's own wallet to
+ * pay - so the wallet is offered everywhere, and a store that objects gets it
+ * hidden by name below. The distinction is about the store rather than the
+ * device, which is why a browser is `web` even on an iPhone: nobody using
+ * Safari went through a store review.
  */
 
 import { isNativeRuntime } from './native-http.js';
@@ -64,6 +66,12 @@ export function currentPlatform(): Platform {
 }
 
 /**
+ * Where a store's review has ruled the connected wallet out. Empty: none has.
+ * Adding a platform closes both the menu entry and the route there.
+ */
+const WALLET_HIDDEN_ON: ReadonlySet<Platform> = new Set<Platform>();
+
+/**
  * True where a connected Lightning wallet must not be offered.
  *
  * Zapping is unaffected: without a wallet the zap composer shows the invoice
@@ -71,5 +79,5 @@ export function currentPlatform(): Platform {
  * zapping worked before wallet support existed.
  */
 export function hidesWallet(): boolean {
-  return currentPlatform() === 'ios';
+  return WALLET_HIDDEN_ON.has(currentPlatform());
 }

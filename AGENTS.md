@@ -259,17 +259,19 @@ Signing and release steps are in `docs/android-release.md`; iOS CI is in
 ### Deciding what a particular store allows
 
 Layout branches on viewport width, not the runtime, and that stays true.
-`platform.ts` exists for a different question: the App Store treats a connected
-Lightning wallet as a wallet and asks that wallets come from developers
-registered as organisations, while Google's policy exempts non-custodial ones.
-So the wallet is hidden on **native iOS only** - a browser is `web` even on an
-iPhone, because nobody using Safari went through App Review.
+`platform.ts` exists for a different question: a store may treat the connected
+Lightning wallet as a wallet app and ask for a status an individual developer
+cannot have - an organisation account on the App Store, a financial licence on
+Google Play. nox holds no funds and no keys to them; it asks the user's own
+wallet to pay. So the wallet is offered on every platform, and if a store's
+review rules it out, that platform is added to `WALLET_HIDDEN_ON` - a browser
+is `web` even on an iPhone, because nobody using Safari went through a review.
 
-Zapping is unaffected. Without a connected wallet the composer shows the
-invoice as a QR code, which is a payment request rather than a wallet, and is
-how zapping worked before wallet support existed.
+Zapping is unaffected either way. Without a connected wallet the composer shows
+the invoice as a QR code, which is a payment request rather than a wallet, and
+is how zapping worked before wallet support existed.
 
-Both the drawer entry and the route are closed. Hiding a nav item is not the
+Hiding closes both the drawer entry and the route. Hiding a nav item is not the
 same as closing a door someone can still type, link to, or reach through
 history.
 
