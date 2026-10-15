@@ -8,7 +8,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "garden.nox.rn",
+      "bundleIdentifier": "garden.nox",
       "associatedDomains": ["applinks:nox.garden"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

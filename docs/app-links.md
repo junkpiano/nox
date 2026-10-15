@@ -10,11 +10,12 @@ app's side is in `native/app.json` on `rn-trunk`.
 | Android | `assetlinks.json` | `android.intentFilters` with `autoVerify` |
 | iOS | `apple-app-site-association` | `ios.associatedDomains` |
 
-The Android package is `garden.nox`, which Google Play fixes for good once
-uploaded. The iOS bundle id is `garden.nox.rn`: nobody sees it, and changing
-it would mean a new App Store app. Each file here names its platform's id,
-and must change with `android.package` or `ios.bundleIdentifier` in
-`native/app.json`; a file that names an old id vouches for nothing.
+The app is `garden.nox` on both platforms: Android's package and iOS's bundle
+id, which Google Play and Apple each fix for good. Each file here names that
+id, and must change with `android.package` or `ios.bundleIdentifier` in
+`native/app.json`; a file that names an old id vouches for nothing. The AASA
+file also names `garden.nox.rn`, the id the first TestFlight builds used,
+until no one has those installed.
 
 Both files are served with `Content-Type: application/json` by the rule in
 `public/_headers`, which the AASA file needs because it has no extension.
@@ -63,7 +64,7 @@ or `1024` means the file was not reachable or did not match.
 
 ## iOS
 
-`apple-app-site-association` names `<TeamID>.garden.nox.rn` and the paths
+`apple-app-site-association` names `<TeamID>.garden.nox` and the paths
 the app claims: people, notes, and hashtags, matching what
 `src/common/nostr-link.ts` resolves. Everything else on the site stays in
 Safari.

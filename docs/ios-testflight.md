@@ -1,6 +1,6 @@
 # iOS builds and TestFlight
 
-The iPhone app is the React Native app in `native/` (`garden.nox.rn`). No
+The iPhone app is the React Native app in `native/` (`garden.nox`). No
 maintainer machine runs macOS, so `.github/workflows/ios-testflight.yml` is
 the only place it is built, on a GitHub macOS runner.
 
@@ -31,18 +31,18 @@ Store Connect. The version is `expo.version` in `native/app.json`.
 No Mac is needed: the certificate request is made with `openssl`.
 
 1. **App ID**: Certificates, Identifiers & Profiles → Identifiers → ＋ → App
-   IDs → App. Bundle ID `garden.nox.rn` (explicit), capability **Associated
+   IDs → App. Bundle ID `garden.nox` (explicit), capability **Associated
    Domains**.
 2. **Certificate**: make a key and request with
    `openssl genrsa -out dist.key 2048` and
    `openssl req -new -key dist.key -out dist.csr -subj "/emailAddress=…/CN=…/C=JP"`,
    then Certificates → ＋ → **Apple Distribution**, upload `dist.csr`, download
    the `.cer`.
-3. **Profile**: Profiles → ＋ → **App Store Connect** → App ID `garden.nox.rn`
-   → that certificate → name it exactly **`nox RN App Store`** (the workflow
+3. **Profile**: Profiles → ＋ → **App Store Connect** → App ID `garden.nox`
+   → that certificate → name it exactly **`nox App Store`** (the workflow
    refers to it by name).
 4. **App record**: App Store Connect → Apps → ＋ New App → iOS, bundle ID
-   `garden.nox.rn`.
+   `garden.nox`.
 5. **API key**: App Store Connect → Users and Access → Integrations → Team
    Keys. The role must be allowed to upload builds.
 

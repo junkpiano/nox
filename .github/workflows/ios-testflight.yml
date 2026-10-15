@@ -24,8 +24,8 @@ jobs:
     timeout-minutes: 60
 
     env:
-      BUNDLE_ID: garden.nox.rn
-      PROFILE_NAME: nox RN App Store
+      BUNDLE_ID: garden.nox
+      PROFILE_NAME: nox App Store
 
     steps:
       - uses: actions/checkout@v4

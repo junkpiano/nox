@@ -2,7 +2,7 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["KHFXF6N2QE.garden.nox.rn"],
+        "appIDs": ["KHFXF6N2QE.garden.nox", "KHFXF6N2QE.garden.nox.rn"],
         "components": [
           { "/": "/npub1*", "comment": "a person" },
           { "/": "/nprofile1*", "comment": "a person, with relay hints" },
