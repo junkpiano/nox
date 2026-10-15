@@ -251,14 +251,25 @@ header only for origins it knows. `nox.garden`, the preview site and its
 `<alias>--` namespace are allowed there; a new deploy origin needs a change in
 that repository or every link card on it fails silently.
 
+## Platforms
+
+| Layer | Code | Ships as |
+|---|---|---|
+| Shared core | `src/common`, the logic in `src/features` | Every platform |
+| Web | The DOM views in `src/` | nox.garden, and the desktop apps |
+| Desktop | `src-tauri/` wrapping `dist/` as-is | macOS, Windows, Linux |
+| Mobile | `native/` (React Native / Expo, `garden.nox`), one app | Android, iOS |
+
+The phone app imports the shared core from `../src`; a rule needed on both
+belongs there, not in either view.
+
+Android CI: `docs/android-release.md`. iOS CI: `docs/ios-testflight.md`.
+
 ## Native Shell (Tauri v2)
 
-The same frontend ships as a web app and as a Tauri app for Android, desktop and
-(via CI) iOS. `src-tauri/` wraps `dist/` as-is; there is no separate codebase.
-
-Build: `bun run android:dev`, `bun run android:build`, `bun run android:bundle`.
-Signing and release steps are in `docs/android-release.md`; iOS CI is in
-`docs/ios-testflight.md`.
+The desktop apps are the web frontend in Tauri. `src-tauri/` wraps `dist/`
+as-is; there is no separate codebase. Its Android and iOS targets are no
+longer built: the phones get the React Native app.
 
 ### Deciding what a particular store allows
 

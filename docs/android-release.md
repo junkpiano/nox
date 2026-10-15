@@ -1,92 +1,36 @@
-# Android release builds
+# Android builds
 
-The signing config is already wired up. What is missing is the key itself,
-which cannot live in the repository.
+The Android app is the React Native app in `native/` (`garden.nox`).
+`.github/workflows/android-build.yml` builds it on every push to `main` and on
+demand (Actions → Android → Run workflow).
 
-## Create the upload key
+## What a run makes
 
-Run once, and keep the result. Choose your own password; nothing in this repo
-supplies one.
+| File | For |
+|---|---|
+| `app-release.aab` | Google Play (Play Console → Testing → upload) |
+| `app-release.apk` | Installing directly on a phone |
 
-```bash
-keytool -genkey -v -keystore ~/nox-upload-keystore.jks \
-  -keyalg RSA -keysize 2048 -validity 10000 -alias upload
-```
+Both are kept on the run for 14 days, in the artifact `nox-android-<code>`.
+The version code is `1000 + run number`, so every bundle is new to Google
+Play; the version name is `expo.version` in `native/app.json`.
 
-**Back this file up before going further, and store the password in a password
-manager.** Without Play App Signing, losing this key means you can never update
-the app again under the same listing — Google cannot recover it, and a new key
-means a new listing and losing every existing install. Enrolling in Play App
-Signing at first upload is strongly recommended: Google then holds the real
-signing key and this file becomes a replaceable upload key.
+## Signing
 
-Keep it outside the repository. `.gitignore` covers `*.jks`, `*.keystore`,
-`keystore.properties` and `key.properties` as a safety net, but the reliable
-protection is not putting the key in the tree at all.
+With the two secrets below, both files are signed with the Play **upload
+key**, and the bundle can go to Google Play. Without them, the build still
+runs and is signed with the debug key: it installs, but Play refuses it.
 
-## Point the build at it
+| Secret | Contents |
+|---|---|
+| `ANDROID_UPLOAD_KEYSTORE` | The upload keystore (`upload.jks`), base64 |
+| `ANDROID_UPLOAD_KEYSTORE_PASSWORD` | Its password (PKCS12: the key's too) |
 
-Create `src-tauri/gen/android/keystore.properties`, which is gitignored:
+The key alias is `upload`. Google re-signs what it distributes with the app
+signing key it holds (Play App Signing), so the upload key can be reset
+through the Play Console if it is lost.
 
-```properties
-keyAlias=upload
-password=<the password you chose>
-storeFile=/absolute/path/to/nox-upload-keystore.jks
-```
+## On a phone attached to this machine
 
-Both the store password and the key password are read from `password`, so use
-the same value for each when generating the key.
-
-Signing is opt-in. Without this file the release build still succeeds and
-produces an unsigned artifact, so contributors and debug builds are unaffected.
-
-## Build
-
-```bash
-bun run tauri android build --aab    # Play submission format
-bun run tauri android build --apk    # sideloading and manual testing
-```
-
-Artifacts land under `src-tauri/gen/android/app/build/outputs/`. A signed APK is
-named `app-universal-release.apk`; an unsigned one keeps an `-unsigned` suffix,
-which is the quickest way to tell whether signing was picked up.
-
-Verify before uploading:
-
-```bash
-$ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs <apk>
-jarsigner -verify <aab>
-```
-
-## Size
-
-The release AAB is around 26 MB and Play splits it per ABI, so a device
-downloads roughly 19 MB. Play's limit is 200 MB, so there is no need for ABI
-splits, asset packs, or any size-driven change to the build.
-
-## CI
-
-Do not commit the keystore to run builds in CI. Encode it into a secret and
-write the properties file at build time:
-
-```yaml
-- name: Set up Android signing
-  run: |
-    cd src-tauri/gen/android
-    echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" > keystore.properties
-    echo "password=${{ secrets.ANDROID_KEY_PASSWORD }}" >> keystore.properties
-    base64 -d <<< "${{ secrets.ANDROID_KEY_BASE64 }}" > $RUNNER_TEMP/keystore.jks
-    echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
-```
-
-Where `ANDROID_KEY_BASE64` is `base64 -w0 nox-upload-keystore.jks`.
-
-## Play Store requirements
-
-Beyond signing, first submission also needs:
-
-- App icons. `src-tauri/icons/` still holds Tauri's placeholders.
-- A privacy policy URL.
-- Data safety declarations. The app has no backend; keys stay on device in the
-  platform credential store, and posts go directly to user-selected relays.
-- Content rating questionnaire.
+`npm run device` in `native/` builds a release APK and installs it; see
+`native/run-device.sh`.

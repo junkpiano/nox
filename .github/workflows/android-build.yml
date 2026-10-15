@@ -1,7 +1,7 @@
 name: Android
 
-# Built when something reaches main, and on demand; pull requests do not wait
-# for it.
+# The phone app in native/ (React Native, garden.nox), built when something
+# reaches main and on demand; pull requests do not wait for it.
 on:
   push:
     branches: [main]
@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -23,67 +23,89 @@ jobs:
         with:
           bun-version: latest
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
       # Asking for no packages: the action's default list still names `tools`,
-      # which Google has withdrawn from the SDK repository, and sdkmanager
-      # exits non-zero on a package it cannot find. The runner image already
-      # carries platform-tools, and the NDK is installed on the next step.
+      # which Google has withdrawn, and sdkmanager fails on a missing package.
+      # Gradle installs the NDK React Native asks for.
       - uses: android-actions/setup-android@v3
         with:
           packages: ''
 
-      - name: Install the NDK
+      # The app imports ../src, so both trees need their dependencies.
+      - name: Install dependencies
         run: |
-          sdkmanager --install "ndk;27.2.12479018"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          bun install --frozen-lockfile
+          npm ci --prefix native
 
-      - name: Install Rust with Android targets
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - name: Type-check the app
+        run: npx tsc --noEmit -p native
 
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
+      # native/android is not committed: generated fresh, it cannot drift
+      # from app.json.
+      - name: Generate the Android project
+        working-directory: native
+        run: npx expo prebuild --platform android --no-install
 
-      - run: bun install --frozen-lockfile
-
-      # Catches type and lint breakage before spending minutes on Rust and
-      # Gradle, which is where the time goes.
-      - name: Check the web build
+      # Every upload to Google Play needs a higher version code. Past the run
+      # numbers of the Tauri builds this workflow used to make, and past the
+      # first bundle uploaded by hand.
+      - name: Set the version code
         run: |
-          bun run build
-          bun run test
+          CODE=$((1000 + ${{ github.run_number }}))
+          sed -i -E "s/versionCode [0-9]+/versionCode $CODE/" native/android/app/build.gradle
+          echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
 
-      # gen/android is not committed, so it is generated fresh on every run and
-      # cannot drift from tauri.conf.json.
-      - name: Initialise the Android project
-        run: bunx tauri android init --ci
-
-      # Release rather than debug: a debug APK is ten times the size and does
-      # not exercise minification, which is where a build is most likely to
-      # break silently. Unsigned, since signing keys stay off CI for now.
+      # Signed with the Play upload key when its secrets are set; otherwise
+      # with the debug key, which installs but cannot go to Google Play.
       - name: Build
-        run: bunx tauri android build --apk
-
-      - name: Report the artifact size
+        working-directory: native/android
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
         run: |
-          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -print -quit)
-          if [ -z "$APK" ]; then
-            echo "::error::Build reported success but produced no APK"
-            exit 1
+          SIGNING=()
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            SIGNING=(
+              -Pandroid.injected.signing.store.file="$RUNNER_TEMP/upload.jks"
+              -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD"
+              -Pandroid.injected.signing.key.alias=upload
+              -Pandroid.injected.signing.key.password="$KEYSTORE_PASSWORD"
+            )
+            echo "SIGNED=upload key" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ANDROID_UPLOAD_KEYSTORE is not set; signed with the debug key."
+            echo "SIGNED=debug key" >> "$GITHUB_ENV"
           fi
-          echo "### Android build" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "\`$(basename "$APK")\` — $(du -h "$APK" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
-          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+          ./gradlew bundleRelease assembleRelease "${SIGNING[@]}"
+          rm -f "$RUNNER_TEMP/upload.jks"
+
+      - name: Report
+        run: |
+          OUT=native/android/app/build/outputs
+          AAB=$OUT/bundle/release/app-release.aab
+          APK=$OUT/apk/release/app-release.apk
+          test -f "$AAB" && test -f "$APK"
+          {
+            echo "### Android ${{ env.VERSION_CODE }} ($SIGNED)"
+            echo ""
+            echo "- \`app-release.aab\` — $(du -h "$AAB" | cut -f1), for Google Play"
+            echo "- \`app-release.apk\` — $(du -h "$APK" | cut -f1), to install directly"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nox-android-unsigned
-          path: ${{ env.APK_PATH }}
+          name: nox-android-${{ env.VERSION_CODE }}
+          path: |
+            native/android/app/build/outputs/bundle/release/app-release.aab
+            native/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
           retention-days: 14

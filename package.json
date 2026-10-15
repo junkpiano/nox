@@ -15,10 +15,7 @@
     "test": "rm -rf .tmp/test-dist && tsc -p tsconfig.test.json && node --experimental-sqlite --test .tmp/test-dist/tests/*.test.js",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "android:dev": "tauri android dev",
-    "android:build": "tauri android build",
-    "android:bundle": "tauri android build --aab"
+    "tauri:build": "tauri build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
