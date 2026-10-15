@@ -10,10 +10,11 @@
  * wallet app, and ask for a status an individual developer cannot have (an
  * organisation account on the App Store, a financial licence on Google Play).
  * nox holds no funds and no keys to them - it asks the user's own wallet to
- * pay - so the wallet is offered everywhere, and a store that objects gets it
- * hidden by name below. The distinction is about the store rather than the
- * device, which is why a browser is `web` even on an iPhone: nobody using
- * Safari went through a store review.
+ * pay - and the feature stays off until the user connects that wallet by
+ * pasting its Nostr Wallet Connect string. So it is offered everywhere, and a
+ * store that objects gets it hidden by name below. The distinction is about
+ * the store rather than the device, which is why a browser is `web` even on
+ * an iPhone: nobody using Safari went through a store review.
  */
 
 import { isNativeRuntime } from './native-http.js';
