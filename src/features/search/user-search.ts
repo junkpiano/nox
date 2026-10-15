@@ -1,4 +1,6 @@
+import type { NostrProfile } from '../../../types/nostr';
 import { avatarErrorAttribute } from '../../common/avatar.js';
+import { getProfile, storeProfile } from '../../common/db/index.js';
 import { escapeHtml } from '../../common/escape-html.js';
 /**
  * Finding a person, rather than a post.
@@ -16,24 +18,12 @@ import { escapeHtml } from '../../common/escape-html.js';
  * needs an indexer, and this app has no backend to run one.
  */
 
-import { nip19 } from 'nostr-tools';
-import type {
-  NostrEvent,
-  NostrProfile,
-  Npub,
-  PubkeyHex,
-} from '../../../types/nostr';
-import { getProfile, storeProfile } from '../../common/db/index.js';
-import { isMuted } from '../../common/mute-state.js';
-import { createRelayWebSocket } from '../../common/relay-socket.js';
 import { getAvatarURL, shortenNpub } from '../../utils/utils.js';
 import {
   MAX_ABOUT_LENGTH,
   MAX_NAME_LENGTH,
   MAX_NIP05_LENGTH,
   oneLine,
-  parseProfileContent,
-  rankUserResults,
   type UserSearchResult,
 } from './user-ranking.js';
 
@@ -43,148 +33,6 @@ export {
   rankUserResults,
   type UserSearchResult,
 } from './user-ranking.js';
-
-export interface UserSearchParams {
-  query: string;
-  relays: string[];
-  limit: number;
-  followed: ReadonlySet<PubkeyHex>;
-  timeoutMs?: number;
-  activeWebSockets?: WebSocket[];
-  isRouteActive?: () => boolean;
-}
-
-const USER_SEARCH_TIMEOUT_MS: number = 8000;
-
-/**
- * Collects kind 0 events matching `query` from every search relay.
- *
- * Resolves once every relay has sent EOSE or the timeout expires, whichever
- * comes first. A relay that never answers costs the timeout and nothing else.
- */
-export function searchUsers(
-  params: UserSearchParams,
-): Promise<UserSearchResult[]> {
-  const {
-    query,
-    relays,
-    limit,
-    followed,
-    timeoutMs = USER_SEARCH_TIMEOUT_MS,
-    activeWebSockets = [],
-    isRouteActive = (): boolean => true,
-  } = params;
-
-  return new Promise<UserSearchResult[]>((resolve) => {
-    if (!query || relays.length === 0) {
-      resolve([]);
-      return;
-    }
-
-    // Keyed by pubkey: a person has one profile, and two relays holding
-    // different revisions of it must not become two rows.
-    const byPubkey: Map<PubkeyHex, UserSearchResult> = new Map();
-    let completedRelays: number = 0;
-    let settled: boolean = false;
-
-    const finish = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      window.clearTimeout(timeoutId);
-      resolve(rankUserResults(Array.from(byPubkey.values()), query, followed));
-    };
-
-    const timeoutId: number = window.setTimeout(finish, timeoutMs);
-
-    const completeRelay = (): void => {
-      completedRelays += 1;
-      if (completedRelays >= relays.length) {
-        finish();
-      }
-    };
-
-    relays.forEach((relayUrl: string): void => {
-      let relayDone: boolean = false;
-      const done = (): void => {
-        if (relayDone) {
-          return;
-        }
-        relayDone = true;
-        completeRelay();
-      };
-
-      let socket: WebSocket;
-      try {
-        socket = createRelayWebSocket(relayUrl, true);
-      } catch (error: unknown) {
-        console.warn(`[UserSearch] Cannot open ${relayUrl}:`, error);
-        done();
-        return;
-      }
-      activeWebSockets.push(socket);
-      const subId: string = `usearch-${Math.random().toString(36).slice(2)}`;
-
-      socket.onopen = (): void => {
-        socket.send(
-          JSON.stringify(['REQ', subId, { kinds: [0], search: query, limit }]),
-        );
-      };
-
-      socket.onmessage = (msg: MessageEvent): void => {
-        if (!isRouteActive()) {
-          socket.close();
-          return;
-        }
-        try {
-          const data = JSON.parse(msg.data);
-          if (data[0] === 'EVENT' && data[1] === subId) {
-            const event: NostrEvent = data[2];
-            if (!event || event.kind !== 0 || !event.pubkey) {
-              return;
-            }
-            const pubkey: PubkeyHex = event.pubkey as PubkeyHex;
-            if (isMuted(pubkey)) {
-              return;
-            }
-            const existing: UserSearchResult | undefined = byPubkey.get(pubkey);
-            if (existing && existing.createdAt >= event.created_at) {
-              return;
-            }
-            const profile: NostrProfile | null = parseProfileContent(
-              event.content,
-            );
-            if (!profile) {
-              return;
-            }
-            byPubkey.set(pubkey, {
-              pubkey,
-              npub: nip19.npubEncode(pubkey),
-              profile,
-              createdAt: event.created_at,
-            });
-            return;
-          }
-          if (data[0] === 'EOSE' && data[1] === subId) {
-            socket.close();
-            done();
-          }
-        } catch (error: unknown) {
-          console.warn(`[UserSearch] Bad message from ${relayUrl}:`, error);
-        }
-      };
-
-      socket.onerror = (): void => {
-        socket.close();
-        done();
-      };
-      socket.onclose = (): void => {
-        done();
-      };
-    });
-  });
-}
 
 /**
  * Reconciles a search hit against the store.
