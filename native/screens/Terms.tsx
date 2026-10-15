@@ -74,7 +74,7 @@ export default function Terms({ onAccept }: { onAccept: () => void }) {
           >
             Privacy Policy
           </Text>
-          , which say all of this in full. You must be at least 13.
+          , which say all of this in full. You must be at least 18.
         </Text>
       </ScrollView>
 
