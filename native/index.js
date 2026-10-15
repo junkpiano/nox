@@ -9,7 +9,7 @@ import 'react-native-get-random-values';
 import { registerRootComponent } from 'expo';
 import { Platform } from 'react-native';
 import { onAppEvent } from '../src/common/app-events';
-import { setSignatureCheck } from '../src/common/event-filter';
+import { setSha256, setSignatureCheck } from '../src/common/event-filter';
 import { kvGet } from '../src/common/kv';
 import { clearMuteList, loadCachedMuteList } from '../src/common/mute-state';
 import { setPlatform } from '../src/common/platform';
@@ -97,6 +97,7 @@ if (NoxCrypto) {
   setSignatureCheck((signature, id, pubkey) =>
     NoxCrypto.verifySchnorr(signature, id, pubkey),
   );
+  setSha256((text) => NoxCrypto.sha256Hex(text));
 }
 void restoreSessionPrivateKey().then(startForCurrentSession);
 
