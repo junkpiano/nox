@@ -7,6 +7,7 @@
  */
 
 import { escapeHtml } from '../../common/escape-html.js';
+import { hashtagFeedFilter } from '../../common/feeds.js';
 import { loadTimeline } from '../../common/timeline-loader.js';
 
 export async function loadHashtagTimeline(params: {
@@ -32,8 +33,7 @@ export async function loadHashtagTimeline(params: {
     activeTimeouts: params.activeTimeouts,
     isRouteActive,
     createFilter: (until: number) => ({
-      kinds: [1],
-      '#t': [tag],
+      ...hashtagFeedFilter(tag),
       until,
       limit: params.limit,
     }),

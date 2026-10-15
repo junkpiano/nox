@@ -12,6 +12,7 @@ import {
 } from '../common/db/index.js';
 import { findDeletedIds } from '../common/deletion-gate.js';
 import { renderEvent } from '../common/event-render.js';
+import { FEED_KINDS, FEED_LIMIT } from '../common/feeds.js';
 import { publishEventToRelays } from '../common/publish-event.js';
 import {
   fetchNip65RelayList,
@@ -36,9 +37,9 @@ export const connectingMsg: HTMLElement | null =
 /** Re-exported from the search feature, which is where the list now lives. */
 export const searchRelays: string[] = [...SEARCH_RELAYS];
 
-// Fetch a solid chunk up-front; pagination ("Load more") is currently disabled for stability.
-export const limit: number = 200;
-export const homeKinds: number[] = [1, 2, 6, 9, 11, 16, 22, 28, 40, 70, 77];
+// What every timeline asks for, shared with the phone (src/common/feeds.ts).
+export const limit: number = FEED_LIMIT;
+export const homeKinds: number[] = FEED_KINDS;
 export const seenEventIds: Set<string> = new Set();
 
 export type AppHistoryState = {

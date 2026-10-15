@@ -52,6 +52,7 @@ export type TimelineFilter =
   | Record<string, unknown>
   | Array<Record<string, unknown>>;
 
+import { FEED_KINDS, hashtagFeedFilter } from '../../src/common/feeds';
 import { fetchProfiles } from '../../src/common/profile-fetch';
 import {
   checkRepostNotes,
@@ -65,7 +66,6 @@ import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
 import { customEmojiOf, pictureUrl } from './avatar';
 
 /** Kinds the home timeline shows. Mirrors `homeKinds` in the web app. */
-const HOME_KINDS: number[] = [1, 6];
 
 /** Relays reject enormous `authors` lists, and this is plenty of timeline. */
 const MAX_AUTHORS: number = 300;
@@ -267,7 +267,7 @@ export async function loadHomeTimeline(
   // unfollowed, under a hashtag dropped - stay off screen, whenever the cache
   // was written and whatever was still in flight when it was.
   const remembers: Array<Record<string, unknown>> = homeFilters(
-    HOME_KINDS,
+    FEED_KINDS,
     [viewer, ...(remembered ?? [])],
     getFollowedHashtags(viewer),
   );
@@ -320,7 +320,7 @@ export async function loadHomeTimeline(
 
   onStage(`posts from ${authors.length} people...`);
   const filter: Array<Record<string, unknown>> = homeFilters(
-    HOME_KINDS,
+    FEED_KINDS,
     authors,
     hashtags,
   );
@@ -650,10 +650,7 @@ export async function loadHashtagTimeline(
   const relays: string[] = getRelays();
 
   onStage(`#${tag}...`);
-  const filter: Record<string, unknown> = {
-    kinds: [1],
-    '#t': [tag.toLowerCase()],
-  };
+  const filter: Record<string, unknown> = hashtagFeedFilter(tag);
   const events: NostrEvent[] = await queryRelays(relays, {
     ...filter,
     limit: POST_LIMIT,
@@ -804,7 +801,7 @@ export async function loadGlobalTimeline(
   );
 
   onStage('recent posts...');
-  const filter: Record<string, unknown> = { kinds: HOME_KINDS };
+  const filter: Record<string, unknown> = { kinds: FEED_KINDS };
   const fetched: NostrEvent[] = await queryRelays(relays, {
     ...filter,
     since: Math.floor(Date.now() / 1000) - sinceHours * 3600,

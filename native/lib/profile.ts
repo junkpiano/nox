@@ -12,6 +12,7 @@ import { getProfile, storeProfile } from '../../src/common/db/profiles-store';
 import { getCachedTimeline } from '../../src/common/db/timeline-queries';
 import { prependEventsToTimeline } from '../../src/common/db/timelines-store';
 import type { TimelineKey } from '../../src/common/db/types';
+import { userFeedFilter } from '../../src/common/feeds';
 import { queryRelays } from '../../src/common/relay-query';
 import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
@@ -118,7 +119,8 @@ export async function loadProfile(
   options: LoadProfileOptions = {},
 ): Promise<ProfileResult> {
   const relays: string[] = getRelays();
-  const filter: Record<string, unknown> = { kinds: [1], authors: [pubkey] };
+  // Notes and reposts, as on the web: a repost is a post.
+  const filter: Record<string, unknown> = userFeedFilter(pubkey);
   const cacheKey: TimelineKey = cacheKeyFor(pubkey);
 
   // The cache first: the person as last seen and the posts last fetched,

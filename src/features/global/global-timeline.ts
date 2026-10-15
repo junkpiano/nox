@@ -1,7 +1,11 @@
 import type { ConnectionStatePacket } from 'rx-nostr';
+import { FEED_KINDS } from '../../common/feeds.js';
+import {
+  loadTimeline,
+  type TimelineRuntimeContext,
+} from '../../common/timeline-loader.js';
 import { getRelays } from '../relays/relays.js';
 import { getRxNostr } from '../relays/rx-nostr-client.js';
-import { loadTimeline, type TimelineRuntimeContext } from '../../common/timeline-loader.js';
 
 export async function loadGlobalTimeline(
   _relays: string[],
@@ -38,7 +42,7 @@ export async function loadGlobalTimeline(
     activeTimeouts,
     isRouteActive: routeIsActive,
     createFilter: (currentUntilTimestamp) => ({
-      kinds: [1, 6, 16],
+      kinds: FEED_KINDS,
       until: currentUntilTimestamp,
       limit,
     }),

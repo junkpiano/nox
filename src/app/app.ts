@@ -3,6 +3,7 @@ import { onAppEvent } from '../common/app-events.js';
 import { setupBottomTabs } from '../common/bottom-tabs.js';
 import { setupComposeOverlay } from '../common/compose.js';
 import { installEmojiFallback } from '../common/content-html.js';
+import { FEED_KINDS } from '../common/feeds.js';
 import { getFollowedHashtags, homeFilters } from '../common/interests.js';
 import { kvRemove } from '../common/kv.js';
 import { clearMuteList, loadCachedMuteList } from '../common/mute-state.js';
@@ -143,7 +144,7 @@ function startBackgroundFetch(followedPubkeys: PubkeyHex[]): void {
 function startGlobalBackgroundFetch(): void {
   startNewPostsPolling({
     timelineType: 'global',
-    filter: { kinds: [1, 6, 16] },
+    filter: { kinds: FEED_KINDS },
   });
 }
 
