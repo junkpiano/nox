@@ -1,6 +1,7 @@
 import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
 import { guardWrite, hasViewer } from '../lib/read-only';
+import ActionButton from './ActionButton';
 import EmojiPickerSheet from './EmojiPickerSheet';
 /**
  * The list both timelines draw.
@@ -272,19 +273,19 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
         visible={menuOpen}
         onClose={(): void => setMenuOpen(false)}
       />
-      <Pressable
-        hitSlop={8}
+      <ActionButton
+        icon="reply"
+        label="Reply"
         onPress={(): void => {
           if (!guardWrite()) return;
           navigation.push('Thread', { eventId: post.id, reply: true });
         }}
-      >
-        <Text accessibilityLabel="Reply" style={styles.action}>
-          ↩
-        </Text>
-      </Pressable>
-      <Pressable
-        hitSlop={8}
+      />
+      <ActionButton
+        icon="repost"
+        label="Repost"
+        done={reposted}
+        busy={busy === 'repost'}
         disabled={busy !== null}
         // Repost as it is, or quote it with words of one's own (NIP-18).
         // Already reposted, quoting is still open; reposting again is not.
@@ -312,42 +313,24 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
             { text: 'Cancel', style: 'cancel' },
           ]);
         }}
-      >
-        <Text
-          accessibilityLabel="Repost"
-          style={reposted ? styles.actionOn : styles.action}
-        >
-          {busy === 'repost' ? '···' : '⇄'}
-        </Text>
-      </Pressable>
-      <Pressable
-        hitSlop={8}
+      />
+      <ActionButton
+        icon={liked ? 'liked' : 'like'}
+        label={`React with ${heart.content}`}
+        done={liked}
+        busy={busy === 'like'}
         disabled={liked || busy !== null}
         onPress={(): void => react(heart)}
-        accessibilityLabel={`React with ${heart.content}`}
-      >
-        {busy === 'like' ? (
-          <Text style={styles.action}>···</Text>
-        ) : (
-          // A heart, like the other line icons; text presentation keeps
-          // Android from drawing ♥ as a colour emoji.
-          <Text style={liked ? styles.actionOn : styles.action}>
-            {liked ? '\u2665\uFE0E' : '\u2661'}
-          </Text>
-        )}
-      </Pressable>
+      />
       {/* Any emoji, custom ones included: the heart is one tap, this is a choice. */}
-      <Pressable
-        hitSlop={8}
+      <ActionButton
+        icon="react"
+        label="Add reaction"
         disabled={busy !== null}
         onPress={(): void => {
           if (guardWrite()) setPicking(true);
         }}
-      >
-        <Text accessibilityLabel="Add reaction" style={styles.action}>
-          {'\u263A\uFE0E'}
-        </Text>
-      </Pressable>
+      />
       <EmojiPickerSheet
         visible={picking}
         viewer={getSession().pubkey}
@@ -356,11 +339,11 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
       />
       {/* The rare and consequential things, one step further in. Deleting is
           irreversible and used to sit a stray tap from reply. */}
-      <Pressable hitSlop={8} onPress={(): void => setMenuOpen(true)}>
-        <Text accessibilityLabel="More" style={styles.action}>
-          ⋯
-        </Text>
-      </Pressable>
+      <ActionButton
+        icon="more"
+        label="More"
+        onPress={(): void => setMenuOpen(true)}
+      />
     </View>
   );
 }
@@ -728,10 +711,16 @@ const styles = StyleSheet.create({
   },
   content: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 5 },
   link: { color: '#89a8ff' },
-  actions: { flexDirection: 'row', gap: 28, marginTop: 10 },
+  // The buttons carry their own 44-point targets and share out the width,
+  // up to a point: on a narrow phone they close up rather than run off it.
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    maxWidth: 300,
+    marginTop: 4,
+    marginHorizontal: -11,
+  },
   actionsOff: { opacity: 0.45 },
-  action: { color: '#5b6b88', fontSize: 17 },
-  actionOn: { color: '#73f0c1', fontSize: 17 },
   warning: {
     marginTop: 6,
     borderWidth: 1,

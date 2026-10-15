@@ -13,6 +13,7 @@
     "expo-secure-store": "~57.0.4",
     "expo-sqlite": "~57.0.4",
     "expo-status-bar": "~57.0.1",
+    "expo-symbols": "~57.0.3",
     "nostr-tools": "^2.25.1",
     "react": "19.2.3",
     "react-native": "0.86.3",
