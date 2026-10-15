@@ -93,10 +93,13 @@ function startForCurrentSession() {
 
 // Signatures checked natively where the module exists: before any relay
 // is read, so every event goes through the same check.
-if (NoxCrypto) {
+// Android has both; iOS has only the hash so far.
+if (NoxCrypto?.verifySchnorr) {
   setSignatureCheck((signature, id, pubkey) =>
     NoxCrypto.verifySchnorr(signature, id, pubkey),
   );
+}
+if (NoxCrypto) {
   setSha256((text) => NoxCrypto.sha256Hex(text));
 }
 void restoreSessionPrivateKey().then(startForCurrentSession);
