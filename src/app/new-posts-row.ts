@@ -20,8 +20,6 @@ import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { storeEvents } from '../common/db/events-store.js';
 import { prependEventsToTimeline } from '../common/db/timelines-store.js';
 import { fetchDeletedIds, withoutDeleted } from '../common/deleted-events.js';
-import { isMachineContent } from '../common/machine-content.js';
-import { filterMutedEvents } from '../common/mute-state.js';
 import {
   createNewPostsBuffer,
   type NewPostsBuffer,
@@ -29,7 +27,7 @@ import {
   nextSince,
 } from '../common/new-posts.js';
 import { queryRelaysAny } from '../common/relay-query.js';
-import { unwrapRepost } from '../common/repost.js';
+import { isShowable } from '../common/showable.js';
 import { renderIncomingEvent } from '../common/timeline-loader.js';
 import { applyStatusesToTimeline } from '../common/timeline-status.js';
 import { appState, output, seenEventIds } from './app-state.js';
@@ -115,15 +113,7 @@ function newestShown(): number | null {
  * deletion requests.
  */
 async function onlyShowable(events: NostrEvent[]): Promise<NostrEvent[]> {
-  const readable: NostrEvent[] = events.filter((event: NostrEvent): boolean => {
-    const copy: NostrEvent | null = unwrapRepost(event).event;
-    const judged: NostrEvent[] =
-      copy && copy !== event ? [event, copy] : [event];
-    if (filterMutedEvents(judged).length !== judged.length) return false;
-    // A repost with no verified copy is judged when its target is fetched,
-    // as the card does.
-    return !(copy && isMachineContent(copy.content));
-  });
+  const readable: NostrEvent[] = events.filter(isShowable);
   if (readable.length === 0) return [];
   const deleted: Set<string> = await fetchDeletedIds(appState.relays, readable);
   return withoutDeleted(readable, deleted);
