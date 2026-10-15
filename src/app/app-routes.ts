@@ -8,6 +8,7 @@ import {
 import { escapeHtml } from '../common/escape-html.js';
 import { setActiveNav } from '../common/navigation.js';
 import { isNip05Identifier, resolveNip05 } from '../common/nip05.js';
+import { NOTIFICATION_LIMIT } from '../common/notifications-query.js';
 import { hidesWallet } from '../common/platform.js';
 import { publishEventToRelays } from '../common/publish-event.js';
 import { setRelayTimeout } from '../common/relay-schedule.js';
@@ -436,7 +437,7 @@ export function handleRoute(scrollRestoreState?: unknown): void {
       const { loadNotificationsPage } = await getNotificationsModule();
       await loadNotificationsPage({
         relays: appState.relays,
-        limit: 50,
+        limit: NOTIFICATION_LIMIT,
         isRouteActive,
       });
     } else if (path === '/reactions') {

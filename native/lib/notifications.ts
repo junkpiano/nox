@@ -1,30 +1,26 @@
 /**
  * Things other people did that name you.
  *
- * Reactions, reposts and replies all carry a `p` tag pointing at whoever they
- * concern, so one filter finds all three. Your own events are dropped: a
- * reply to your own post is a conversation you are already having, not news.
+ * Which events, and of what kind, is `src/common/notifications-query.ts`,
+ * shared with the web; this adds the names and pictures the rows show.
  */
 
 import type { EmojiMap } from '../../src/common/content-segments';
-import { isMachineContent } from '../../src/common/machine-content';
-import { filterMutedEvents } from '../../src/common/mute-state';
 import {
-  clearRelayTimeout,
-  setRelayTimeout,
-} from '../../src/common/relay-schedule';
-import { openRelaySubscription } from '../../src/common/relay-socket';
-import { checkRepostNotes, unwrapRepost } from '../../src/common/repost';
+  classifyNotification,
+  fetchNotificationEvents,
+  type NotificationKind,
+  notificationTarget,
+} from '../../src/common/notifications-query';
+import { queryRelays } from '../../src/common/relay-query';
+import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { customEmojiOf, pictureUrl } from './avatar';
 
-const NOTIFICATION_KINDS: number[] = [1, 6, 7];
-const LIMIT: number = 200;
-const TIMEOUT_MS: number = 9000;
 const MAX_AUTHORS: number = 300;
 
-export type NotificationKind = 'reaction' | 'repost' | 'reply';
+export type { NotificationKind };
 
 /** One empty map, shared: a name without emoji is the usual case. */
 const EMPTY_EMOJI: EmojiMap = new Map();
@@ -54,77 +50,6 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-function queryRelays(
-  relays: string[],
-  filter: Record<string, unknown>,
-): Promise<NostrEvent[]> {
-  return new Promise<NostrEvent[]>((resolve) => {
-    const byId: Map<string, NostrEvent> = new Map();
-    const stops: Array<() => void> = [];
-    let done: number = 0;
-    let settled: boolean = false;
-
-    const finish = (): void => {
-      if (settled) return;
-      settled = true;
-      clearRelayTimeout(timer);
-      for (const stop of stops) {
-        try {
-          stop();
-        } catch {
-          // Already gone.
-        }
-      }
-      resolve(Array.from(byId.values()));
-    };
-
-    const timer = setRelayTimeout(finish, TIMEOUT_MS);
-    const oneDone = (): void => {
-      done += 1;
-      if (done >= relays.length) finish();
-    };
-
-    for (const relayUrl of relays) {
-      openRelaySubscription(relayUrl, filter, {
-        onEvent: (event: NostrEvent): void => {
-          if (!byId.has(event.id)) byId.set(event.id, event);
-        },
-        onEose: oneDone,
-        onClosed: oneDone,
-      })
-        .then((stop: () => void): void => {
-          stops.push(stop);
-        })
-        .catch(oneDone);
-    }
-
-    if (relays.length === 0) finish();
-  });
-}
-
-/**
- * Which of your events this concerns.
- *
- * NIP-10 puts the event being replied to in an `e` tag, and a reaction points
- * at what it reacts to the same way. The last `e` tag is the immediate parent
- * under both the marked and the legacy positional conventions.
- */
-function targetOf(event: NostrEvent): string | null {
-  const eTags = event.tags.filter(
-    (tag: string[]): boolean => tag[0] === 'e' && Boolean(tag[1]),
-  );
-  const reply = eTags.find((tag: string[]): boolean => tag[3] === 'reply');
-  if (reply?.[1]) return reply[1];
-  const last = eTags[eTags.length - 1];
-  return last?.[1] ?? null;
-}
-
-function classify(event: NostrEvent): NotificationKind {
-  if (event.kind === 7) return 'reaction';
-  if (event.kind === 6) return 'repost';
-  return 'reply';
-}
-
 export async function loadNotifications(
   viewer: PubkeyHex,
   onStage: (stage: string) => void,
@@ -133,18 +58,9 @@ export async function loadNotifications(
   const relays: string[] = getRelays();
 
   onStage('mentions and reactions...');
-  const events: NostrEvent[] = await queryRelays(relays, {
-    kinds: NOTIFICATION_KINDS,
-    '#p': [viewer],
-    limit: LIMIT,
-  });
-
-  // Two things are dropped here. Your own events name you too - a reply in
-  // your own thread carries your `p` tag - and that is a conversation you are
-  // already in rather than news. And anyone muted: being told that somebody
-  // you muted reacted to you is the notification working against the mute.
-  const fromOthers: NostrEvent[] = filterMutedEvents(
-    events.filter((event: NostrEvent): boolean => event.pubkey !== viewer),
+  const fromOthers: NostrEvent[] = await fetchNotificationEvents(
+    relays,
+    viewer,
   );
 
   onStage('who they are...');
@@ -179,30 +95,23 @@ export async function loadNotifications(
     }
   }
 
-  await checkRepostNotes(fromOthers);
-  const notifications: Notification[] = fromOthers
-    // A JSON blob that happens to p-tag you is not a reply, whatever kind
-    // it claims. The timeline hides these and so does this.
-    .filter((event: NostrEvent): boolean => {
-      const shown: NostrEvent | null = unwrapRepost(event).event;
-      return !isMachineContent(shown?.content ?? event.content);
-    })
-    .sort((a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at)
-    .map((event: NostrEvent): Notification => {
+  const notifications: Notification[] = fromOthers.map(
+    (event: NostrEvent): Notification => {
       const meta = names.get(event.pubkey);
       return {
         id: event.id,
-        kind: classify(event),
+        kind: classifyNotification(event, viewer) ?? 'mention',
         pubkey: event.pubkey as PubkeyHex,
         createdAt: event.created_at,
         // A repost's content is the reposted event as JSON, not words.
         content: unwrapRepost(event).event?.content ?? '',
-        targetId: targetOf(event),
+        targetId: notificationTarget(event),
         name: str(meta?.name) || `${event.pubkey.slice(0, 8)}...`,
         emoji: meta?.emoji ?? EMPTY_EMOJI,
         picture: meta?.picture ?? null,
       };
-    });
+    },
+  );
 
   return {
     notifications,

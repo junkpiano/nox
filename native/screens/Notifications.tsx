@@ -55,6 +55,7 @@ function readViewer(): PubkeyHex | null {
 function summarise(item: Notification): string {
   if (item.kind === 'repost') return 'reposted you';
   if (item.kind === 'reply') return 'replied';
+  if (item.kind === 'mention') return 'mentioned you';
   // NIP-25: "+" is a like and "-" a dislike; anything else is shown as sent.
   const body = item.content.trim();
   if (body === '+' || body === '') return 'liked your post';
@@ -310,7 +311,8 @@ export default function Notifications() {
                 />
                 <Text style={styles.verb}> {summarise(item)}</Text>
               </Text>
-              {item.kind === 'reply' && item.content ? (
+              {(item.kind === 'reply' || item.kind === 'mention') &&
+              item.content ? (
                 <Text style={styles.body} numberOfLines={3}>
                   {item.content}
                 </Text>
