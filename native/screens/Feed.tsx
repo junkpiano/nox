@@ -16,7 +16,8 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getSessionPrivateKey } from '../../src/common/session';
 import type { RootStackParamList } from '../App';
@@ -30,6 +31,7 @@ export default function Feed() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [which, setWhich] = useState<Which>('home');
+  const insets = useSafeAreaInsets();
   const [globalMounted, setGlobalMounted] = useState(false);
   // Read below at render; this is what makes the read happen again after a
   // sign-in, rather than on the next restart.
@@ -75,7 +77,7 @@ export default function Feed() {
       {getSessionPrivateKey() ? (
         <Pressable
           onPress={(): void => navigation.navigate('Compose')}
-          style={styles.fab}
+          style={[styles.fab, { bottom: insets.bottom + TAB_BAR + 16 }]}
         >
           <Text style={styles.fabText}>✎</Text>
         </Pressable>
@@ -83,6 +85,13 @@ export default function Feed() {
     </View>
   );
 }
+
+/**
+ * The system tab bar's height above the device's own inset. The screen runs
+ * underneath it, and the bar takes the touches in its area, so the button is
+ * placed clear of it rather than at a guess.
+ */
+const TAB_BAR: number = Platform.OS === 'ios' ? 49 : 80;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0b1220' },
@@ -110,10 +119,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    // Clear of the tab bar, not merely drawn over it. At 24 the button looked
-    // fine and its lower half was unpressable: the bar is painted underneath
-    // but still takes the touches in its own area.
-    bottom: 92,
     width: 56,
     height: 56,
     borderRadius: 28,
