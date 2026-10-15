@@ -29,7 +29,7 @@ import { kvGet, kvSet } from './kv.js';
  * date changes; leaving it behind is the failure mode, so the two are written
  * to be compared by eye.
  */
-export const TERMS_VERSION: string = '2026-08-25';
+export const TERMS_VERSION: string = '2026-10-15';
 
 const ACCEPTED_KEY: string = 'terms_accepted_version';
 

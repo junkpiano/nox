@@ -1,6 +1,6 @@
 # Privacy Policy for nox
 
-Last updated: 25 August 2026
+Last updated: 15 October 2026
 
 nox is a client for the Nostr network. It has no backend of its own and no user
 accounts. This policy describes what the app does with your information, which
@@ -68,8 +68,8 @@ that hop does not exist there.
 
 ## Children
 
-nox is not directed at children. Nostr is a public network carrying unmoderated
-content from strangers.
+nox is for people aged 18 and over, and is not directed at children. Nostr is
+a public network carrying unmoderated content from strangers.
 
 ## Content from other people
 

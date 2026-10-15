@@ -1,6 +1,6 @@
 # Terms of Use for nox
 
-Last updated: 25 August 2026
+Last updated: 15 October 2026
 
 By using nox you agree to these terms. If you do not, do not use the app.
 
@@ -69,9 +69,9 @@ appropriate authorities.
 
 ## Age
 
-You must be old enough to enter a binding agreement where you live, and at
-least 13. nox carries unmoderated content from strangers and is not suitable
-for children.
+You must be at least 18, and old enough to enter a binding agreement where
+you live. nox carries unmoderated content from strangers, some of it for
+adults only, and is not suitable for children or teenagers.
 
 ## Termination
 

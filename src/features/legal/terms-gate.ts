@@ -81,7 +81,7 @@ export function showTermsGate(): Promise<void> {
             </article>
           </details>
           <p class="mb-2 text-sm leading-relaxed text-gray-600">
-            Continuing accepts both. You must be at least 13.
+            Continuing accepts both. You must be at least 18.
           </p>
         </div>
         <button id="terms-gate-accept" type="button"
