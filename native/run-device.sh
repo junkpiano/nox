@@ -10,7 +10,7 @@
 set -euo pipefail
 
 ADB="/mnt/c/Users/yusuke/AppData/Local/Android/Sdk/platform-tools/adb.exe"
-PKG="garden.nox.rn"
+PKG="garden.nox"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 export JAVA_HOME="$HOME/.local/jdk-21"
