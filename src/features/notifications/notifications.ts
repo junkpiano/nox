@@ -14,7 +14,11 @@ import {
   saveNotificationScope,
   scopeNotifications,
 } from '../../common/notification-filter.js';
-import { queryRelays } from '../../common/relay-query.js';
+import {
+  classifyNotification,
+  fetchNotificationEvents,
+  notificationTarget,
+} from '../../common/notifications-query.js';
 import { getDisplayName, replaceEmojiShortcodes } from '../../utils/utils.js';
 import { fetchProfile, getAuthoritativeProfile } from '../profile/profile.js';
 
@@ -27,38 +31,6 @@ interface LoadNotificationsOptions {
 
 let lastFetchedAt: number = 0;
 let cachedEvents: NostrEvent[] = [];
-
-function classifyNotification(
-  event: NostrEvent,
-  targetPubkey: PubkeyHex,
-): 'mention' | 'reply' | 'reaction' | 'repost' | null {
-  if (event.kind === 7) {
-    return 'reaction';
-  }
-  if (event.kind === 6) {
-    return 'repost';
-  }
-  if (event.kind !== 1) {
-    return null;
-  }
-  const hasPTarget: boolean = event.tags.some(
-    (tag: string[]): boolean => tag[0] === 'p' && tag[1] === targetPubkey,
-  );
-  if (!hasPTarget) {
-    return null;
-  }
-  const hasETag: boolean = event.tags.some(
-    (tag: string[]): boolean => tag[0] === 'e',
-  );
-  return hasETag ? 'reply' : 'mention';
-}
-
-function getTargetEventId(event: NostrEvent): string | null {
-  const eTag: string[] | undefined = event.tags.find(
-    (tag: string[]): boolean => tag[0] === 'e',
-  );
-  return eTag?.[1] || null;
-}
 
 function renderNotifications(
   events: NostrEvent[],
@@ -115,7 +87,7 @@ function renderNotifications(
     }
     content = replaceEmojiShortcodes(content);
 
-    const eventId: string | null = getTargetEventId(event);
+    const eventId: string | null = notificationTarget(event);
     if (eventId) {
       const note: string = nip19.noteEncode(eventId);
       row.href = `/${note}`;
@@ -159,26 +131,6 @@ function renderNotifications(
   });
 }
 
-async function fetchNotifications(
-  relays: string[],
-  targetPubkey: PubkeyHex,
-  limit: number,
-): Promise<NostrEvent[]> {
-  const events: NostrEvent[] = (
-    await queryRelays(relays, {
-      kinds: [1, 6, 7],
-      '#p': [targetPubkey],
-      limit,
-    })
-  ).filter((event: NostrEvent): boolean =>
-    Boolean(classifyNotification(event, targetPubkey)),
-  );
-  events.sort(
-    (a: NostrEvent, b: NostrEvent): number => b.created_at - a.created_at,
-  );
-  return events.slice(0, limit);
-}
-
 export async function loadNotifications(
   options: LoadNotificationsOptions,
 ): Promise<NostrEvent[]> {
@@ -196,7 +148,7 @@ export async function loadNotifications(
     return cachedEvents;
   }
 
-  const events: NostrEvent[] = await fetchNotifications(
+  const events: NostrEvent[] = await fetchNotificationEvents(
     options.relays,
     storedPubkey as PubkeyHex,
     options.limit,
