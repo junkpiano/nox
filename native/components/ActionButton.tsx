@@ -8,9 +8,10 @@
 
 import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import type { IconName } from '../../src/common/icons';
+import { TYPE } from '../lib/type';
 import Icon from './Icon';
 
-const SIZE: number = 22;
+const SIZE: number = TYPE.icon;
 const IDLE: string = '#7283aa';
 const DONE: string = '#73f0c1';
 

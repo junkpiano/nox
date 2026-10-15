@@ -1,6 +1,7 @@
 import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
 import { guardWrite, hasViewer } from '../lib/read-only';
+import { TYPE } from '../lib/type';
 import ActionButton from './ActionButton';
 import EmojiPickerSheet from './EmojiPickerSheet';
 /**
@@ -691,25 +692,35 @@ const styles = StyleSheet.create({
   avatarTap: { alignSelf: 'flex-start' },
   rowBody: { flex: 1 },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { color: '#e8eeff', fontWeight: '700', fontSize: 14, flexShrink: 1 },
+  name: {
+    color: '#e8eeff',
+    fontWeight: '700',
+    fontSize: TYPE.name,
+    flexShrink: 1,
+  },
   badge: {
     color: '#73f0c1',
-    fontSize: 10,
+    fontSize: TYPE.small,
     borderWidth: 1,
     borderColor: '#25563f',
     borderRadius: 6,
     paddingHorizontal: 5,
     paddingVertical: 1,
   },
-  nip05: { color: '#5b6b88', fontSize: 11, marginTop: 1 },
-  time: { color: '#5b6b88', fontSize: 11, marginLeft: 'auto' },
+  nip05: { color: '#5b6b88', fontSize: TYPE.meta, marginTop: 1 },
+  time: { color: '#5b6b88', fontSize: TYPE.meta, marginLeft: 'auto' },
   status: {
     color: '#8fa3c7',
-    fontSize: 12,
+    fontSize: TYPE.meta,
     fontStyle: 'italic',
     marginTop: 2,
   },
-  content: { color: '#b9c6de', fontSize: 14, lineHeight: 20, marginTop: 5 },
+  content: {
+    color: '#b9c6de',
+    fontSize: TYPE.body,
+    lineHeight: TYPE.bodyLine,
+    marginTop: 5,
+  },
   link: { color: '#89a8ff' },
   // The buttons carry their own 44-point targets and share out the width,
   // up to a point: on a narrow phone they close up rather than run off it.
@@ -730,8 +741,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  warningText: { color: '#ffd79a', fontSize: 13, lineHeight: 18 },
-  warningHint: { color: '#8a7550', fontSize: 11, marginTop: 4 },
+  warningText: { color: '#ffd79a', fontSize: TYPE.label, lineHeight: 20 },
+  warningHint: { color: '#8a7550', fontSize: TYPE.small, marginTop: 4 },
   listContent: { paddingBottom: 96 },
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
   newRow: {

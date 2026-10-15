@@ -7,6 +7,7 @@ import EmojiPickerSheet, {
   forgetEmojiList,
 } from '../components/EmojiPickerSheet';
 import { guardWrite, hasViewer, signInPrompt } from '../lib/read-only';
+import { TYPE } from '../lib/type';
 /**
  * One post and its replies.
  *
@@ -692,7 +693,12 @@ export default function Thread({ route }: { route: ThreadRoute }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0b1220' },
   rootPost: { padding: 16 },
-  rootContent: { color: '#e8eeff', fontSize: 17, lineHeight: 25, marginTop: 6 },
+  rootContent: {
+    color: '#e8eeff',
+    fontSize: TYPE.lead,
+    lineHeight: TYPE.leadLine,
+    marginTop: 6,
+  },
   warning: {
     borderWidth: 1,
     borderColor: '#4a3a1a',
@@ -702,9 +708,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 8,
   },
-  warningText: { color: '#ffd79a', fontSize: 14, lineHeight: 20 },
-  warningHint: { color: '#8a7550', fontSize: 11, marginTop: 4 },
-  inReplyTo: { color: '#89a8ff', fontSize: 12, marginBottom: 8 },
+  warningText: { color: '#ffd79a', fontSize: TYPE.label, lineHeight: 20 },
+  warningHint: { color: '#8a7550', fontSize: TYPE.small, marginTop: 4 },
+  inReplyTo: { color: '#89a8ff', fontSize: TYPE.meta, marginBottom: 8 },
   deleted: {
     color: '#8ea0c0',
     fontSize: 14,
@@ -726,10 +732,10 @@ const styles = StyleSheet.create({
   authorAvatarLarge: { width: 44, height: 44, borderRadius: 22 },
   authorAvatarBlank: { opacity: 0.5 },
   authorText: { flex: 1 },
-  authorName: { color: '#e8eeff', fontWeight: '700', fontSize: 14 },
-  authorNameLarge: { fontSize: 16 },
-  authorNip05: { color: '#5b6b88', fontSize: 11, marginTop: 1 },
-  meta: { color: '#5b6b88', fontSize: 11 },
+  authorName: { color: '#e8eeff', fontWeight: '700', fontSize: TYPE.name },
+  authorNameLarge: { fontSize: TYPE.lead },
+  authorNip05: { color: '#5b6b88', fontSize: TYPE.meta, marginTop: 1 },
+  meta: { color: '#5b6b88', fontSize: TYPE.meta },
   likeButton: {
     marginHorizontal: 16,
     marginBottom: 12,
