@@ -183,8 +183,13 @@ export default function Wallet() {
       <ScrollView style={styles.screen} contentContainerStyle={styles.body}>
         <Text style={styles.heading}>Connect a wallet</Text>
         <Text style={styles.hint}>
-          Paste your wallet connection string to send tips. It is kept in this
-          phone's credential store and deleted when you sign out.
+          nox has no wallet of its own. To pay from yours, paste its Nostr
+          Wallet Connect string. Your funds stay there, and you can disconnect
+          here or revoke it in your wallet at any time.
+        </Text>
+        <Text style={styles.hint}>
+          The string is kept in this phone's credential store and deleted when
+          you sign out.
         </Text>
         <TextInput
           value={uri}
