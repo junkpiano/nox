@@ -37,7 +37,6 @@ import {
   removeEventFromTimeline,
 } from '../../src/common/db/timelines-store';
 import type { TimelineKey } from '../../src/common/db/types';
-import { withoutDeleted } from '../../src/common/deleted-events';
 import {
   findDeletedIds,
   getCachedDeletionStatus,
@@ -49,10 +48,10 @@ import {
   homeFilters,
   refreshFollowedHashtags,
 } from '../../src/common/interests';
-import { withoutMachineContent } from '../../src/common/machine-content';
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { fetchFollowSet } from '../../src/common/notification-filter';
 import { queryRelays, queryRelaysAny } from '../../src/common/relay-query';
+import { showableEvents } from '../../src/common/showable';
 
 /** What a timeline asks: one filter, or several ORed as one REQ would. */
 export type TimelineFilter =
@@ -612,20 +611,9 @@ export async function decorateEvents(
       ),
     ]);
   forgetWithdrawn(Array.from(deleted), options.cacheKey ?? null);
-  // Machine output - a note whose whole body is a JSON object - is judged
-  // on what would be shown, so a repost of a heartbeat goes with it.
-  // The mute list was counted in the stats and never applied to the rows:
-  // a muted author's posts were on screen under a line saying they were
-  // hidden. Judged on both sides of a repost - the author, and whoever
-  // passed it on - since muting either is a reason not to see it.
-  const live: NostrEvent[] = withoutDeleted(events, deleted).filter(
-    (event: NostrEvent): boolean => {
-      const shown: NostrEvent = unwrapRepost(event).event ?? event;
-      const judged: NostrEvent[] = shown === event ? [event] : [event, shown];
-      if (filterMutedEvents(judged).length !== judged.length) return false;
-      return withoutMachineContent([shown]).length === 1;
-    },
-  );
+  // The rule the web applies too: mutes on both sides of a repost, machine
+  // output judged on what would be shown.
+  const live: NostrEvent[] = showableEvents(events, deleted);
 
   // The question above went out before the withdrawals were known, so it
   // carried every author and may have hit the cap on a large batch. Anyone
