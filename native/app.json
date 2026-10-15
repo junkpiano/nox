@@ -22,7 +22,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "garden.nox.rn",
+      "package": "garden.nox",
       "intentFilters": [
         {
           "action": "VIEW",

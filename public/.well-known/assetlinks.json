@@ -3,9 +3,10 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "garden.nox.rn",
+      "package_name": "garden.nox",
       "sha256_cert_fingerprints": [
-        "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C"
+        "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C",
+        "C3:B0:6A:20:D1:0F:A7:6D:C4:EB:28:BF:80:79:6A:8A:9B:74:E8:43:4D:C5:A6:A9:9B:6F:81:98:DD:6E:02:F4"
       ]
     }
   }
