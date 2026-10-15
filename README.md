@@ -30,8 +30,8 @@ npm run build      # type-checks, then writes dist/
 npm run preview    # serves dist/
 ```
 
-Deploying is `npm run deploy` from a maintainer machine that is logged in to
-Wrangler. Pull requests get a Netlify preview at
+Every push to `main` deploys nox.garden (`.github/workflows/deploy-web.yml`);
+`npm run deploy` from a machine logged in to Wrangler does the same by hand. Pull requests get a Netlify preview at
 `deploy-preview-<n>--nox-preview.netlify.app`.
 
 ## Desktop
@@ -41,10 +41,8 @@ npm run tauri:dev      # runs the Vite dev server inside a Tauri window
 npm run tauri:build    # installers under src-tauri/target/release/bundle/
 ```
 
-The Tauri Android build (`npm run android:dev`, `npm run android:build`) is
-the older phone path and is being replaced by the Expo app below. Signing
-and release steps for it are in `docs/android-release.md`; the iOS CI build
-is in `docs/ios-testflight.md`.
+Phones get the Expo app below, not Tauri. CI builds for it are described in
+`docs/android-release.md` and `docs/ios-testflight.md`.
 
 ## Phone (Expo)
 
