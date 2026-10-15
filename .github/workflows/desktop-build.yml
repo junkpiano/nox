@@ -25,6 +25,7 @@ jobs:
             out: |
               src-tauri/target/release/bundle/msi/*.msi
               src-tauri/target/release/bundle/nsis/*.exe
+              msix/*.msix
           # The oldest supported Ubuntu: a binary built against an older glibc
           # runs on newer distributions, not the other way round.
           - os: ubuntu-22.04
@@ -73,6 +74,32 @@ jobs:
       # signing certificate. Linux packages are not signed.
       - name: Build
         run: bunx tauri build --bundles ${{ matrix.bundles }}
+
+      # The Microsoft Store package, from the same nox.exe. Unsigned: the Store
+      # signs what it distributes. Identity comes from repository variables
+      # set from Partner Center; without them it is a packaging check only.
+      - name: Package for the Microsoft Store
+        if: matrix.name == 'windows'
+        shell: bash
+        env:
+          IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'nox.unreserved' }}
+          PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=nox-unreserved' }}
+          PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME || 'nox' }}
+          VERSION: 1.0.${{ github.run_number }}.0
+          WINAPP_CLI_TELEMETRY_OPTOUT: '1'
+        run: |
+          STAGE=msix/stage
+          mkdir -p "$STAGE"
+          cp src-tauri/target/release/nox.exe "$STAGE/"
+          sed -e "s|__IDENTITY_NAME__|$IDENTITY_NAME|" \
+              -e "s|__PUBLISHER__|$PUBLISHER|" \
+              -e "s|__PUBLISHER_DISPLAY_NAME__|$PUBLISHER_DISPLAY_NAME|" \
+              -e "s|__VERSION__|$VERSION|" \
+              src-tauri/msix/Package.appxmanifest > "$STAGE/Package.appxmanifest"
+          WINAPP="npx -y -p @microsoft/winappcli@0.7.1 winapp"
+          $WINAPP manifest update-assets src-tauri/icons/icon.png --manifest "$STAGE/Package.appxmanifest"
+          $WINAPP pack "$STAGE" --manifest "$STAGE/Package.appxmanifest" --no-sign --output "msix/nox_${VERSION}_x64.msix"
+          ls -l msix/*.msix
 
       - uses: actions/upload-artifact@v4
         with:
