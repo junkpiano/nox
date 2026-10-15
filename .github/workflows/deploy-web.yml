@@ -1,0 +1,48 @@
+name: Deploy web
+
+# nox.garden follows main: every push there is built, tested and deployed to
+# Cloudflare Workers, as `npm run deploy` does from a maintainer machine.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time, and never cancelled halfway: a newer push waits
+# for the running one and then deploys on top of it.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Test
+        run: bun run test
+
+      - name: Build and deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set; see Deployment in AGENTS.md."
+            exit 1
+          fi
+          bun run build
+          bunx wrangler deploy | tee "$RUNNER_TEMP/deploy.log"
+          {
+            echo "### nox.garden deployed"
+            echo ""
+            echo "\`${GITHUB_SHA::7}\` — $(grep -o 'Current Version ID: .*' "$RUNNER_TEMP/deploy.log")"
+          } >> "$GITHUB_STEP_SUMMARY"

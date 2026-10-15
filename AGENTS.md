@@ -235,8 +235,12 @@ to exclude.
 
 | | |
 |---|---|
-| Production | Cloudflare Workers, `nox.garden`, `npm run deploy` from a maintainer machine |
+| Production | Cloudflare Workers, `nox.garden`, deployed by `.github/workflows/deploy-web.yml` on every push to `main` (`npm run deploy` still works from a maintainer machine) |
 | Pull request previews | Netlify, `deploy-preview-<n>--nox-preview.netlify.app` |
+
+The workflow needs two repository secrets: `CLOUDFLARE_API_TOKEN` (a token
+made from Cloudflare's "Edit Cloudflare Workers" template, limited to this
+account and the `nox.garden` zone) and `CLOUDFLARE_ACCOUNT_ID`.
 
 `netlify.toml` names bun explicitly because three lockfiles are checked in and
 Netlify picks one by detection, and it carries the SPA redirect that
