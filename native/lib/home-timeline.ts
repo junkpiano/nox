@@ -24,15 +24,9 @@ import {
   queryEvents,
   storeEvents,
 } from '../../src/common/db/events-store';
-import {
-  getProfiles,
-  profileNeedsRefresh,
-  storeProfiles,
-} from '../../src/common/db/profiles-store';
 import { getCachedTimeline } from '../../src/common/db/timeline-queries';
 import {
   appendEventsToTimeline,
-  deleteTimeline,
   prependEventsToTimeline,
   removeEventFromTimeline,
 } from '../../src/common/db/timelines-store';
@@ -58,6 +52,7 @@ export type TimelineFilter =
   | Record<string, unknown>
   | Array<Record<string, unknown>>;
 
+import { fetchProfiles } from '../../src/common/profile-fetch';
 import {
   checkRepostNotes,
   isRepost,
@@ -414,79 +409,18 @@ export async function fetchProfilesForPubkeys(
     return profiles;
   }
 
-  // The profile store first: a name that was known yesterday is still the
-  // name, and asking a relay for it again is what made every load wait on
-  // a kind 0 query for a hundred people. A name known for more than a day
-  // is still shown, and asked about again: people do change their names
-  // and pictures, and a timeline that only ever read the store would not
-  // find out until their profile page was opened.
-  const stale: Set<PubkeyHex> = new Set();
-  try {
-    const known: Map<PubkeyHex, NostrProfile> = await getProfiles(wanted);
-    for (const [pubkey, profile] of known) {
-      const meta: ProfileMeta | null = metaFrom(profile);
-      if (meta) profiles.set(pubkey, meta);
-    }
-    const refresh: boolean[] = await Promise.all(
-      Array.from(known.keys(), (pubkey: PubkeyHex) =>
-        profileNeedsRefresh(pubkey),
-      ),
-    );
-    Array.from(known.keys()).forEach((pubkey: PubkeyHex, index: number) => {
-      if (refresh[index]) stale.add(pubkey);
-    });
-  } catch (error: unknown) {
-    console.warn('[timeline] profile cache could not be read', error);
-  }
-
-  const toAsk: PubkeyHex[] = wanted.filter(
-    (pubkey: PubkeyHex): boolean => !profiles.has(pubkey) || stale.has(pubkey),
+  // The shared lookup: memory, then the store, then the relays for anyone
+  // missing or known for more than a day, a hundred to a query.
+  const known: Map<PubkeyHex, NostrProfile> = await fetchProfiles(
+    wanted,
+    relays,
+    { cachedOnly: mode === 'cached' },
   );
-  if (mode === 'cached' || toAsk.length === 0) {
-    return profiles;
+  for (const [pubkey, profile] of known) {
+    const meta: ProfileMeta | null = metaFrom(profile);
+    if (meta) profiles.set(pubkey, meta);
   }
-
-  const profileEvents: NostrEvent[] = await queryRelays(relays, {
-    kinds: [0],
-    authors: toAsk,
-  });
-
-  const profileAt: Map<string, number> = new Map();
-  const fetched: Map<PubkeyHex, NostrProfile> = new Map();
-  for (const event of profileEvents) {
-    const previous: number | undefined = profileAt.get(event.pubkey);
-    if (previous !== undefined && previous >= event.created_at) continue;
-    const raw: NostrProfile | null = profileJson(event);
-    // The event's emoji tags travel with the parsed profile, so the cache
-    // keeps them and a name drawn tomorrow still has its pictures.
-    if (raw) {
-      raw.emojiTags = event.tags.filter(
-        (tag: string[]): boolean => tag[0] === 'emoji',
-      );
-    }
-    const meta: ProfileMeta | null = raw ? metaFrom(raw) : null;
-    if (!raw || !meta) continue;
-    profiles.set(event.pubkey, meta);
-    fetched.set(event.pubkey as PubkeyHex, raw);
-    profileAt.set(event.pubkey, event.created_at);
-  }
-  if (fetched.size > 0) {
-    storeProfiles(
-      Array.from(fetched, ([pubkey, profile]) => ({ pubkey, profile })),
-    ).catch((): void => {});
-  }
-
   return profiles;
-}
-
-/** The kind 0's content as the object it claims to be, or null. */
-function profileJson(event: NostrEvent): NostrProfile | null {
-  try {
-    const meta: unknown = JSON.parse(event.content);
-    return meta && typeof meta === 'object' ? (meta as NostrProfile) : null;
-  } catch {
-    return null;
-  }
 }
 
 /** What the card needs from a profile, whichever way it arrived. */

@@ -12,10 +12,10 @@ import {
   type NotificationKind,
   notificationTarget,
 } from '../../src/common/notifications-query';
-import { queryRelays } from '../../src/common/relay-query';
+import { fetchProfiles } from '../../src/common/profile-fetch';
 import { unwrapRepost } from '../../src/common/repost';
 import { getRelays } from '../../src/features/relays/relays';
-import type { NostrEvent, PubkeyHex } from '../../types/nostr';
+import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
 import { customEmojiOf, pictureUrl } from './avatar';
 
 const MAX_AUTHORS: number = 300;
@@ -64,35 +64,29 @@ export async function loadNotifications(
   );
 
   onStage('who they are...');
-  const authors: string[] = Array.from(
-    new Set(fromOthers.map((e: NostrEvent): string => e.pubkey)),
+  // The shared lookup: memory, then the store, then the relays, so a name
+  // the timeline already learned is not asked for again.
+  const authors: PubkeyHex[] = Array.from(
+    new Set(
+      fromOthers.map((e: NostrEvent): PubkeyHex => e.pubkey as PubkeyHex),
+    ),
   ).slice(0, MAX_AUTHORS);
-  const profileEvents: NostrEvent[] = await queryRelays(relays, {
-    kinds: [0],
+  const known: Map<PubkeyHex, NostrProfile> = await fetchProfiles(
     authors,
-  });
-
+    relays,
+  );
   const names: Map<
     string,
     { name: string; emoji: EmojiMap; picture: string | null }
   > = new Map();
-  const at: Map<string, number> = new Map();
-  for (const event of profileEvents) {
-    const previous = at.get(event.pubkey);
-    if (previous !== undefined && previous >= event.created_at) continue;
-    try {
-      const meta = JSON.parse(event.content);
-      names.set(event.pubkey, {
-        name: str(meta.display_name) || str(meta.name),
-        emoji: customEmojiOf(
-          event.tags.filter((tag: string[]): boolean => tag[0] === 'emoji'),
-        ),
-        picture: pictureUrl(meta.picture),
-      });
-      at.set(event.pubkey, event.created_at);
-    } catch {
-      // A profile that will not parse is a profile we do not have.
-    }
+  for (const [pubkey, meta] of known) {
+    names.set(pubkey, {
+      name: str(meta.display_name) || str(meta.name),
+      emoji: customEmojiOf(
+        Array.isArray(meta.emojiTags) ? (meta.emojiTags as string[][]) : [],
+      ),
+      picture: pictureUrl(meta.picture),
+    });
   }
 
   const notifications: Notification[] = fromOthers.map(
