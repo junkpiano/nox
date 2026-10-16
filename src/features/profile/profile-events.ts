@@ -1,7 +1,5 @@
-import type {
-  NostrProfile,
-  PubkeyHex,
-} from '../../../types/nostr';
+import type { NostrProfile, PubkeyHex } from '../../../types/nostr';
+import { userFeedFilter } from '../../common/feeds.js';
 import { loadTimeline } from '../../common/timeline-loader.js';
 import { getRelays } from '../relays/relays.js';
 
@@ -40,8 +38,7 @@ export async function loadEvents(
     connectingMsg,
     isRouteActive: routeIsActive,
     createFilter: (currentUntilTimestamp) => ({
-      kinds: [1, 6, 16],
-      authors: [pubkeyHex],
+      ...userFeedFilter(pubkeyHex),
       until: currentUntilTimestamp,
       limit,
     }),
