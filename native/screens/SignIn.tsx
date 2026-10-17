@@ -1,4 +1,5 @@
 import BrowseAsKey from '../components/BrowseAsKey';
+
 /**
  * Signing in, and the fact that on a phone that means holding a key.
  *
@@ -34,6 +35,7 @@ import {
   storeSessionPrivateKey,
 } from '../../src/common/session';
 import type { PubkeyHex } from '../../types/nostr';
+import { showTimeline } from '../lib/navigation';
 
 export default function SignIn({
   signedInAs,
@@ -80,10 +82,16 @@ export default function SignIn({
   const generate = async (): Promise<void> => {
     const nsec: string = nip19.nsecEncode(generateSecretKey());
     if (!(await adopt(nsec))) return;
+    // The one sign-in that stays here: the backup is on this screen, and a
+    // key nobody backed up is an account lost with the phone.
     Alert.alert(
       'A new key was created',
-      'It exists only on this phone. Back it up from this screen, or it is ' +
-        'gone if the app is removed - there is nobody to reset it with.',
+      'It exists only on this phone. Back it up now, or it is gone if the ' +
+        'app is removed - there is nobody to reset it with.',
+      [
+        { text: 'Later', style: 'cancel', onPress: showTimeline },
+        { text: 'Back up now' },
+      ],
     );
   };
 
@@ -180,7 +188,10 @@ export default function SignIn({
 
       {viewingAs ? null : (
         <BrowseAsKey
-          onStarted={(pubkey: PubkeyHex): void => onChange(pubkey)}
+          onStarted={(pubkey: PubkeyHex): void => {
+            onChange(pubkey);
+            showTimeline();
+          }}
         />
       )}
 
@@ -223,7 +234,11 @@ export default function SignIn({
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable
-            onPress={(): void => void adopt(draft)}
+            onPress={(): void => {
+              void adopt(draft).then((ok: boolean): void => {
+                if (ok) showTimeline();
+              });
+            }}
             style={styles.secondary}
           >
             <Text style={styles.secondaryText}>Use this key</Text>

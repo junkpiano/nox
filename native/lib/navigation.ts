@@ -18,3 +18,14 @@ export function openSignIn(): void {
     navigationRef.navigate('Settings');
   }
 }
+
+/**
+ * After signing in, the timeline - what every app shows next - rather than
+ * the screen the form happened to be on. A reset, so Back does not return
+ * to the form that was just filled in.
+ */
+export function showTimeline(): void {
+  if (navigationRef.isReady()) {
+    navigationRef.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+  }
+}
