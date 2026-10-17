@@ -20,6 +20,7 @@ import {
   type NativeBottomTabIcon,
 } from '@react-navigation/bottom-tabs/unstable';
 import {
+  getFocusedRouteNameFromRoute,
   type LinkingOptions,
   NavigationContainer,
   useNavigation,
@@ -58,6 +59,14 @@ import Terms from './screens/Terms';
 import Thread from './screens/Thread';
 import Wallet from './screens/Wallet';
 import You from './screens/You';
+
+/** What each tab is called on screen, which is not always its route name. */
+const TAB_TITLES: Record<string, string> = {
+  Feed: 'Home',
+  Search: 'Search',
+  Messages: 'DMs',
+  Alerts: 'Alerts',
+};
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -377,7 +386,14 @@ export default function App() {
           <Stack.Screen
             name="Tabs"
             component={TabBar}
-            options={{ headerShown: false }}
+            // iOS labels Back with the previous screen's title. Without one
+            // it read "Tabs"; it names the tab that was open instead.
+            options={({ route }) => ({
+              headerShown: false,
+              title:
+                TAB_TITLES[getFocusedRouteNameFromRoute(route) ?? 'Feed'] ??
+                'Home',
+            })}
           />
           <Stack.Screen
             name="You"

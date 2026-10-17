@@ -96,6 +96,11 @@ export interface RichTextProps {
   onTextLayout?: (event: NativeSyntheticEvent<TextLayoutEventData>) => void;
   /** NIP-30: the event's own emoji, drawn inline where their shortcodes are. */
   emoji?: EmojiMap;
+  /**
+   * The hashtags the post declares in its `t` tags. A number like `#743` is a
+   * hashtag only when the post says so; without these it stays plain text.
+   */
+  topics?: ReadonlySet<string>;
 }
 
 /** An inline picture the height of the line, give or take. */
@@ -111,9 +116,14 @@ export default function RichText({
   numberOfLines,
   onTextLayout,
   emoji,
+  topics,
 }: RichTextProps) {
   const navigation = useNavigation<Nav>();
-  const segments: ContentSegment[] = parseContentSegments(content, emoji);
+  const segments: ContentSegment[] = parseContentSegments(
+    content,
+    emoji,
+    topics,
+  );
   const size: number = emojiSize(style);
   const [, bump] = useState(0);
 

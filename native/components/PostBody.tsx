@@ -45,6 +45,8 @@ export interface PostBodyProps {
   onPressText?: () => void;
   /** NIP-30: the event's own emoji, from its tags. */
   emoji?: EmojiMap;
+  /** The hashtags the post declares (`readTopicTags`). */
+  topics?: ReadonlySet<string>;
 }
 
 export default function PostBody({
@@ -54,6 +56,7 @@ export default function PostBody({
   numberOfLines,
   onPressText,
   emoji,
+  topics,
 }: PostBodyProps) {
   const { segments, media, quotes }: PartitionedContent = partitionContent(
     content,
@@ -78,6 +81,7 @@ export default function PostBody({
             linkStyle={linkStyle}
             numberOfLines={numberOfLines}
             {...(emoji ? { emoji } : {})}
+            {...(topics ? { topics } : {})}
           />
         </Pressable>
       ) : null}
