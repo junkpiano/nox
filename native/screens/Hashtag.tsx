@@ -9,7 +9,7 @@
 import { type RouteProp, useIsFocused } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text } from 'react-native';
 import type { TimelineKey } from '../../src/common/db/types';
 import {
   getFollowedHashtags,
@@ -74,9 +74,21 @@ function FollowHashtag({ tag }: { tag: string }) {
           )
           .finally((): void => setBusy(false));
       }}
-      style={[styles.follow, following && styles.following]}
+      style={
+        GLASS_HEADER ? null : [styles.follow, following && styles.following]
+      }
     >
-      <Text style={following ? styles.followingText : styles.followText}>
+      <Text
+        style={
+          GLASS_HEADER
+            ? following
+              ? styles.glassFollowingText
+              : styles.glassFollowText
+            : following
+              ? styles.followingText
+              : styles.followText
+        }
+      >
         {busy ? '···' : following ? 'Following' : 'Follow'}
       </Text>
     </Pressable>
@@ -201,6 +213,13 @@ export default function Hashtag({
   );
 }
 
+/**
+ * iOS draws a glass capsule around every header button, so the button there
+ * is the label alone: a pill of our own inside it read as a button in a
+ * button. Android has no capsule, and keeps the pill.
+ */
+const GLASS_HEADER: boolean = Platform.OS === 'ios';
+
 const styles = StyleSheet.create({
   follow: {
     marginRight: 12,
@@ -216,4 +235,6 @@ const styles = StyleSheet.create({
   },
   followText: { color: '#0b1220', fontSize: 13, fontWeight: '700' },
   followingText: { color: '#bad0ff', fontSize: 13, fontWeight: '600' },
+  glassFollowText: { color: '#89a8ff', fontSize: 16, fontWeight: '700' },
+  glassFollowingText: { color: '#bad0ff', fontSize: 16, fontWeight: '500' },
 });
