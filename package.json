@@ -13,6 +13,7 @@
     "lint": "biome lint .",
     "check": "biome check .",
     "test": "rm -rf .tmp/test-dist && tsc -p tsconfig.test.json && node --experimental-sqlite --test .tmp/test-dist/tests/*.test.js",
+    "test:coverage": "rm -rf .tmp/test-dist && tsc -p tsconfig.test.json --sourceMap && node --experimental-sqlite --enable-source-maps --test --experimental-test-coverage .tmp/test-dist/tests/*.test.js",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
