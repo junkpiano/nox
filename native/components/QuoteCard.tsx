@@ -21,6 +21,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { readTopicTags } from '../../src/common/content-segments';
 
 import {
   type ContentWarning,
@@ -176,6 +177,7 @@ export default function QuoteCard({ eventId, relays }: QuoteCardProps) {
         linkStyle={styles.link}
         numberOfLines={6}
         emoji={customEmojiOf(quoted.tags)}
+        topics={readTopicTags(quoted.tags)}
       />
     </Pressable>
   );

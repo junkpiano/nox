@@ -1,3 +1,4 @@
+import { readTopicTags } from '../../src/common/content-segments';
 import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
 import { guardWrite, hasViewer } from '../lib/read-only';
@@ -172,6 +173,7 @@ function PostRowBody({
             numberOfLines={12}
             onPressText={openThread}
             emoji={customEmojiOf(post.event.tags)}
+            topics={readTopicTags(post.event.tags)}
           />
         )}
         {post.repostTargetId ? (

@@ -1,3 +1,4 @@
+import { readTopicTags } from '../../src/common/content-segments';
 import { addToEmojiList } from '../../src/common/emoji-list';
 import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 import { getSession } from '../../src/common/session';
@@ -555,6 +556,7 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                 textStyle={styles.rootContent}
                 linkStyle={styles.link}
                 emoji={customEmojiOf(root.tags)}
+                topics={readTopicTags(root.tags)}
               />
             )}
           </View>
