@@ -44,10 +44,12 @@ export function parseNip65RelayUrls(tags: string[][]): string[] {
 }
 
 export function buildNip65RelayTags(relayUrls: string[]): string[][] {
-  return uniqPreserveOrder(relayUrls)
-    .map((url: string): string | null => normalizeRelayUrl(url))
-    .filter((url: string | null): url is string => Boolean(url))
-    .map((url: string): string[] => ['r', url]);
+  // Normalised first, so two spellings of one relay become one tag.
+  return uniqPreserveOrder(
+    relayUrls
+      .map((url: string): string | null => normalizeRelayUrl(url))
+      .filter((url: string | null): url is string => Boolean(url)),
+  ).map((url: string): string[] => ['r', url]);
 }
 
 export async function fetchNip65RelayList(params: {
