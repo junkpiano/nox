@@ -1,12 +1,9 @@
 import { readTopicTags } from '../../src/common/content-segments';
-import { addToEmojiList } from '../../src/common/emoji-list';
 import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
 import ActionButton from '../components/ActionButton';
-import EmojiPickerSheet, {
-  forgetEmojiList,
-} from '../components/EmojiPickerSheet';
+import EmojiPickerSheet from '../components/EmojiPickerSheet';
 import { guardWrite, hasViewer, signInPrompt } from '../lib/read-only';
 import { TYPE } from '../lib/type';
 /**
@@ -449,31 +446,6 @@ export default function Thread({ route }: { route: ThreadRoute }) {
 
   // A custom emoji someone reacted with, offered for the viewer's own list.
   // The other badges are only counts: pressing them does nothing.
-  const offerToAddEmoji = (entry: ReactionAggregate): void => {
-    const viewer: PubkeyHex | null = getSession().pubkey;
-    if (!entry.shortcode || !entry.imageUrl || !viewer) return;
-    if (!guardWrite()) return;
-    const emoji = { shortcode: entry.shortcode, url: entry.imageUrl };
-    Alert.alert(`:${entry.shortcode}:`, 'Add this emoji to yours?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Add to my emoji',
-        onPress: (): void => {
-          void addToEmojiList(viewer, getRelays(), emoji)
-            .then((outcome): void => {
-              forgetEmojiList(viewer);
-              Alert.alert(
-                outcome === 'added'
-                  ? 'Added to your emoji'
-                  : 'Already in your emoji',
-              );
-            })
-            .catch((): void => Alert.alert('Could not add. Try again.'));
-        },
-      },
-    ]);
-  };
-
   const repost = async (): Promise<void> => {
     setReposting(true);
     await attempt(
@@ -564,8 +536,8 @@ export default function Thread({ route }: { route: ThreadRoute }) {
               it is about the post, not about what you can do to it. */}
           {data.deleted ? null : (
             <ReactionSummary
+              eventId={root.id}
               entries={reactions.get(root.id)}
-              onPressEntry={offerToAddEmoji}
             />
           )}
           {hasViewer() && !data.deleted ? (

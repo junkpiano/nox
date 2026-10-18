@@ -179,7 +179,7 @@ function PostRowBody({
         {post.repostTargetId ? (
           <QuoteCard eventId={post.repostTargetId} />
         ) : null}
-        <ReactionSummary entries={reactions} compact />
+        <ReactionSummary eventId={post.id} entries={reactions} compact />
         <Actions post={post} own={own} />
       </View>
     </Pressable>
