@@ -46,7 +46,11 @@ import {
   getCachedDeletionStatus,
   isEventDeleted,
 } from './events-queries.js';
-import { describeLink, type LinkCard } from './link-card.js';
+import {
+  describeLink,
+  LINK_CARDS_PER_POST,
+  type LinkCard,
+} from './link-card.js';
 import { isMachineContent } from './machine-content.js';
 import { createMoreMenu } from './more-menu.js';
 import { isMuted } from './mute-state.js';
@@ -1565,7 +1569,13 @@ export function renderEvent(
     const ogpContainer: HTMLElement | null =
       div.querySelector('.ogp-container');
     if (ogpContainer) {
-      urls.forEach(async (url: string): Promise<void> => {
+      // The first few distinct links get a card, as on the phone; the rest
+      // stay links in the text.
+      const carded: string[] = Array.from(new Set(urls)).slice(
+        0,
+        LINK_CARDS_PER_POST,
+      );
+      carded.forEach(async (url: string): Promise<void> => {
         if (isTwitterURL(url)) {
           renderTwitterEmbed(url, ogpContainer);
         } else {
