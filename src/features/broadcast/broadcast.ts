@@ -1,5 +1,6 @@
 import type { NostrEvent, PubkeyHex } from '../../../types/nostr';
 import { getEventsByAuthor } from '../../common/db/index.js';
+import { kvGet } from '../../common/kv.js';
 import { publishEventToRelays } from '../../common/publish-event.js';
 
 export interface BroadcastProgress {
@@ -22,7 +23,9 @@ export interface BroadcastOptions {
 export async function broadcastRecentPosts(
   options: BroadcastOptions,
 ): Promise<BroadcastResult> {
-  const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
+  // Through the shared store: localStorage on the web, the app's own
+  // storage on the phone, which has no localStorage at all.
+  const storedPubkey: string | null = kvGet('nostr_pubkey');
   if (!storedPubkey) {
     throw new Error('Sign-in required to broadcast.');
   }
