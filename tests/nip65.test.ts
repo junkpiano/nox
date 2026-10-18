@@ -154,17 +154,10 @@ test('NIP-65 tags are built from valid URLs only', () => {
   );
 });
 
-test('two spellings of one relay produce the tag twice', () => {
-  // Documents current behaviour, which looks like a bug: duplicates are
-  // removed before normalising, so `wss://a.example/` and `wss://a.example`
-  // both survive and publish the same relay twice. parseNip65RelayUrls
-  // normalises first and does not have this problem.
+test('two spellings of one relay produce one tag', () => {
   assert.deepEqual(
-    buildNip65RelayTags(['wss://a.example/', 'wss://a.example']),
-    [
-      ['r', 'wss://a.example'],
-      ['r', 'wss://a.example'],
-    ],
+    buildNip65RelayTags(['wss://a.example/', 'wss://a.example', 'A.example']),
+    [['r', 'wss://a.example']],
   );
 });
 
