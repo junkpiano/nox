@@ -1,5 +1,6 @@
 import { readTopicTags } from '../../src/common/content-segments';
 import type { ReactionAggregate } from '../../src/common/reaction-interactions';
+import { fetchReposters } from '../../src/common/reaction-summary';
 import { getSession } from '../../src/common/session';
 import { canWrite } from '../../src/common/signer';
 import ActionButton from '../components/ActionButton';
@@ -200,6 +201,25 @@ export default function Thread({ route }: { route: ThreadRoute }) {
   const statuses = useUserStatuses(data?.replies ?? []);
   const liked: boolean = data?.root ? own.liked.has(data.root.id) : false;
   const reposted: boolean = data?.root ? own.reposted.has(data.root.id) : false;
+  // How many reposted it: a number that opens the list of who.
+  const [repostCount, setRepostCount] = useState<number>(0);
+  // Asked again when your own repost of it changes, so reposting here shows.
+  const countKey: string | null = data?.root
+    ? `${data.root.id}:${reposted}`
+    : null;
+  useEffect((): (() => void) | undefined => {
+    const rootId: string | undefined = countKey?.split(':')[0];
+    if (!rootId) return undefined;
+    let live: boolean = true;
+    void fetchReposters(rootId, getRelays())
+      .then((who): void => {
+        if (live) setRepostCount(who.length);
+      })
+      .catch((): void => {});
+    return (): void => {
+      live = false;
+    };
+  }, [countKey]);
   const [liking, setLiking] = useState(false);
   const [picking, setPicking] = useState(false);
   // NIP-36: the author asked not to be shown unasked. The timeline and the
@@ -540,6 +560,25 @@ export default function Thread({ route }: { route: ThreadRoute }) {
               entries={reactions.get(root.id)}
             />
           )}
+          {!data.deleted && repostCount > 0 ? (
+            <Pressable
+              onPress={(): void =>
+                navigation.navigate('Reactors', {
+                  eventId: root.id,
+                  entry: null,
+                  symbol: '',
+                })
+              }
+              hitSlop={8}
+              style={styles.repostCount}
+              accessibilityRole="button"
+            >
+              <Text style={styles.repostCountText}>
+                <Text style={styles.repostCountNumber}>{repostCount}</Text>
+                {repostCount === 1 ? ' repost' : ' reposts'}
+              </Text>
+            </Pressable>
+          ) : null}
           {hasViewer() && !data.deleted ? (
             <View style={[styles.actions, !canWrite() && styles.actionsOff]}>
               <View style={styles.actionRow}>
@@ -665,6 +704,13 @@ export default function Thread({ route }: { route: ThreadRoute }) {
 }
 
 const styles = StyleSheet.create({
+  repostCount: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  repostCountText: { color: '#8ea0c0', fontSize: TYPE.meta },
+  repostCountNumber: { color: '#e8eeff', fontWeight: '700' },
   screen: { flex: 1, backgroundColor: '#0b1220' },
   rootPost: { padding: 16 },
   rootContent: {

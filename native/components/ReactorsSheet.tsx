@@ -1,5 +1,5 @@
 /**
- * Who gave one reaction to a post.
+ * Who gave one reaction to a post - or, opened without one, who reposted it.
  *
  * Opened from a reaction badge, as the platform's own sheet (a native form
  * sheet with a grabber, half height, draggable to full): the badge says how
@@ -29,7 +29,11 @@ import { loadableImageUrl } from '../../src/common/avatar';
 import type { EmojiMap } from '../../src/common/content-segments';
 import { addToEmojiList } from '../../src/common/emoji-list';
 import { fetchProfiles } from '../../src/common/profile-fetch';
-import { fetchReactors, type Reactor } from '../../src/common/reaction-summary';
+import {
+  fetchReactors,
+  fetchReposters,
+  type Reactor,
+} from '../../src/common/reaction-summary';
 import { getSession } from '../../src/common/session';
 import { getRelays } from '../../src/features/relays/relays';
 import type { NostrProfile, PubkeyHex } from '../../types/nostr';
@@ -39,6 +43,7 @@ import { guardWrite } from '../lib/read-only';
 import { TYPE } from '../lib/type';
 import { forgetEmojiList } from './EmojiPickerSheet';
 import EmojiText from './EmojiText';
+import Icon from './Icon';
 
 const PHONE_IMAGES = { secureOnly: true } as const;
 const EMPTY_EMOJI: EmojiMap = new Map();
@@ -87,7 +92,11 @@ export default function ReactorsSheet({
     setRows(null);
     setFailed(false);
     const relays: string[] = getRelays();
-    void fetchReactors(eventId, entry.key, relays)
+    void (
+      entry
+        ? fetchReactors(eventId, entry.key, relays)
+        : fetchReposters(eventId, relays)
+    )
       .then(async (reactors: Reactor[]): Promise<void> => {
         if (!live) return;
         // The list first, with whatever names are already known; the rest
@@ -115,15 +124,15 @@ export default function ReactorsSheet({
   }, [eventId, entry]);
 
   const viewer: PubkeyHex | null = getSession().pubkey;
-  const emojiPicture: string | null = entry.imageUrl
+  const emojiPicture: string | null = entry?.imageUrl
     ? loadableImageUrl(entry.imageUrl, PHONE_IMAGES)
     : null;
   const canAddEmoji: boolean = Boolean(
-    entry.shortcode && entry.imageUrl && emojiPicture && viewer,
+    entry?.shortcode && entry.imageUrl && emojiPicture && viewer,
   );
 
   const addEmoji = (): void => {
-    if (!entry.shortcode || !entry.imageUrl || !viewer) return;
+    if (!entry?.shortcode || !entry.imageUrl || !viewer) return;
     if (!guardWrite()) return;
     void addToEmojiList(viewer, getRelays(), {
       shortcode: entry.shortcode,
@@ -146,13 +155,23 @@ export default function ReactorsSheet({
   return (
     <View style={styles.sheet}>
       <View style={styles.header}>
-        {emojiPicture ? (
+        {!entry ? (
+          <Icon name="repost" size={24} color="#e8eeff" />
+        ) : emojiPicture ? (
           <Image source={{ uri: emojiPicture }} style={styles.titleImage} />
         ) : (
           <Text style={styles.titleSymbol}>{symbol}</Text>
         )}
         <Text style={styles.title}>
-          {entry.count === 1 ? '1 reaction' : `${entry.count} reactions`}
+          {entry
+            ? entry.count === 1
+              ? '1 reaction'
+              : `${entry.count} reactions`
+            : rows === null
+              ? 'Reposts'
+              : rows.length === 1
+                ? '1 repost'
+                : `${rows.length} reposts`}
         </Text>
       </View>
 
@@ -162,7 +181,7 @@ export default function ReactorsSheet({
           style={({ pressed }) => [styles.add, pressed && styles.pressed]}
         >
           <Text style={styles.addText}>
-            Add :{entry.shortcode}: to my emoji
+            Add :{entry?.shortcode}: to my emoji
           </Text>
         </Pressable>
       ) : null}

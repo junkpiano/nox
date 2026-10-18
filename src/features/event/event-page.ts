@@ -23,6 +23,8 @@ import {
 } from '../../common/events-queries.js';
 import { setEventMeta } from '../../common/meta.js';
 import { setActiveNav } from '../../common/navigation.js';
+import { fetchProfiles } from '../../common/profile-fetch.js';
+import { fetchReposters, type Reactor } from '../../common/reaction-summary.js';
 import { getDisplayName } from '../../utils/utils.js';
 import { fetchProfile, getAuthoritativeProfile } from '../profile/profile.js';
 import { normalizeRelayUrl } from '../relays/relays.js';
@@ -220,6 +222,9 @@ export async function loadEventPage(
     const reactionsPromise = reactionsContainer
       ? loadReactionsForEvent(event.id, reactionsContainer)
       : Promise.resolve();
+    if (rootCard) {
+      void showReposters(event.id, rootCard, relaysToUse, isRouteActive);
+    }
 
     // Run slow checks/metadata fetches in parallel after first paint.
     // Always fetch profile from relays to get latest version
@@ -299,6 +304,88 @@ export async function loadEventPage(
 interface ReplyParentRef {
   id: string;
   relayHints: string[];
+}
+
+/**
+ * How many reposted this post, as a count under its reactions that opens
+ * the list of who - one row each, most recent first, as on the phone.
+ * Nothing is drawn when nobody did, or when the relays cannot say.
+ */
+async function showReposters(
+  eventId: string,
+  card: HTMLElement,
+  relays: string[],
+  isRouteActive: () => boolean,
+): Promise<void> {
+  let reposters: Reactor[];
+  try {
+    reposters = await fetchReposters(eventId, relays);
+  } catch {
+    return;
+  }
+  if (!isRouteActive() || reposters.length === 0) return;
+  const anchor: Element | null = card.querySelector('.reactions-container');
+  if (!anchor) return;
+
+  const button: HTMLButtonElement = document.createElement('button');
+  button.type = 'button';
+  button.className = 'nox-repost-count mt-2 text-xs text-gray-500';
+  button.setAttribute('aria-expanded', 'false');
+  const count: HTMLSpanElement = document.createElement('span');
+  count.className = 'font-semibold text-gray-800';
+  count.textContent = String(reposters.length);
+  button.append(count, reposters.length === 1 ? ' repost' : ' reposts');
+  const list: HTMLDivElement = document.createElement('div');
+  list.className = 'mt-2 space-y-2 max-h-48 overflow-auto';
+  list.hidden = true;
+  anchor.after(button, list);
+
+  let drawn: boolean = false;
+  button.addEventListener('click', (): void => {
+    list.hidden = !list.hidden;
+    button.setAttribute('aria-expanded', String(!list.hidden));
+    if (drawn) return;
+    drawn = true;
+    const paints: Map<PubkeyHex, (profile: NostrProfile | null) => void> =
+      new Map();
+    for (const { pubkey, count: times } of reposters) {
+      const npub: Npub = nip19.npubEncode(pubkey);
+      const row: HTMLAnchorElement = document.createElement('a');
+      row.className =
+        'flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 transition-colors';
+      row.href = `/${npub}`;
+      const img: HTMLImageElement = document.createElement('img');
+      img.className = 'w-6 h-6 rounded-full object-cover';
+      const name: HTMLSpanElement = document.createElement('span');
+      row.append(img, name);
+      if (times > 1) {
+        const many: HTMLSpanElement = document.createElement('span');
+        many.className = 'text-xs text-gray-500';
+        many.textContent = `×${times}`;
+        row.appendChild(many);
+      }
+      const paint = (profile: NostrProfile | null): void => {
+        const shown: NostrProfile | null = getAuthoritativeProfile(
+          pubkey,
+          profile,
+        );
+        name.textContent = getDisplayName(npub, shown);
+        img.alt = name.textContent;
+        setAvatar(img, pubkey, shown);
+      };
+      paint(null);
+      paints.set(pubkey, paint);
+      list.appendChild(row);
+    }
+    void fetchProfiles(
+      reposters.map((reposter: Reactor): PubkeyHex => reposter.pubkey),
+      relays,
+    )
+      .then((found: Map<PubkeyHex, NostrProfile>): void => {
+        for (const [pubkey, profile] of found) paints.get(pubkey)?.(profile);
+      })
+      .catch((): void => {});
+  });
 }
 
 function resolveReplyParent(event: NostrEvent): ReplyParentRef | null {
