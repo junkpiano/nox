@@ -73,14 +73,26 @@ test('the list’s own emoji come first, then each set in order, each shortcode 
   ]);
 });
 
-test('adding needs every relay to have answered', async () => {
+test('adding goes through when most relays answered, and not with half', async () => {
   kv.set('nostr_pubkey', ME);
   fakeRelay('wss://up.emoji');
+  fakeRelay('wss://up2.emoji');
   fakeRelay('wss://down.emoji', { refuses: true });
+  assert.equal(
+    await addToEmojiList(
+      ME,
+      ['wss://up.emoji', 'wss://up2.emoji', 'wss://down.emoji'],
+      {
+        shortcode: 'x',
+        url: img('x'),
+      },
+    ),
+    'added',
+  );
   await assert.rejects(
     addToEmojiList(ME, ['wss://up.emoji', 'wss://down.emoji'], {
-      shortcode: 'x',
-      url: img('x'),
+      shortcode: 'y',
+      url: img('y'),
     }),
     NoRelayAnsweredError,
   );

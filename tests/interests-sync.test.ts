@@ -105,7 +105,22 @@ test('following publishes the whole list from the newer of the device and relay 
   assert.deepEqual(getFollowedHashtags(VIEWER), ['zap']);
 });
 
-test('an edit is refused when a relay did not answer, the account changed, or nobody accepted', async () => {
+test('an edit goes through when most relays answered', async () => {
+  fakeRelay('wss://ok.interests');
+  fakeRelay('wss://ok2.interests');
+  fakeRelay('wss://down.interests', { refuses: true });
+  const relays: string[] = [
+    'wss://ok.interests',
+    'wss://ok2.interests',
+    'wss://down.interests',
+  ];
+  await setHashtagFollowed(VIEWER, relays, 'x', true);
+  assert.ok(getFollowedHashtags(VIEWER).includes('x'));
+  await setHashtagFollowed(VIEWER, relays, 'x', false);
+  assert.ok(!getFollowedHashtags(VIEWER).includes('x'));
+});
+
+test('an edit is refused when half the relays or fewer answered, the account changed, or nobody accepted', async () => {
   fakeRelay('wss://ok.interests');
   fakeRelay('wss://down.interests', { refuses: true });
   await assert.rejects(
