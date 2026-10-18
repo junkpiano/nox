@@ -45,7 +45,7 @@ import {
 import { filterMutedEvents } from '../../src/common/mute-state';
 import { fetchFollowSet } from '../../src/common/notification-filter';
 import { queryRelays, queryRelaysAny } from '../../src/common/relay-query';
-import { showableEvents } from '../../src/common/showable';
+import { isShowable, showableEvents } from '../../src/common/showable';
 
 /** What a timeline asks: one filter, or several ORed as one REQ would. */
 export type TimelineFilter =
@@ -549,6 +549,69 @@ export async function decorateEvents(
   // output judged on what would be shown.
   const live: NostrEvent[] = showableEvents(events, deleted);
 
+  // A repost that carries no copy of its post is shown as that post all the
+  // same, as X does: the posts are asked for by id, all at once, through
+  // the checked relay layer. One that cannot be found keeps the old card,
+  // with the post fetched into a quote.
+  const wantedTargets: string[] = Array.from(
+    new Set(
+      live.flatMap((event: NostrEvent): string[] => {
+        if (!isRepost(event)) return [];
+        const unwrapped = unwrapRepost(event);
+        return !unwrapped.event && unwrapped.targetId
+          ? [unwrapped.targetId]
+          : [];
+      }),
+    ),
+  );
+  const targets: Map<string, NostrEvent> = new Map();
+  if (wantedTargets.length > 0) {
+    try {
+      const found: NostrEvent[] = await queryRelays(relays, {
+        ids: wantedTargets,
+        limit: wantedTargets.length,
+      });
+      const candidates: NostrEvent[] = found.filter(
+        (target: NostrEvent): boolean =>
+          wantedTargets.includes(target.id) && isShowable(target),
+      );
+      // Withdrawn the same way as the rest of the batch: a post its author
+      // took back is not shown because somebody reposted it.
+      const withdrawn: Set<string> =
+        options.deletions === 'remembered'
+          ? new Set(
+              candidates
+                .filter(
+                  (t: NostrEvent): boolean =>
+                    getCachedDeletionStatus(t.id) === true,
+                )
+                .map((t: NostrEvent): string => t.id),
+            )
+          : await findDeletedIds(relays, candidates).catch(
+              (): Set<string> => new Set(),
+            );
+      for (const target of candidates) {
+        if (!withdrawn.has(target.id)) targets.set(target.id, target);
+      }
+    } catch (error: unknown) {
+      console.warn('[timeline] reposted posts could not be fetched', error);
+    }
+    // Their authors need names too; the question above did not know them.
+    const authors: PubkeyHex[] = Array.from(
+      new Set(
+        Array.from(targets.values(), (t: NostrEvent) => t.pubkey as PubkeyHex),
+      ),
+    ).filter((pubkey: PubkeyHex): boolean => !profiles.has(pubkey));
+    if (authors.length > 0) {
+      const named: Map<string, ProfileMeta> = await fetchProfilesForPubkeys(
+        authors,
+        relays,
+        options.profiles ?? 'cached-then-relays',
+      );
+      for (const [pubkey, meta] of named) profiles.set(pubkey, meta);
+    }
+  }
+
   // The question above went out before the withdrawals were known, so it
   // carried every author and may have hit the cap on a large batch. Anyone
   // still standing who was cut off is asked about now - a small question,
@@ -589,7 +652,9 @@ export async function decorateEvents(
       // reply is addressed to, is the event inside it.
       const unwrapped = unwrapRepost(event);
       const reposted: NostrEvent | null = isRepost(event)
-        ? unwrapped.event
+        ? (unwrapped.event ??
+          (unwrapped.targetId ? targets.get(unwrapped.targetId) : null) ??
+          null)
         : null;
       const shown: NostrEvent = reposted ?? event;
       const meta: ProfileMeta | undefined = profiles.get(shown.pubkey);
@@ -619,7 +684,7 @@ export async function decorateEvents(
             }
           : null,
         repostTargetId:
-          isRepost(event) && !unwrapped.event ? unwrapped.targetId : null,
+          isRepost(event) && !reposted ? unwrapped.targetId : null,
       };
     });
 
