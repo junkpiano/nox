@@ -182,9 +182,11 @@ async function setNow(
     undefined,
     { everyRelay: true },
   );
-  // The list is replaceable: what is published is the whole of it. A relay
-  // that did not answer may hold the newest copy, which this would replace.
-  if (result.answered < new Set(relays).size) {
+  // Every relay is waited for; more than half of them must have answered.
+  // The list is replaced whole, so a silent relay might hold a newer copy -
+  // but a change that reached only one relay is rare, and requiring all of
+  // them let a single relay that was down for days make the list uneditable.
+  if (result.answered * 2 <= new Set(relays).size) {
     throw new NoRelayAnsweredError(relays);
   }
   const remote: NostrEvent | null = newestOf(result.events);

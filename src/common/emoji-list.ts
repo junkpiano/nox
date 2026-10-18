@@ -173,9 +173,11 @@ async function addNow(
     undefined,
     { everyRelay: true },
   );
-  // Every relay, not most: the newest copy may sit on the one that did not
-  // answer, and the copy written here would replace it.
-  if (result.answered < new Set(relays).size) {
+  // Every relay is waited for; more than half of them must have answered.
+  // The list is replaced whole, so a silent relay might hold a newer copy -
+  // but a change that reached only one relay is rare, and requiring all of
+  // them let a single relay that was down for days make the list uneditable.
+  if (result.answered * 2 <= new Set(relays).size) {
     throw new NoRelayAnsweredError(relays);
   }
   // Someone else's reaction is where this emoji came from; it is held to
