@@ -255,7 +255,8 @@ export default function Notifications() {
           Your follow list could not be read, so everything is shown.
         </Text>
       ) : null}
-      {stats ? <Text style={styles.stats}>{stats}</Text> : null}
+      {/* Instrumentation, for development builds only, as on the timelines. */}
+      {__DEV__ && stats ? <Text style={styles.stats}>{stats}</Text> : null}
       <FlatList
         ref={list}
         data={visible}
