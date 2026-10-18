@@ -2,19 +2,23 @@
  * Who reacted to a post, counted.
  *
  * A row of small badges: the symbol and how many people pressed it,
- * commonest first. A custom emoji brings its own picture. Nothing here is
- * tappable - reacting is the ♡ in the action row, and a badge that both
- * reported and acted would be two meanings on one control.
+ * commonest first. A custom emoji brings its own picture. Pressing a badge
+ * says who - it opens the list of people behind the count. Reacting stays
+ * the ♡ in the action row: a badge that both reported and acted would be two
+ * meanings on one control.
  *
  * The judgement is shared (`reaction-summary.ts`) and the asking is a book
  * shared by every screen (`use-reaction-summaries.ts`); this draws what
  * they know.
  */
 
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { loadableImageUrl } from '../../src/common/avatar';
 import type { ReactionAggregate } from '../../src/common/reaction-interactions';
 import { REACTION_SUMMARY_LIMIT } from '../../src/common/reaction-summary';
+import type { RootStackParamList } from '../App';
 
 /**
  * The most a symbol may be.
@@ -45,16 +49,18 @@ function symbolFor(content: string): string {
 }
 
 export default function ReactionSummary({
+  eventId,
   entries,
   compact = false,
-  onPressEntry,
 }: {
+  /** The post reacted to: whose reactions a badge lists. */
+  eventId: string;
   entries: ReactionAggregate[] | undefined;
   /** In a timeline row, where the badges sit inside the card's own padding. */
   compact?: boolean;
-  /** A badge that does something when pressed: adding its emoji, say. */
-  onPressEntry?: (entry: ReactionAggregate) => void;
 }) {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   if (!entries || entries.length === 0) return null;
 
   return (
@@ -71,9 +77,24 @@ export default function ReactionSummary({
           return (
             <Pressable
               key={entry.key}
-              style={styles.badge}
-              disabled={!onPressEntry}
-              onPress={(): void => onPressEntry?.(entry)}
+              style={({ pressed }) => [styles.badge, pressed && styles.pressed]}
+              // A small badge, touched like a 44 pt target.
+              hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+              onPress={(): void =>
+                navigation.navigate('Reactors', {
+                  eventId,
+                  entry,
+                  symbol: symbolFor(
+                    entry.shortcode ? `:${entry.shortcode}:` : entry.content,
+                  ),
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel={`${entry.count} ${
+                entry.shortcode
+                  ? `:${entry.shortcode}:`
+                  : symbolFor(entry.content)
+              }, show who`}
             >
               {picture ? (
                 <Image
@@ -119,4 +140,5 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 13, color: '#e8eeff', maxWidth: 140 },
   emojiImage: { width: 16, height: 16 },
   count: { fontSize: 12, color: '#8ea0c0', fontWeight: '700' },
+  pressed: { opacity: 0.6 },
 });

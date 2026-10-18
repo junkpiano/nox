@@ -64,6 +64,7 @@ import {
   isReactionClickOnly,
   mergeReactionEvents,
 } from './reaction-interactions.js';
+import { groupReactors, type Reactor } from './reaction-summary.js';
 import {
   fetchReferencedEvent,
   rememberReferencedMiss,
@@ -756,18 +757,14 @@ async function loadReactionDetails(
     list.className = 'space-y-2 max-h-48 overflow-auto';
     container.appendChild(list);
 
-    // One row per person, newest first, with how many times they gave this
-    // one: a post asking for reactions gets the same person dozens of times.
-    const times: Map<PubkeyHex, number> = new Map();
-    for (const event of filtered) {
-      const pubkey: PubkeyHex = event.pubkey as PubkeyHex;
-      times.set(pubkey, (times.get(pubkey) ?? 0) + 1);
-    }
+    // One row per person, newest first, with a count: the shared rule the
+    // phone's list uses too.
+    const reactors: Reactor[] = groupReactors(filtered);
 
     // Every row at once, with the name already known; the rest arrive below.
     const draw: Map<PubkeyHex, (profile: NostrProfile | null) => void> =
       new Map();
-    for (const [pubkey, count] of times) {
+    for (const { pubkey, count } of reactors) {
       const npub: Npub = nip19.npubEncode(pubkey);
       const row: HTMLAnchorElement = document.createElement('a');
       row.className =
@@ -799,7 +796,9 @@ async function loadReactionDetails(
     }
 
     // A thousand reactors is a thousand profile lookups; eight at a time.
-    const queue: PubkeyHex[] = Array.from(times.keys());
+    const queue: PubkeyHex[] = reactors.map(
+      (reactor: Reactor): PubkeyHex => reactor.pubkey,
+    );
     const worker = async (): Promise<void> => {
       for (let next = queue.shift(); next; next = queue.shift()) {
         try {

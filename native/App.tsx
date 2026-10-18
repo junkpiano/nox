@@ -15,6 +15,7 @@
  * expo-modules-core, `no member named 'executeSync'`, after two and a half
  * minutes of compiling. `expo-linking` still gives us the deep links.
  */
+
 import {
   createNativeBottomTabNavigator,
   type NativeBottomTabIcon,
@@ -37,10 +38,12 @@ import { ICONS, type IconName } from '../src/common/icons';
 import { kvGet } from '../src/common/kv';
 import { resolveNostrLink } from '../src/common/nostr-link';
 import { hidesWallet } from '../src/common/platform';
+import type { ReactionAggregate } from '../src/common/reaction-interactions';
 import { getSession } from '../src/common/session';
 import { hasAcceptedTerms } from '../src/common/terms';
 import type { NostrEvent, PubkeyHex } from '../types/nostr';
 import Icon from './components/Icon';
+import ReactorsSheet from './components/ReactorsSheet';
 import { fetchProfilesForPubkeys } from './lib/home-timeline';
 import { navigationRef } from './lib/navigation';
 import About from './screens/About';
@@ -84,6 +87,8 @@ export type RootStackParamList = {
   Chat: { peer: PubkeyHex; name: string };
   Wallet: undefined;
   Hashtag: { tag: string };
+  /** Who gave one reaction to a post; `symbol` is the badge as drawn. */
+  Reactors: { eventId: string; entry: ReactionAggregate; symbol: string };
   Likes: undefined;
   About: undefined;
 };
@@ -424,6 +429,20 @@ export default function App() {
             name="Thread"
             component={Thread}
             options={{ title: 'Thread' }}
+          />
+          <Stack.Screen
+            name="Reactors"
+            component={ReactorsSheet}
+            // The platform's own sheet: a grabber, half height, draggable to
+            // full, dismissed by a swipe.
+            options={{
+              presentation: 'formSheet',
+              sheetAllowedDetents: [0.5, 1],
+              sheetGrabberVisible: true,
+              // Material 3's sheet corners; iOS draws its own either way.
+              sheetCornerRadius: 24,
+              headerShown: false,
+            }}
           />
           <Stack.Screen
             name="Hashtag"
