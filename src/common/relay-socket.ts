@@ -413,6 +413,10 @@ function attachSharedRelayListeners(connection: SharedRelayConnection): void {
   });
 
   socket.addEventListener('close', (): void => {
+    // A socket that has already been replaced - it failed, and a retry
+    // opened another before its close arrived - has nothing left to reset:
+    // the connection and its subscriptions belong to the new one.
+    if (connection.socket !== socket) return;
     connection.socket = null;
     connection.openPromise = null;
     // What this socket sent before closing may still be waiting its turn, so
@@ -467,7 +471,8 @@ async function ensureSharedRelaySocket(
     socket.addEventListener(
       'close',
       (): void => {
-        connection.openPromise = null;
+        // Only while this socket is still the one being opened.
+        if (connection.socket === socket) connection.openPromise = null;
       },
       { once: true },
     );

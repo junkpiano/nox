@@ -258,11 +258,9 @@ test('a relay that refuses the connection rejects the subscription', async () =>
 });
 
 test('a refused socket closing late does not clobber the connection opened after it', async () => {
-  // Documents current behaviour, which looks like a bug: the close handler
-  // of a failed socket resets the shared connection without checking that
-  // it is still the current socket. A browser fires `error` and `close`
-  // together, so a retry made in between - here simulated by holding the
-  // close back - has its subscription dropped and its socket orphaned.
+  // A browser fires `error` and `close` together, so a retry can open in
+  // between - here simulated by holding the close back. The late close must
+  // leave the retry's connection and subscription alone.
   const url = 'wss://flaky.example';
   fakeRelays.set(url, { refuse: true });
   const pending: FakeSocket[] = [];
@@ -291,10 +289,9 @@ test('a refused socket closing late does not clobber the connection opened after
   await settle();
   retry.receive(['EVENT', subId, note('lost')]);
   await settle();
-  // Ideally ['lost']; the retry's subscription was dropped instead.
   assert.deepEqual(
     got.map((event: NostrEvent): string => event.content),
-    [],
+    ['lost'],
   );
 });
 
