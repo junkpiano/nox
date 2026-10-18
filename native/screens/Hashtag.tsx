@@ -34,7 +34,7 @@ import { mergeTimelinePosts, useOlderPosts } from '../lib/use-older-posts';
 
 type HashtagRoute = RouteProp<RootStackParamList, 'Hashtag'>;
 
-/** Follow / Following in the header: the tag's posts join Home, or leave it. */
+/** Follow / Unfollow in the header, as for people: the tag's posts join Home, or leave it. */
 function FollowHashtag({ tag }: { tag: string }) {
   const viewer: PubkeyHex | null = getSession().pubkey;
   const name: string = normalizeHashtag(tag);
@@ -89,7 +89,7 @@ function FollowHashtag({ tag }: { tag: string }) {
               : styles.followText
         }
       >
-        {busy ? '···' : following ? 'Following' : 'Follow'}
+        {busy ? '···' : following ? 'Unfollow' : 'Follow'}
       </Text>
     </Pressable>
   );
