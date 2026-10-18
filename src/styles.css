@@ -2576,3 +2576,12 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
   font-weight: 600;
   cursor: grab;
 }
+
+/* A followed hashtag on a Home card: why a stranger's post is there. */
+.nox-tag-badge {
+  color: #89a8ff;
+  border: 1px solid #25406e;
+}
+.nox-tag-badge:hover {
+  background: rgba(137, 168, 255, 0.12);
+}
