@@ -9,10 +9,15 @@ import { openSignIn } from '../lib/navigation';
  * two differ only in which events they ask for.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { onAppEvent } from '../../src/common/app-events';
 import type { TimelineKey } from '../../src/common/db/types';
+import { rememberedFollows } from '../../src/common/events-queries';
+import {
+  followedHashtagOf,
+  getFollowedHashtags,
+} from '../../src/common/interests';
 import { kvGet } from '../../src/common/kv';
 import type { PubkeyHex } from '../../types/nostr';
 import PostList from '../components/PostList';
@@ -251,6 +256,30 @@ export default function Home({ active = true }: { active?: boolean }) {
     [onRefresh],
   );
 
+  // Why a stranger's post is here, worked out once per load: Home loads
+  // again whenever the follow list or the hashtags change.
+  const reasons = useMemo((): Map<string, string> => {
+    const out: Map<string, string> = new Map();
+    const hashtags: string[] = getFollowedHashtags(pubkey);
+    if (!pubkey || hashtags.length === 0) return out;
+    const follows: Set<string> = new Set(rememberedFollows(pubkey) ?? []);
+    for (const post of posts) {
+      if (post.repostedBy) continue;
+      const tag: string | null = followedHashtagOf(
+        post.event,
+        pubkey,
+        follows,
+        hashtags,
+      );
+      if (tag) out.set(post.key, tag);
+    }
+    return out;
+  }, [pubkey, posts]);
+  const hashtagFor = useCallback(
+    (post: TimelinePost): string | null => reasons.get(post.key) ?? null,
+    [reasons],
+  );
+
   if (!pubkey) {
     return <IdentityPrompt onChosen={setPubkey} />;
   }
@@ -259,6 +288,7 @@ export default function Home({ active = true }: { active?: boolean }) {
     <PostList
       active={active}
       posts={posts}
+      hashtagFor={hashtagFor}
       stats={stats}
       stage={stage}
       error={error}

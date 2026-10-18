@@ -238,6 +238,22 @@ async function setNow(
   emitAppEvent('interests-updated');
 }
 
+/**
+ * Why a stranger's post is in Home: the followed hashtag it carries, or null
+ * when it is there because of who wrote it - someone followed, or the viewer.
+ * The first of the viewer's hashtags the post names, in the list's order.
+ */
+export function followedHashtagOf(
+  event: NostrEvent,
+  viewer: PubkeyHex | null,
+  follows: ReadonlySet<string>,
+  hashtags: readonly string[],
+): string | null {
+  if (event.pubkey === viewer || follows.has(event.pubkey)) return null;
+  const carried: string[] = hashtagsOf(event.tags);
+  return hashtags.find((tag: string): boolean => carried.includes(tag)) ?? null;
+}
+
 /** Home's question: posts from `authors`, or carrying a followed hashtag. */
 export function homeFilters(
   kinds: number[],
