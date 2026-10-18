@@ -119,7 +119,10 @@ export default function Search() {
       setNote(
         outcome.results.length === 0
           ? 'Nobody found on the search relays.'
-          : `${outcome.results.length} found in ${(outcome.ms / 1000).toFixed(1)}s, best ${Math.min(SHOWN, outcome.results.length)} shown`,
+          : // Timings are for development builds; the list speaks for itself.
+            __DEV__
+            ? `${outcome.results.length} found in ${(outcome.ms / 1000).toFixed(1)}s, best ${Math.min(SHOWN, outcome.results.length)} shown`
+            : '',
       );
     } catch (e: any) {
       setNote(String(e?.message ?? e));
