@@ -131,6 +131,31 @@ function PostRowBody({
         )}
       </Pressable>
       <View style={styles.rowBody}>
+        {post.repostedBy ? (
+          // Above the post, as X does: who passed it on, on a line of its
+          // own. In the name row it was read as the author's name.
+          <Pressable
+            onPress={(): void =>
+              navigation.push('Profile', {
+                pubkey: post.repostedBy?.pubkey as PubkeyHex,
+              })
+            }
+            hitSlop={6}
+            style={styles.repostedBy}
+            accessibilityRole="link"
+          >
+            <Text style={styles.repostedByMark}>⇄</Text>
+            <EmojiText
+              text={
+                post.repostedBy.name || `${post.repostedBy.pubkey.slice(0, 8)}…`
+              }
+              emoji={post.repostedBy.emoji}
+              style={styles.repostedByName}
+              numberOfLines={1}
+            />
+            <Text style={styles.repostedByMark}>reposted</Text>
+          </Pressable>
+        ) : null}
         <View style={styles.rowHead}>
           <EmojiText
             text={post.name}
@@ -139,14 +164,6 @@ function PostRowBody({
             numberOfLines={1}
             onPress={openProfile}
           />
-          {post.repostedBy ? (
-            // What the mark says is that the post was passed on. Whose hands
-            // it came through is a second name in a row that already carries
-            // one, and it was read as the author's.
-            <Text style={styles.badge} numberOfLines={1}>
-              ⇄ Repost
-            </Text>
-          ) : null}
           {viaHashtag ? (
             <Text
               style={styles.tagBadge}
@@ -717,6 +734,19 @@ const styles = StyleSheet.create({
   // the space under it.
   avatarTap: { alignSelf: 'flex-start' },
   rowBody: { flex: 1 },
+  repostedBy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  repostedByMark: { color: '#73f0c1', fontSize: TYPE.meta },
+  repostedByName: {
+    color: '#73f0c1',
+    fontSize: TYPE.meta,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: {
     color: '#e8eeff',
@@ -733,15 +763,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 1,
     maxWidth: 140,
-  },
-  badge: {
-    color: '#73f0c1',
-    fontSize: TYPE.small,
-    borderWidth: 1,
-    borderColor: '#25563f',
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
   },
   nip05: { color: '#5b6b88', fontSize: TYPE.meta, marginTop: 1 },
   time: { color: '#5b6b88', fontSize: TYPE.meta, marginLeft: 'auto' },
