@@ -45,7 +45,10 @@ import {
   cacheDeletionStatus,
   getCachedDeletionStatus,
   isEventDeleted,
+  rememberedFollows,
 } from './events-queries.js';
+import { followedHashtagOf, getFollowedHashtags } from './interests.js';
+import { kvGet } from './kv.js';
 import {
   describeLink,
   LINK_CARDS_PER_POST,
@@ -929,6 +932,28 @@ function renderReplyBadge(
   }
 }
 
+/** The follow list as last read, kept while its stored copy is unchanged. */
+let followsMemo: { raw: string; follows: Set<string> } | null = null;
+
+/**
+ * Why a post is in Home when its author is not followed: the followed
+ * hashtag it carries. Null off Home, signed out, or for anyone followed.
+ */
+function homeHashtagReason(event: NostrEvent): string | null {
+  const path: string = window.location.pathname;
+  if (path !== '/' && path !== '/home') return null;
+  const stored: string | null = kvGet('nostr_pubkey');
+  if (!stored || !/^[0-9a-f]{64}$/i.test(stored)) return null;
+  const viewer: PubkeyHex = stored.toLowerCase() as PubkeyHex;
+  const hashtags: string[] = getFollowedHashtags(viewer);
+  if (hashtags.length === 0) return null;
+  const follows: PubkeyHex[] = rememberedFollows(viewer) ?? [];
+  const raw: string = follows.join();
+  if (followsMemo?.raw !== raw)
+    followsMemo = { raw, follows: new Set(follows) };
+  return followedHashtagOf(event, viewer, followsMemo.follows, hashtags);
+}
+
 export function renderEvent(
   event: NostrEvent,
   profile: NostrProfile | null,
@@ -1124,6 +1149,11 @@ export function renderEvent(
   const referencedEventRefs: string[] = rendered.quotes;
   const contentWithCustomEmoji: string = rendered.html;
   const hasContent: boolean = contentWithCustomEmoji.trim().length > 0;
+  // In Home, a stranger's post says which followed hashtag let it in.
+  const viaHashtag: string | null = isRepost ? null : homeHashtagReason(event);
+  const viaHashtagHtml: string = viaHashtag
+    ? `<a href="/t/${encodeURIComponent(viaHashtag)}" class="nox-tag-badge ml-2 inline-flex items-center rounded-full text-xs font-semibold px-2 py-0.5" title="Here because you follow #${escapeHtml(viaHashtag)}">#${escapeHtml(viaHashtag)}</a>`
+    : '';
   const repostBadgeHtml: string = isRepost
     ? `<span class="ml-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-900 text-xs font-semibold px-2 py-0.5">🔁 Repost</span>`
     : '';
@@ -1189,7 +1219,7 @@ export function renderEvent(
 			          ${clientNameHtml}
 			        </div>
 			        <p class="event-status hidden text-xs text-gray-500 mb-1 truncate"></p>
-		        ${repostBadgeHtml}
+		        ${repostBadgeHtml}${viaHashtagHtml}
               ${eventPermalink ? `<a class="event-permalink" href="${eventPermalink}" aria-hidden="true" tabindex="-1" style="display:none;"></a>` : ''}
 		            <div class="reply-badge-container mb-1.5"></div>
                   ${contentAreaHtml}
