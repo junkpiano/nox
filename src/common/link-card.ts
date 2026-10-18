@@ -78,9 +78,15 @@ export function describeLink(ogp: OGPResponse): LinkCard | null {
  * videos (those are shown themselves) and not more than a couple - a post
  * that is a list of links is a list, and a stack of cards would bury it.
  */
+/**
+ * Link cards under one post, on the web and the phone. A post that is a list
+ * of eight hundred links would otherwise ask the proxy about every one.
+ */
+export const LINK_CARDS_PER_POST: number = 2;
+
 export function cardWorthyUrls(
   segments: ContentSegment[],
-  limit: number = 2,
+  limit: number = LINK_CARDS_PER_POST,
 ): string[] {
   const urls: string[] = [];
   for (const segment of segments) {
