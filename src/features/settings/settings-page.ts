@@ -18,6 +18,12 @@ import {
   EVENT_CACHE_LIMIT,
   getEventCacheStats,
 } from '../../common/event-cache.js';
+import {
+  getFollowedHashtags,
+  refreshFollowedHashtags,
+  setHashtagFollowed,
+} from '../../common/interests.js';
+import { kvGet } from '../../common/kv.js';
 import { getMutedPubkeys, getMutedWords } from '../../common/mute-state.js';
 import {
   getQuickReaction,
@@ -135,6 +141,15 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
           <div id="muted-accounts-list" class="space-y-2"></div>
         </div>
 
+        <!-- Followed Hashtags Section -->
+        <div id="followed-hashtags-section" class="bg-white border border-gray-200 rounded-lg p-4" hidden>
+          <h3 class="font-semibold text-gray-900 mb-1">Hashtags you follow</h3>
+          <p class="text-xs text-gray-600 mb-3">
+            Their posts appear in Home. Click a hashtag in any post to follow it.
+          </p>
+          <div id="followed-hashtags-list" class="space-y-2"></div>
+        </div>
+
         <!-- Muted Words Section -->
         <div class="bg-white border border-gray-200 rounded-lg p-4">
           <h3 class="font-semibold text-gray-900 mb-1">Muted words</h3>
@@ -193,6 +208,7 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
 
   wireQuickReaction(options.getRelays);
   renderMutedAccounts(options.getRelays);
+  wireFollowedHashtags(options.getRelays);
   wireMutedWords(options.getRelays);
 
   const energySavingToggle: HTMLInputElement | null = document.getElementById(
@@ -321,6 +337,77 @@ export function loadSettingsPage(options: SettingsPageOptions): void {
  * Store review expects a blocked account to be reviewable and reversible, not
  * only blockable.
  */
+/**
+ * The hashtags the account follows, each with a way to its posts and a way
+ * to stop following it. The phone lists them in Search; the web has no such
+ * tab, so they live here, beside the other lists that shape Home.
+ */
+function wireFollowedHashtags(getRelays: () => string[]): void {
+  const section: HTMLElement | null = document.getElementById(
+    'followed-hashtags-section',
+  );
+  const container: HTMLElement | null = document.getElementById(
+    'followed-hashtags-list',
+  );
+  const stored: string | null = kvGet('nostr_pubkey');
+  if (!section || !container || !stored || !/^[0-9a-f]{64}$/i.test(stored)) {
+    return;
+  }
+  const viewer: PubkeyHex = stored.toLowerCase() as PubkeyHex;
+  section.hidden = false;
+  // Saves in flight, by tag: a redraw while one is pending - the relay
+  // refresh landing, another row finishing - keeps its button disabled.
+  const pending: Set<string> = new Set();
+
+  const render = (tags: string[]): void => {
+    container.innerHTML = '';
+    if (tags.length === 0) {
+      const empty: HTMLParagraphElement = document.createElement('p');
+      empty.className = 'text-xs text-gray-500';
+      empty.textContent = 'No hashtags followed.';
+      container.appendChild(empty);
+      return;
+    }
+    for (const tag of tags) {
+      const row: HTMLDivElement = document.createElement('div');
+      row.className =
+        'flex items-center justify-between gap-3 rounded border border-gray-200 px-3 py-2';
+      const link: HTMLAnchorElement = document.createElement('a');
+      link.className = 'min-w-0 truncate text-sm font-semibold text-blue-600';
+      link.href = `/t/${encodeURIComponent(tag)}`;
+      link.textContent = `#${tag}`;
+      const button: HTMLButtonElement = document.createElement('button');
+      button.type = 'button';
+      button.className =
+        'nox-muted-button flex-none rounded px-3 py-1 text-xs font-semibold';
+      button.textContent = 'Unfollow';
+      button.disabled = pending.has(tag);
+      button.addEventListener('click', (): void => {
+        if (pending.has(tag)) return;
+        pending.add(tag);
+        button.disabled = true;
+        void setHashtagFollowed(viewer, getRelays(), tag, false)
+          .then((): void => {
+            pending.delete(tag);
+            render(getFollowedHashtags(viewer));
+          })
+          .catch((): void => {
+            pending.delete(tag);
+            button.disabled = false;
+            button.textContent = 'Could not save. Try again.';
+          });
+      });
+      row.append(link, button);
+      container.appendChild(row);
+    }
+  };
+
+  render(getFollowedHashtags(viewer));
+  void refreshFollowedHashtags(viewer, getRelays())
+    .then(render)
+    .catch((): void => {});
+}
+
 function renderMutedAccounts(getRelays: () => string[]): void {
   const container: HTMLElement | null = document.getElementById(
     'muted-accounts-list',
