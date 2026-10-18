@@ -1,6 +1,6 @@
-export function setupSearchBar(
-  navigateTo: (path: string) => void,
-): void {
+import { hashtagQuery } from './interests.js';
+
+export function setupSearchBar(navigateTo: (path: string) => void): void {
   const searchButton: HTMLElement | null =
     document.getElementById('search-button');
   const clearSearchButton: HTMLElement | null = document.getElementById(
@@ -40,7 +40,11 @@ export function setupSearchBar(
         searchInputMobile.value = query;
       }
 
-      const path: string = `/search?q=${encodeURIComponent(query)}`;
+      // `#word` opens that hashtag, as on the phone; anything else searches.
+      const tag: string | null = hashtagQuery(query);
+      const path: string = tag
+        ? `/t/${encodeURIComponent(tag)}`
+        : `/search?q=${encodeURIComponent(query)}`;
       navigateTo(path);
 
       if (clearSearchButton) {
@@ -55,7 +59,6 @@ export function setupSearchBar(
       if (fromMobile && searchOverlay) {
         searchOverlay.style.display = 'none';
       }
-
     }
   }
 

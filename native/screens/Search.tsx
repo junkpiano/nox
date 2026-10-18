@@ -1,5 +1,9 @@
 /**
- * Finding a person.
+ * Finding a person, or a hashtag.
+ *
+ * With nothing typed, the hashtags you follow are listed: following one only
+ * adds its posts to Home, and this is where they can be found again. `#word`
+ * opens that hashtag.
  *
  * The ranking is the web app's, unchanged - the same four tiers, with a
  * claimed NIP-05 breaking ties inside each. A pasted key skips the search
@@ -8,10 +12,10 @@
  * `user-search.ts`, and this screen is the proof it paid off.
  */
 
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { nip19 } from 'nostr-tools';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -22,7 +26,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { onAppEvent } from '../../src/common/app-events';
+import {
+  getFollowedHashtags,
+  hashtagQuery,
+  refreshFollowedHashtags,
+} from '../../src/common/interests';
 import { kvGet } from '../../src/common/kv';
+import { getRelays } from '../../src/features/relays/relays';
 import {
   decodePubkeyQuery,
   MAX_ABOUT_LENGTH,
@@ -54,10 +65,42 @@ export default function Search() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const navigation = useNavigation<Nav>();
+  const focused: boolean = useIsFocused();
+  const [hashtags, setHashtags] = useState<string[]>((): string[] =>
+    getFollowedHashtags(readViewer()),
+  );
+
+  // Read again whenever the tab is shown or the list changes - on this
+  // device, from a hashtag's screen, or found changed on another.
+  useEffect((): (() => void) | undefined => {
+    if (!focused) return undefined;
+    const viewer: PubkeyHex | null = readViewer();
+    let live: boolean = true;
+    const read = (): void => {
+      if (live) setHashtags(getFollowedHashtags(viewer));
+    };
+    read();
+    if (viewer) {
+      void refreshFollowedHashtags(viewer, getRelays())
+        .then(read)
+        .catch((): void => {});
+    }
+    const stop = onAppEvent('interests-updated', read);
+    return (): void => {
+      live = false;
+      stop();
+    };
+  }, [focused]);
 
   const run = useCallback(async (): Promise<void> => {
     const trimmed = query.trim();
     if (!trimmed) return;
+
+    const tag: string | null = hashtagQuery(trimmed);
+    if (tag) {
+      navigation.navigate('Hashtag', { tag });
+      return;
+    }
 
     // A pasted key names one person exactly. Handing it to a search relay as
     // text gets it ignored as an unmatched term, and the relay answers with
@@ -91,7 +134,7 @@ export default function Search() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="name, npub or nprofile"
+          placeholder="name, npub or #hashtag"
           placeholderTextColor="#5b6b88"
           autoCapitalize="none"
           autoCorrect={false}
@@ -103,12 +146,48 @@ export default function Search() {
           <Text style={styles.buttonText}>Find</Text>
         </Pressable>
       </View>
-      {note ? <Text style={styles.note}>{note}</Text> : null}
+      {note && query.trim() ? <Text style={styles.note}>{note}</Text> : null}
 
       {busy ? (
         <View style={styles.centre}>
           <ActivityIndicator color="#89a8ff" />
         </View>
+      ) : !query.trim() ? (
+        <FlatList
+          data={hashtags}
+          keyExtractor={(tag: string): string => tag}
+          ListHeaderComponent={
+            readViewer() ? (
+              <Text style={styles.section}>Hashtags you follow</Text>
+            ) : null
+          }
+          ListEmptyComponent={
+            readViewer() ? (
+              <Text style={styles.empty}>
+                Hashtags you follow appear here. Tap one in any post to follow
+                it.
+              </Text>
+            ) : null
+          }
+          ItemSeparatorComponent={() => <View style={styles.sep} />}
+          renderItem={({ item }: { item: string }) => (
+            <Pressable
+              onPress={(): void =>
+                navigation.navigate('Hashtag', { tag: item })
+              }
+              style={({ pressed }) => [
+                styles.tagRow,
+                pressed && styles.rowPressed,
+              ]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.tag} numberOfLines={1}>
+                #{item}
+              </Text>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          )}
+        />
       ) : (
         <FlatList
           data={results}
@@ -208,4 +287,27 @@ const styles = StyleSheet.create({
   nip05: { color: '#5b6b88', fontSize: 11, marginTop: 1 },
   about: { color: '#b9c6de', fontSize: 12, marginTop: 3 },
   sep: { height: 1, backgroundColor: 'rgba(148,163,184,0.14)' },
+  section: {
+    color: '#8ea0c0',
+    fontSize: 13,
+    fontWeight: '700',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  empty: {
+    color: '#8ea0c0',
+    fontSize: 14,
+    lineHeight: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 48,
+    paddingHorizontal: 16,
+  },
+  tag: { flex: 1, color: '#89a8ff', fontSize: 16, fontWeight: '600' },
+  chevron: { color: '#5b6b88', fontSize: 22 },
 });

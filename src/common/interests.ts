@@ -36,6 +36,21 @@ export function normalizeHashtag(tag: string): string {
   return tag.trim().replace(/^#/, '').toLowerCase();
 }
 
+/**
+ * The hashtag a search box was given, or null. Only an explicit `#word`
+ * counts - a plain word is a name to look for - and only one word: a
+ * phrase is not a tag.
+ */
+export function hashtagQuery(text: string): string | null {
+  const trimmed: string = text.trim();
+  if (!/^#[^\s#]+$/u.test(trimmed)) return null;
+  const name: string = normalizeHashtag(trimmed);
+  // The characters a hashtag page accepts, with at least one letter or digit.
+  return /^[\p{L}\p{N}_-]+$/u.test(name) && /[\p{L}\p{N}]/u.test(name)
+    ? name
+    : null;
+}
+
 /** The hashtags a list names, each once, in its order. */
 export function hashtagsOf(tags: string[][]): string[] {
   const out: string[] = [];
