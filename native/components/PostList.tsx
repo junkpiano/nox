@@ -61,6 +61,7 @@ import {
 import { useSessionVersion } from '../lib/use-session-version';
 import { useUserStatuses } from '../lib/use-user-statuses';
 import EmojiText from './EmojiText';
+import Icon from './Icon';
 import PostBody from './PostBody';
 import PostMenu from './PostMenu';
 import QuoteCard from './QuoteCard';
@@ -123,7 +124,11 @@ function PostRowBody({
    */
   return (
     <Pressable style={styles.row} onPress={openThread} accessible={false}>
-      <Pressable onPress={openProfile} hitSlop={6} style={styles.avatarTap}>
+      <Pressable
+        onPress={openProfile}
+        hitSlop={6}
+        style={[styles.avatarTap, post.repostedBy && styles.avatarUnderLabel]}
+      >
         {post.picture ? (
           <Image source={{ uri: post.picture }} style={styles.avatar} />
         ) : (
@@ -144,7 +149,9 @@ function PostRowBody({
             style={styles.repostedBy}
             accessibilityRole="link"
           >
-            <Text style={styles.repostedByMark}>⇄</Text>
+            <View style={styles.repostedByMark}>
+              <Icon name="repost" size={TYPE.meta + 2} color="#8ea0c0" />
+            </View>
             <EmojiText
               text={
                 post.repostedBy.name || `${post.repostedBy.pubkey.slice(0, 8)}…`
@@ -153,7 +160,7 @@ function PostRowBody({
               style={styles.repostedByName}
               numberOfLines={1}
             />
-            <Text style={styles.repostedByMark}>reposted</Text>
+            <Text style={styles.repostedByWord}>reposted</Text>
           </Pressable>
         ) : null}
         <View style={styles.rowHead}>
@@ -733,19 +740,29 @@ const styles = StyleSheet.create({
   // the person rather than the post. It is the face that means the person, not
   // the space under it.
   avatarTap: { alignSelf: 'flex-start' },
+  // Below the "reposted" line, as on X: that line's mark sits above the face.
+  avatarUnderLabel: { marginTop: 22 },
   rowBody: { flex: 1 },
+  // As X lays it out: the mark in the avatar's column, the words where the
+  // post's own text starts. Pulled left by the avatar and the gap after it.
   repostedBy: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    marginLeft: -52,
     marginBottom: 4,
   },
-  repostedByMark: { color: '#73f0c1', fontSize: TYPE.meta },
+  repostedByMark: { width: 40, alignItems: 'flex-end', marginRight: 12 },
   repostedByName: {
-    color: '#73f0c1',
+    color: '#8ea0c0',
     fontSize: TYPE.meta,
     fontWeight: '700',
     flexShrink: 1,
+  },
+  repostedByWord: {
+    color: '#8ea0c0',
+    fontSize: TYPE.meta,
+    fontWeight: '700',
+    marginLeft: 4,
   },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: {
