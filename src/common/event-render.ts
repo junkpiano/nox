@@ -954,17 +954,101 @@ function homeHashtagReason(event: NostrEvent): string | null {
   return followedHashtagOf(event, viewer, followsMemo.follows, hashtags);
 }
 
+/** Who passed a post on, and when: the card stands where the repost does. */
+interface RepostContext {
+  by: PubkeyHex;
+  at: number;
+}
+
+/** The original post, drawn as the card, labelled with who reposted it. */
+function renderRepostedOriginal(
+  original: NostrEvent,
+  output: HTMLElement,
+  context: RepostContext,
+): void {
+  const author: PubkeyHex = original.pubkey as PubkeyHex;
+  const known: NostrProfile | null = getAuthoritativeProfile(author, null);
+  renderEvent(
+    original,
+    known,
+    nip19.npubEncode(author),
+    author,
+    output,
+    context,
+  );
+  if (!getAuthoritativeProfile(context.by, null)) {
+    void fetchProfile(context.by, getRelays())
+      .then((found: NostrProfile | null): void => {
+        if (!found) return;
+        const name: string = getDisplayName(
+          nip19.npubEncode(context.by),
+          found,
+        );
+        for (const label of output.querySelectorAll<HTMLElement>(
+          `.event-container[data-reposted-by="${context.by}"] .nox-reposted-by-name`,
+        )) {
+          label.textContent = name;
+        }
+      })
+      .catch((): void => {});
+  }
+  if (known) return;
+  // The timeline asked for the reposter's name, not the author's.
+  void fetchProfile(author, getRelays())
+    .then((found: NostrProfile | null): void => {
+      if (!found) return;
+      const npub: Npub = nip19.npubEncode(author);
+      for (const card of output.querySelectorAll<HTMLElement>(
+        `.event-container[data-event-id="${original.id}"][data-reposted-by]`,
+      )) {
+        const name: HTMLElement | null = card.querySelector('.event-username');
+        if (name) name.textContent = getDisplayName(npub, found);
+        const img: HTMLImageElement | null =
+          card.querySelector('img.event-avatar');
+        if (img) setAvatar(img, author, found);
+      }
+    })
+    .catch((): void => {});
+}
+
 export function renderEvent(
   event: NostrEvent,
   profile: NostrProfile | null,
   npub: Npub,
   pubkey: PubkeyHex,
   output: HTMLElement,
+  reposted: RepostContext | null = null,
 ): void {
   // Single choke point for muting: every timeline, the search page, profiles
   // and reply threads render through here, so one guard covers them all.
   if (isMuted(event.pubkey)) {
     return;
+  }
+
+  // A repost is drawn as the post it passes on, with who passed it on above
+  // it, as X does - not as the reposter's own card with the post inside.
+  if (!reposted && (event.kind === 6 || event.kind === 16)) {
+    const context: RepostContext = {
+      by: event.pubkey as PubkeyHex,
+      at: event.created_at,
+    };
+    const copy: NostrEvent | null = unwrapRepost(event).event;
+    if (copy) {
+      renderRepostedOriginal(copy, output, context);
+      return;
+    }
+    const targetId: string | null = resolveRepostEventId(event);
+    if (targetId) {
+      void fetchEventWithRetry(targetId, getRelays(), 3)
+        .then((found: NostrEvent | null): void => {
+          if (found && found.id === targetId) {
+            renderRepostedOriginal(found, output, context);
+          }
+        })
+        .catch((): void => {});
+      return;
+    }
+    // Nothing to show it as: the reposter's card below says what it can.
   }
 
   const renderProfile: NostrProfile | null = getAuthoritativeProfile(
@@ -1188,8 +1272,11 @@ export function renderEvent(
   // Used by timelines to keep DOM ordering stable without re-rendering.
   div.dataset.eventId = event.id;
   div.dataset.createdAt = String(event.created_at);
+  if (reposted) div.dataset.repostedBy = reposted.by;
   div.dataset.pubkey = pubkey;
-  div.dataset.timestamp = event.created_at.toString();
+  // A repost stands where it was reposted, not where the post was written.
+  const sortAt: number = reposted?.at ?? event.created_at;
+  div.dataset.timestamp = sortAt.toString();
   div.dataset.reply = parentEventId ? 'true' : 'false';
   if (imageUrls.length > 0) {
     div.dataset.images = JSON.stringify(imageUrls);
@@ -1202,7 +1289,23 @@ export function renderEvent(
     : `<img src="${escapeHtml(safeAvatar)}" alt="Avatar" class="event-avatar w-12 h-12 rounded-full object-cover cursor-pointer"
          onerror="${avatarErrorAttribute(pubkey)}" />`;
 
+  const repostedByHtml: string = reposted
+    ? (() => {
+        const byNpub: Npub = nip19.npubEncode(reposted.by);
+        const byName: string = getDisplayName(
+          byNpub,
+          getAuthoritativeProfile(reposted.by, null),
+        );
+        // As X lays it out: the mark in the avatar's column, the words where
+        // the post's own words start, quiet beside the post they introduce.
+        return `<a href="/${escapeHtml(byNpub)}" class="nox-reposted-by flex items-center gap-4 mb-1 text-xs font-semibold text-gray-500">
+          <span class="flex w-12 flex-none justify-end" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10l-2-2m2 2l-2 2" /><path stroke-linecap="round" stroke-linejoin="round" d="M17 17H7l2 2m-2-2l2-2" /></svg></span>
+          <span class="min-w-0 truncate"><span class="nox-reposted-by-name">${escapeHtml(byName)}</span> reposted</span></a>`;
+      })()
+    : '';
+
   div.innerHTML = `
+              ${repostedByHtml}
 					    <div class="flex items-start space-x-4">
 				      <a href="/${safeNpub}" class="flex-shrink-0 hover:opacity-80 transition-opacity">
 				        ${avatarHtml}
@@ -1242,7 +1345,7 @@ export function renderEvent(
   // nearly every card is older than the last one drawn: that is checked
   // before the list is walked, or a long timeline costs a walk per card.
   const newerThan = (card: HTMLElement): boolean =>
-    event.created_at > parseInt(card.dataset.timestamp || '0', 10);
+    sortAt > parseInt(card.dataset.timestamp || '0', 10);
   const lastChild: Element | null = output.lastElementChild;
   const lastCard: HTMLElement | null =
     lastChild instanceof HTMLElement &&

@@ -2585,3 +2585,12 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
 .nox-tag-badge:hover {
   background: rgba(137, 168, 255, 0.12);
 }
+
+/* Above a reposted post: who passed it on. */
+.nox-reposted-by,
+.theme-nox a.nox-reposted-by {
+  color: #8ea0c0;
+}
+.nox-reposted-by:hover .nox-reposted-by-name {
+  text-decoration: underline;
+}
