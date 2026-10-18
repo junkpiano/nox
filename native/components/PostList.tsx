@@ -75,8 +75,14 @@ function PostRowBody({
   reactions,
   onOpenThread,
   onOpenProfile,
+  viaHashtag = null,
 }: {
   post: TimelinePost;
+  /**
+   * The followed hashtag that brought a stranger's post into Home, said on
+   * the card so the post is not there unexplained. Null everywhere else.
+   */
+  viaHashtag?: string | null;
   /** NIP-38: what the author says they are up to, when they said. */
   status?: UserStatus | null;
   /** What you already did to the posts on this screen. */
@@ -97,6 +103,7 @@ function PostRowBody({
   const [revealed, setRevealed] = useState(false);
   const openThread = (): void => onOpenThread(post);
   const openProfile = (): void => onOpenProfile(post);
+  const navigation = useNavigation<Nav>();
 
   /*
    * The whole row opens the post, and the parts that mean something else
@@ -138,6 +145,19 @@ function PostRowBody({
             // one, and it was read as the author's.
             <Text style={styles.badge} numberOfLines={1}>
               ⇄ Repost
+            </Text>
+          ) : null}
+          {viaHashtag ? (
+            <Text
+              style={styles.tagBadge}
+              numberOfLines={1}
+              onPress={(): void =>
+                navigation.navigate('Hashtag', { tag: viaHashtag })
+              }
+              accessibilityRole="link"
+              accessibilityLabel={`Here because you follow #${viaHashtag}`}
+            >
+              #{viaHashtag}
             </Text>
           ) : null}
           <Text style={styles.time} numberOfLines={1}>
@@ -473,6 +493,8 @@ function timeAgo(createdAt: number): string {
 
 export interface PostListProps {
   posts: TimelinePost[];
+  /** Home only: the followed hashtag that brought a post in, if one did. */
+  hashtagFor?: ((post: TimelinePost) => string | null) | undefined;
   /**
    * True while a load is in flight. Without this, an empty result was
    * indistinguishable from a load that had not finished: the spinner and
@@ -527,6 +549,7 @@ export interface OlderPostsState {
 
 export default function PostList({
   posts,
+  hashtagFor,
   stats,
   stage,
   error,
@@ -642,6 +665,7 @@ export default function PostList({
               reactions={reactions.get(item.id)}
               onOpenThread={openThread}
               onOpenProfile={openProfile}
+              viaHashtag={hashtagFor?.(item) ?? null}
             />
           )}
           // Room for the compose button to sit over, so the last card can be
@@ -699,6 +723,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: TYPE.name,
     flexShrink: 1,
+  },
+  tagBadge: {
+    color: '#89a8ff',
+    fontSize: TYPE.small,
+    borderWidth: 1,
+    borderColor: '#25406e',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    maxWidth: 140,
   },
   badge: {
     color: '#73f0c1',
