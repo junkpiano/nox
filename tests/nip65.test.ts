@@ -26,7 +26,11 @@ import {
   setRelays,
 } from '../src/features/relays/relays.js';
 import type { NostrEvent } from '../types/nostr';
-import { fakeRelays, installFakeWebSocket, storeRelay } from './fake-relay-store.js';
+import {
+  fakeRelays,
+  installFakeWebSocket,
+  storeRelay,
+} from './fake-relay-store.js';
 
 installFakeWebSocket();
 
@@ -52,15 +56,10 @@ test('relay URLs get a scheme, lose a bare trailing slash, and anything else is 
   assert.equal(normalizeRelayUrl('wss://[bad'), null);
 });
 
-test('a URL with another scheme is not refused but mangled into a wss host', () => {
-  // Documents current behaviour, which looks like a bug: anything not
-  // starting with ws(s):// gets `wss://` prepended before parsing, so the
-  // protocol check after it can never fail and `https://relay.example`
-  // becomes the relay `wss://https//relay.example`.
-  assert.equal(
-    normalizeRelayUrl('https://relay.example'),
-    'wss://https//relay.example',
-  );
+test('a URL with another scheme is refused, not read as a host', () => {
+  assert.equal(normalizeRelayUrl('https://relay.example'), null);
+  assert.equal(normalizeRelayUrl('http://relay.example'), null);
+  assert.equal(normalizeRelayUrl('localhost:7777'), 'wss://localhost:7777');
 });
 
 test('with nothing stored, the defaults are used and the user has configured nothing', () => {

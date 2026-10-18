@@ -68,7 +68,9 @@ export function normalizeRelayUrl(rawUrl: string): string | null {
   const trimmed: string = rawUrl.trim();
   if (!trimmed) return null;
 
-  const withScheme: string = trimmed.match(/^wss?:\/\//i)
+  // A bare host gets `wss://`; any other scheme is kept, so the check
+  // below refuses it rather than reading `https://x` as a host.
+  const withScheme: string = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
     ? trimmed
     : `wss://${trimmed}`;
   try {
