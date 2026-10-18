@@ -1296,7 +1296,11 @@ export function renderEvent(
           byNpub,
           getAuthoritativeProfile(reposted.by, null),
         );
-        return `<a href="/${escapeHtml(byNpub)}" class="nox-reposted-by flex items-center gap-1.5 mb-2 text-xs font-semibold">🔁 <span class="nox-reposted-by-name min-w-0 truncate">${escapeHtml(byName)}</span> <span class="font-normal">reposted</span></a>`;
+        // As X lays it out: the mark in the avatar's column, the words where
+        // the post's own words start, quiet beside the post they introduce.
+        return `<a href="/${escapeHtml(byNpub)}" class="nox-reposted-by flex items-center gap-4 mb-1 text-xs font-semibold text-gray-500">
+          <span class="flex w-12 flex-none justify-end" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h10l-2-2m2 2l-2 2" /><path stroke-linecap="round" stroke-linejoin="round" d="M17 17H7l2 2m-2-2l2-2" /></svg></span>
+          <span class="min-w-0 truncate"><span class="nox-reposted-by-name">${escapeHtml(byName)}</span> reposted</span></a>`;
       })()
     : '';
 

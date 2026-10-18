@@ -2589,7 +2589,7 @@ body.route-profile:not(.profile-replies) .event-container[data-reply="true"] {
 /* Above a reposted post: who passed it on. */
 .nox-reposted-by,
 .theme-nox a.nox-reposted-by {
-  color: #73f0c1;
+  color: #8ea0c0;
 }
 .nox-reposted-by:hover .nox-reposted-by-name {
   text-decoration: underline;
