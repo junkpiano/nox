@@ -88,7 +88,12 @@ export type RootStackParamList = {
   Wallet: undefined;
   Hashtag: { tag: string };
   /** Who gave one reaction to a post; `symbol` is the badge as drawn. */
-  Reactors: { eventId: string; entry: ReactionAggregate; symbol: string };
+  /** With no `entry`, who reposted the post instead of who reacted. */
+  Reactors: {
+    eventId: string;
+    entry: ReactionAggregate | null;
+    symbol: string;
+  };
   Likes: undefined;
   About: undefined;
 };
