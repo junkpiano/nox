@@ -1,4 +1,4 @@
-import { withTopicTags } from '../../src/common/content-segments';
+import { withContentTags } from '../../src/common/content-segments';
 import {
   isReadOnlySession,
   ReadOnlySessionError,
@@ -120,7 +120,7 @@ export async function replyToEvent(
     kind: 1,
     pubkey: '',
     created_at: Math.floor(Date.now() / 1000),
-    tags: withTopicTags(content, replyTags(parent)),
+    tags: withContentTags(content, replyTags(parent)),
     content,
   });
 
