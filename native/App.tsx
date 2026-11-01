@@ -78,7 +78,8 @@ export type RootStackParamList = {
   /** `quote`: the post being quoted (NIP-18), when composing a quote. */
   Compose: { quote?: NostrEvent } | undefined;
   Relays: undefined;
-  Profile: { pubkey: PubkeyHex };
+  /** `nip05`: a `name@domain` from a link, looked up on arrival. */
+  Profile: { pubkey: PubkeyHex } | { nip05: string };
   /**
    * `reply` opens the thread with the composer already up. `relays` are the
    * hints an nevent carried: where the note is known to be, tried first.
@@ -108,7 +109,8 @@ export type RootStackParamList = {
  * header button, because they are visited on purpose rather than by habit.
  */
 export type TabParamList = {
-  Feed: undefined;
+  /** `which`: the list to show, when a link names one. */
+  Feed: { which?: 'home' | 'global' } | undefined;
   Search: undefined;
   Messages: undefined;
   Alerts: undefined;
@@ -188,7 +190,17 @@ const linking: LinkingOptions<RootStackParamList> = {
   getStateFromPath: (path: string) => {
     const target = resolveNostrLink(path);
     const home = { name: 'Tabs' as const };
-    if (!target) return { routes: [home] };
+    // The front door is the Following list, whichever tab was last open.
+    if (!target) {
+      return {
+        routes: [
+          {
+            name: 'Tabs',
+            state: { routes: [{ name: 'Feed', params: { which: 'home' } }] },
+          },
+        ],
+      };
+    }
     switch (target.kind) {
       case 'profile':
         return {
@@ -210,6 +222,24 @@ const linking: LinkingOptions<RootStackParamList> = {
       case 'hashtag':
         return {
           routes: [home, { name: 'Hashtag', params: { tag: target.tag } }],
+        };
+      case 'nip05':
+        return {
+          routes: [
+            home,
+            { name: 'Profile', params: { nip05: target.address } },
+          ],
+        };
+      case 'global':
+        return {
+          routes: [
+            {
+              name: 'Tabs',
+              state: {
+                routes: [{ name: 'Feed', params: { which: 'global' } }],
+              },
+            },
+          ],
         };
     }
   },

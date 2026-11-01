@@ -31,7 +31,10 @@
             { "scheme": "https", "host": "nox.garden", "pathPrefix": "/nprofile1" },
             { "scheme": "https", "host": "nox.garden", "pathPrefix": "/note1" },
             { "scheme": "https", "host": "nox.garden", "pathPrefix": "/nevent1" },
-            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/t/" }
+            { "scheme": "https", "host": "nox.garden", "pathPrefix": "/t/" },
+            { "scheme": "https", "host": "nox.garden", "pathPattern": "/.*@.*" },
+            { "scheme": "https", "host": "nox.garden", "path": "/global" },
+            { "scheme": "https", "host": "nox.garden", "path": "/" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }

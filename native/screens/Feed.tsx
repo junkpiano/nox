@@ -13,14 +13,15 @@
  * that never opens it never pays for it.
  */
 
-import { useNavigation } from '@react-navigation/native';
+import type { NavigationProp, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getSessionPrivateKey } from '../../src/common/session';
-import type { RootStackParamList } from '../App';
+import type { RootStackParamList, TabParamList } from '../App';
 import { useSessionVersion } from '../lib/use-session-version';
 import Global from './Global';
 import Home from './Home';
@@ -37,12 +38,25 @@ export default function Feed() {
   // sign-in, rather than on the next restart.
   useSessionVersion();
 
+  // The choice is kept in the route too, so a link naming a list always
+  // differs from it when it differs from what is on screen.
+  const tab = useNavigation<NavigationProp<TabParamList, 'Feed'>>();
   const choose = (next: Which): void => {
     if (next === 'global') {
       setGlobalMounted(true);
     }
     setWhich(next);
+    tab.setParams({ which: next });
   };
+
+  // A link to nox.garden/global or / lands here with the list it named.
+  const linked: Which | undefined =
+    useRoute<RouteProp<TabParamList, 'Feed'>>().params?.which;
+  useEffect((): void => {
+    if (!linked) return;
+    if (linked === 'global') setGlobalMounted(true);
+    setWhich(linked);
+  }, [linked]);
 
   return (
     <View style={styles.screen}>

@@ -31,6 +31,7 @@ import {
 import type { TimelineKey } from '../../src/common/db/types';
 import { kvGet } from '../../src/common/kv';
 import { isMuted } from '../../src/common/mute-state';
+import { resolveNip05 } from '../../src/common/nip05';
 import { fetchFollowSet } from '../../src/common/notification-filter';
 import { replyParentOf } from '../../src/common/reply-target';
 import {
@@ -475,7 +476,37 @@ function Header({ profile }: { profile: ProfileData }) {
 }
 
 export default function Profile({ route }: { route: ProfileRoute }) {
-  return <ProfileView pubkey={route.params.pubkey} />;
+  const params = route.params;
+  if ('nip05' in params) return <Nip05Profile address={params.nip05} />;
+  return <ProfileView pubkey={params.pubkey} />;
+}
+
+/**
+ * A profile reached by `name@domain`: the domain says whose it is, then it
+ * is the same page as any other.
+ */
+function Nip05Profile({ address }: { address: string }) {
+  const [pubkey, setPubkey] = useState<PubkeyHex | null | undefined>();
+  useEffect(() => {
+    let live = true;
+    void resolveNip05(address).then((found: PubkeyHex | null): void => {
+      if (live) setPubkey(found);
+    });
+    return (): void => {
+      live = false;
+    };
+  }, [address]);
+
+  if (pubkey) return <ProfileView pubkey={pubkey} />;
+  return (
+    <View style={styles.centre}>
+      {pubkey === null ? (
+        <Text style={styles.error}>Could not find {address}.</Text>
+      ) : (
+        <ActivityIndicator color="#89a8ff" />
+      )}
+    </View>
+  );
 }
 
 /**
