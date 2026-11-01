@@ -119,6 +119,16 @@ jobs:
           fi
           tail -5 "$RUNNER_TEMP/xcodebuild.log"
 
+      # What the signed app claims and what the profile allows: a capability
+      # missing from either (Associated Domains, for universal links) fails
+      # silently on the phone, not here.
+      - name: Show the app's entitlements
+        run: |
+          echo "--- signed app"
+          codesign -d --entitlements - --xml "$RUNNER_TEMP/nox.xcarchive/Products/Applications/"*.app | plutil -p -
+          echo "--- provisioning profile"
+          security cms -D -i "$RUNNER_TEMP/app.mobileprovision" | plutil -extract Entitlements xml1 -o - - | plutil -p -
+
       - name: Keep the build log
         if: failure()
         uses: actions/upload-artifact@v4
@@ -175,12 +185,14 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Destination: $DESTINATION" >> "$GITHUB_STEP_SUMMARY"
 
+      # hashFiles cannot see outside the workspace, so the upload itself
+      # decides: an upload to TestFlight leaves no IPA behind.
       - name: Keep the IPA as an artifact
-        if: hashFiles(format('{0}/export/*.ipa', runner.temp)) != ''
         uses: actions/upload-artifact@v4
         with:
           name: nox-ios
           path: ${{ runner.temp }}/export/*.ipa
+          if-no-files-found: ignore
           retention-days: 14
 
       # Nothing secret outlives the job, even on an ephemeral runner.
