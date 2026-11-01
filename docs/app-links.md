@@ -28,7 +28,8 @@ itself: a Netlify preview cannot vouch for anything.
 certificate an installed app may be signed with. Android checks the file once,
 when the app is installed or updated, and only for links whose host and
 path the manifest names: `nox.garden` under `/npub1`, `/nprofile1`,
-`/note1`, `/nevent1` and `/t/`. Any other path on the site stays in the
+`/note1`, `/nevent1` and `/t/`, any path with an `@` in it (a NIP-05
+`name@domain`), and exactly `/global` and `/`. Any other path on the site stays in the
 browser, which is where the privacy policy and the terms belong. There is
 no `www.nox.garden`; it does not resolve, and a host that does not exist
 cannot vouch.
@@ -65,7 +66,8 @@ or `1024` means the file was not reachable or did not match.
 ## iOS
 
 `apple-app-site-association` names `<TeamID>.garden.nox` and the paths
-the app claims: people, notes, and hashtags, matching what
+the app claims: people (by key or by `name@domain`), notes, hashtags, the
+global timeline and the front page, matching what
 `src/common/nostr-link.ts` resolves. Everything else on the site stays in
 Safari.
 

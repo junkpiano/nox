@@ -19,7 +19,11 @@ import type { PubkeyHex } from '../../types/nostr';
 export type NostrLinkTarget =
   | { kind: 'profile'; pubkey: PubkeyHex }
   | { kind: 'event'; eventId: string; relays: string[] }
-  | { kind: 'hashtag'; tag: string };
+  | { kind: 'hashtag'; tag: string }
+  /** A NIP-05 address (`name@domain`), still to be looked up. */
+  | { kind: 'nip05'; address: string }
+  /** The global timeline. */
+  | { kind: 'global' };
 
 /** Hosts whose paths are this app's own routes. */
 const OWN_HOSTS: ReadonlySet<string> = new Set([
@@ -53,6 +57,14 @@ export function resolveNostrLink(input: string): NostrLinkTarget | null {
   if (segments.length === 0) return null;
   const first: string = segments[0] as string;
   if (first.startsWith('#')) return hashtagTarget(first.slice(1));
+  if (segments.length === 1 && first.toLowerCase() === 'global') {
+    return { kind: 'global' };
+  }
+  // NIP-05: a local part of a-z0-9-_. and a domain, the shape nox.garden
+  // serves a profile at.
+  if (/^[a-z0-9._-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(first)) {
+    return { kind: 'nip05', address: first.toLowerCase() };
+  }
   return decodeBech32(first);
 }
 

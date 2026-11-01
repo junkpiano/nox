@@ -95,3 +95,26 @@ test("link: somebody else's site, an address, a relay, nonsense: null", () => {
     assert.equal(resolveNostrLink(input), null, input);
   }
 });
+
+test('link: a NIP-05 address on nox.garden is a person still to be looked up', () => {
+  for (const input of [
+    'https://nox.garden/Alice@Example.com',
+    'https://nox.garden/_@example.com?x=1',
+  ]) {
+    const target = resolveNostrLink(input);
+    assert.equal(target?.kind, 'nip05', input);
+  }
+  assert.deepEqual(resolveNostrLink('https://nox.garden/Alice@Example.com'), {
+    kind: 'nip05',
+    address: 'alice@example.com',
+  });
+  assert.equal(resolveNostrLink('https://nox.garden/alice@localhost'), null);
+});
+
+test('link: /global is the global timeline, and nothing under it is', () => {
+  assert.deepEqual(resolveNostrLink('https://nox.garden/global'), {
+    kind: 'global',
+  });
+  assert.equal(resolveNostrLink('https://nox.garden/global/x'), null);
+  assert.equal(resolveNostrLink('https://nox.garden/'), null);
+});
