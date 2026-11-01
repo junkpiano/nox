@@ -1,6 +1,6 @@
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
-import { withTopicTags } from './content-segments.js';
+import { withContentTags } from './content-segments.js';
 import { contentWarningTags } from './content-warning.js';
 import { storeEvent } from './db/index.js';
 import type { ImageUploadResult } from './image-upload.js';
@@ -423,7 +423,7 @@ export function setupComposeOverlay(options: ComposeOverlayOptions): void {
         kind: 1,
         pubkey: storedPubkey as PubkeyHex,
         created_at: Math.floor(Date.now() / 1000),
-        tags: withTopicTags(content, tags),
+        tags: withContentTags(content, tags),
         content,
       });
 

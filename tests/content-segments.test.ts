@@ -9,12 +9,13 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { nip19 } from 'nostr-tools';
 
 import type { ContentSegment } from '../src/common/content-segments.js';
 import {
   parseContentSegments,
   partitionContent,
-  withTopicTags,
+  withContentTags,
 } from '../src/common/content-segments.js';
 
 const NPUB: string =
@@ -272,7 +273,7 @@ test('partition: an naddr becomes a link to a viewer that can show it', () => {
 
 test('every hashtag written becomes a t tag, numbers too, each once', () => {
   assert.deepEqual(
-    withTopicTags('WORD5 #721 and #Rust #rust https://x.dev/#frag', [
+    withContentTags('WORD5 #721 and #Rust #rust https://x.dev/#frag', [
       ['client', 'nox'],
       ['t', 'rust'],
     ]),
@@ -282,4 +283,39 @@ test('every hashtag written becomes a t tag, numbers too, each once', () => {
       ['t', '721'],
     ],
   );
+});
+
+test('a nostr: note or nevent becomes a q tag, each once; a bare one does not', () => {
+  const nevent: string =
+    'nevent1qqs0d73yy38zkv0a6kxep6rvgt7redj0k7h00pz0h9e6jpkatnfqkfqpp4mhxue69uhkummn9ekx7mqzyrhpule8lgrfg4z7dmwtrwvrpmcy8f676mnkkzsxcz40en4e3g5quqcyqqqqqqg4meq4x';
+  const id: string =
+    'f6fa24244e2b31fdd58d90e86c42fc3cb64fb7aef7844fb973a906dd5cd20b24';
+  const author: string =
+    'ee1e7f27fa0694545e6edcb1b9830ef043a75ed6e76b0a06c0aafcceb98a280e';
+  const otherId: string = 'a'.repeat(64);
+  const note: string = nip19.noteEncode(otherId);
+  const bare: string = nip19.noteEncode('b'.repeat(64));
+  assert.deepEqual(
+    withContentTags(
+      `look nostr:${nevent} again nostr:${nevent} and nostr:${note}, not ${bare}`,
+      [],
+    ),
+    [
+      ['q', id, 'wss://nos.lol', author],
+      ['q', otherId, ''],
+    ],
+  );
+});
+
+test('a quote already tagged by the quote button is not tagged twice', () => {
+  const id: string = 'c'.repeat(64);
+  const tags: string[][] = [['q', id, '', 'd'.repeat(64)]];
+  assert.deepEqual(
+    withContentTags(`words\n\nnostr:${nip19.noteEncode(id)}`, tags),
+    tags,
+  );
+});
+
+test('a note that does not decode to a 32-byte id is not tagged', () => {
+  assert.deepEqual(withContentTags('nostr:note14vq7650r', []), []);
 });

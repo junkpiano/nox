@@ -1,4 +1,4 @@
-import { withTopicTags } from '../../src/common/content-segments';
+import { withContentTags } from '../../src/common/content-segments';
 import {
   isReadOnlySession,
   ReadOnlySessionError,
@@ -119,7 +119,7 @@ export async function publishNote(
   const draft = withClientTag({
     kind: 1,
     created_at: Math.floor(Date.now() / 1000),
-    tags: withTopicTags(content, [...(options.tags ?? [])]),
+    tags: withContentTags(content, [...(options.tags ?? [])]),
     content,
     pubkey: '',
   });

@@ -107,20 +107,24 @@ function decodeMention(identifier: string): PubkeyHex | null {
 
 function decodeEvent(
   identifier: string,
-): { id: string; relays: string[] } | null {
+): { id: string; relays: string[]; author: string | null } | null {
   try {
     const decoded = nip19.decode(identifier.toLowerCase());
     if (decoded.type === 'note') {
-      return { id: decoded.data as string, relays: [] };
+      return { id: decoded.data as string, relays: [], author: null };
     }
     if (decoded.type === 'nevent') {
-      const data = decoded.data as { id: string; relays?: string[] };
+      const data = decoded.data as {
+        id: string;
+        relays?: string[];
+        author?: string;
+      };
       // Only relay URLs. A hint is a string the author chose, and it is
       // about to be connected to.
       const relays: string[] = (data.relays ?? []).filter(
         (relay: string): boolean => /^wss?:\/\//i.test(relay),
       );
-      return { id: data.id, relays };
+      return { id: data.id, relays, author: data.author ?? null };
     }
   } catch {
     // As above.
@@ -174,21 +178,44 @@ export function readTopicTags(tags: string[][]): Set<string> {
 type Topics = { has(tag: string): boolean };
 
 /**
- * The `t` tags a post should carry for the hashtags written in it.
+ * The tags a post should carry for what is written in it.
  *
- * Every hashtag the writer typed, numbers included: writing one is saying it
- * is a topic, and the tag is what lets a client find the post under it.
- * Tags already present are kept and not repeated.
+ * A `t` for every hashtag the writer typed, numbers included: writing one is
+ * saying it is a topic, and the tag is what lets a client find the post
+ * under it. A `q` (NIP-18) for every `nostr:note…` / `nostr:nevent…`
+ * reference, so a note quoted by hand is a quote to every client, the same
+ * as one quoted with the button. Tags already present are kept and not
+ * repeated.
  */
-export function withTopicTags(content: string, tags: string[][]): string[][] {
-  const present: Set<string> = readTopicTags(tags);
+export function withContentTags(content: string, tags: string[][]): string[][] {
+  const topics: Set<string> = readTopicTags(tags);
+  const quoted: Set<string> = new Set(
+    tags
+      .filter((tag: string[]): boolean => tag[0] === 'q')
+      .map((tag: string[]): string => tag[1] ?? ''),
+  );
   const added: string[][] = [];
   for (const segment of parseReferences(content, {
     has: (): boolean => true,
   })) {
-    if (segment.kind === 'hashtag' && !present.has(segment.tag)) {
-      present.add(segment.tag);
+    if (segment.kind === 'hashtag' && !topics.has(segment.tag)) {
+      topics.add(segment.tag);
       added.push(['t', segment.tag]);
+    }
+    if (segment.kind === 'event' && segment.eventId) {
+      const ref = decodeEvent(segment.text.replace(/^nostr:/i, ''));
+      // A 32-byte id, as NIP-19 has it: a malformed note decodes to less.
+      if (ref && /^[0-9a-f]{64}$/.test(ref.id) && !quoted.has(ref.id)) {
+        quoted.add(ref.id);
+        added.push([
+          'q',
+          ref.id,
+          ref.relays[0] ?? '',
+          ...(ref.author && /^[0-9a-f]{64}$/.test(ref.author)
+            ? [ref.author]
+            : []),
+        ]);
+      }
     }
   }
   return [...tags, ...added];
