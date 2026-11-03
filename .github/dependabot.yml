@@ -1,0 +1,46 @@
+version: 2
+updates:
+  # CI installs the web app with `bun install --frozen-lockfile`, so bun.lock is the one kept current.
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      web:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # Expo pins its packages to the SDK; an SDK upgrade is done by hand with `npx expo install --fix`.
+  - package-ecosystem: npm
+    directory: /native
+    schedule:
+      interval: weekly
+    groups:
+      native:
+        patterns: ["*"]
+        update-types: [patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    groups:
+      tauri:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
