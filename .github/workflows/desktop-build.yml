@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the Linux build dependencies
         if: matrix.name == 'linux'
@@ -101,7 +101,7 @@ jobs:
           $WINAPP pack "$STAGE" --manifest "$STAGE/Package.appxmanifest" --no-sign --output "msix/nox_${VERSION}_x64.msix"
           ls -l msix/*.msix
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nox-${{ matrix.name }}
           path: ${{ matrix.out }}
