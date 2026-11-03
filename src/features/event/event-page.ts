@@ -11,6 +11,7 @@ import { withoutDeleted } from '../../common/deleted-events.js';
 import { findDeletedIds } from '../../common/deletion-gate.js';
 import { getCachedEvent, setCachedEvent } from '../../common/event-cache.js';
 import {
+  closeReactionDetails,
   getTagMarker,
   loadReactionsForEvent,
   renderEvent,
@@ -336,7 +337,7 @@ async function showReposters(
   count.textContent = String(reposters.length);
   button.append(count, reposters.length === 1 ? ' repost' : ' reposts');
   const list: HTMLDivElement = document.createElement('div');
-  list.className = 'mt-2 space-y-2 max-h-48 overflow-auto';
+  list.className = 'nox-repost-list mt-2 space-y-2 max-h-48 overflow-auto';
   list.hidden = true;
   anchor.after(button, list);
 
@@ -344,6 +345,10 @@ async function showReposters(
   button.addEventListener('click', (): void => {
     list.hidden = !list.hidden;
     button.setAttribute('aria-expanded', String(!list.hidden));
+    // One list under a post at a time; who reacted would run into it.
+    const reactions: HTMLElement | null =
+      card.querySelector<HTMLElement>('.reactions-details');
+    if (!list.hidden && reactions) closeReactionDetails(reactions);
     if (drawn) return;
     drawn = true;
     const paints: Map<PubkeyHex, (profile: NostrProfile | null) => void> =
