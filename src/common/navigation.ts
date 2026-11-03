@@ -293,7 +293,8 @@ export function setupNavigation(options: NavigationOptions): void {
       'click',
       wrapNavigationHandler((): void => {
         options.onLogout();
-        options.navigateTo('/home');
+        // The front door, as a first visit sees it.
+        options.navigateTo('/');
       }),
     );
   }
