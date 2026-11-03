@@ -28,7 +28,7 @@ keyring-core = "1.0.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
 android-native-keyring-store = "1.0"
-jni = "0.21"
+jni = "0.22"
 ndk-context = "0.1.1"
 
 # The crate builds neither store unless one is named.
