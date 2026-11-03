@@ -51,73 +51,78 @@ export async function showInputForm(
     : 'Stored in this browser only, which is less secure than an extension. Signing out deletes it.';
 
   options.output.innerHTML = `
-      <section class="nox-welcome py-4 sm:py-8">
-        <div class="nox-auth-card space-y-5">
-          <div>
-            <p class="nox-kicker">Welcome</p>
-            <h3 class="nox-panel-title">Sign in to nox</h3>
-            <p class="nox-panel-copy">No account is needed. Your key is your identity.</p>
-            <p class="nox-panel-copy mt-2">A browser extension is the recommended way in. Your secret key stays in the extension.</p>
-          </div>
-
-          <div class="nox-auth-actions">
-            <button id="welcome-login" class="nox-primary-button py-3 px-6">
-              <span aria-hidden="true">🔑</span>
-              <span>Connect Extension</span>
-            </button>
-            <button id="welcome-global" class="nox-secondary-button py-3 px-6">
-              <span aria-hidden="true">🌍</span>
-              <span>View Global Timeline</span>
-            </button>
-          </div>
-
-          <div class="nox-browse space-y-2">
-            <p class="nox-kicker">Just looking?</p>
-            <label for="public-key-input" class="sr-only">Public key to browse as</label>
-            <div class="flex flex-col sm:flex-row gap-2">
-              <input id="public-key-input" type="text" autocomplete="off" spellcheck="false" placeholder="npub1… or 64-character hex"
-                class="nox-input px-4 py-3 text-sm" />
-              <button id="public-key-browse" class="nox-secondary-button py-3 px-5 whitespace-nowrap">
-                Browse
-              </button>
-            </div>
-            <p id="public-key-error" class="nox-auth-error" hidden></p>
-            <p class="nox-auth-note">A public key is safe to share. Browsing shows what that key sees; nothing can be posted.</p>
-          </div>
-
-          <details class="nox-reveal">
-            <summary class="nox-reveal-summary">I use a signer app</summary>
-            <div class="nox-reveal-body space-y-2">
-              <p class="nox-auth-note">Your key stays in the signer (Amber, nsec.app and others). nox asks it to sign.</p>
-              <label for="bunker-input" class="sr-only">Signer address</label>
-              <div class="flex flex-col sm:flex-row gap-2">
-                <input id="bunker-input" type="text" autocomplete="off" spellcheck="false" placeholder="bunker://… or name@domain"
-                  class="nox-input px-4 py-3 text-sm" />
-                <button id="bunker-connect" class="nox-secondary-button py-3 px-5 whitespace-nowrap">
-                  Connect
-                </button>
-              </div>
-              <p id="bunker-status" class="nox-auth-note" role="status" hidden></p>
-            </div>
-          </details>
-
-          <details class="nox-reveal">
-            <summary class="nox-reveal-summary">I have a secret key</summary>
-            <div class="nox-reveal-body space-y-2">
-              <p class="nox-auth-note">Anyone with this key can post as you.</p>
-              <label for="private-key-input" class="sr-only">Secret key</label>
-              <div class="flex flex-col sm:flex-row gap-2">
-                <input id="private-key-input" type="password" autocomplete="off" placeholder="nsec1… or 64-character hex"
-                  class="nox-input px-4 py-3 text-sm" />
-                <button id="private-key-login"
-                  class="nox-secondary-button py-3 px-5 whitespace-nowrap">
-                  Use this key
-                </button>
-              </div>
-              <p class="nox-auth-note">${storageNote}</p>
-            </div>
-          </details>
+      <section class="nox-landing" aria-labelledby="landing-title">
+        <div class="nox-landing-brand">
+          <p class="nox-landing-mark" aria-hidden="true">n<span class="nox-landing-moon"></span>x</p>
         </div>
+
+        <div class="nox-landing-body">
+          <h1 id="landing-title" class="nox-landing-title">Start reading in one tap.</h1>
+          <p class="nox-landing-lede">nox opens Nostr, the open social network. No account, no email.</p>
+
+          <button id="welcome-global" class="nox-primary-button nox-landing-cta">Start reading</button>
+
+          <div class="nox-landing-signin">
+            <h2 class="nox-landing-label">Already on Nostr?</h2>
+            <button id="welcome-login" class="nox-secondary-button nox-landing-cta">Connect extension</button>
+            <p class="nox-auth-note">Your secret key stays in the extension.</p>
+
+            <details class="nox-reveal">
+              <summary class="nox-reveal-summary">Browse as a public key</summary>
+              <div class="nox-reveal-body space-y-2">
+                <label for="public-key-input" class="sr-only">Public key to browse as</label>
+                <div class="flex flex-col sm:flex-row gap-2">
+                  <input id="public-key-input" type="text" autocomplete="off" spellcheck="false" placeholder="npub1… or 64-character hex"
+                    class="nox-input px-4 py-3 text-sm" />
+                  <button id="public-key-browse" class="nox-secondary-button py-3 px-5 whitespace-nowrap">
+                    Browse
+                  </button>
+                </div>
+                <p id="public-key-error" class="nox-auth-error" hidden></p>
+                <p class="nox-auth-note">A public key is safe to share. Browsing shows what that key sees; nothing can be posted.</p>
+              </div>
+            </details>
+
+            <details class="nox-reveal">
+              <summary class="nox-reveal-summary">I use a signer app</summary>
+              <div class="nox-reveal-body space-y-2">
+                <p class="nox-auth-note">Your key stays in the signer (Amber, nsec.app and others). nox asks it to sign.</p>
+                <label for="bunker-input" class="sr-only">Signer address</label>
+                <div class="flex flex-col sm:flex-row gap-2">
+                  <input id="bunker-input" type="text" autocomplete="off" spellcheck="false" placeholder="bunker://… or name@domain"
+                    class="nox-input px-4 py-3 text-sm" />
+                  <button id="bunker-connect" class="nox-secondary-button py-3 px-5 whitespace-nowrap">
+                    Connect
+                  </button>
+                </div>
+                <p id="bunker-status" class="nox-auth-note" role="status" hidden></p>
+              </div>
+            </details>
+
+            <details class="nox-reveal">
+              <summary class="nox-reveal-summary">I have a secret key</summary>
+              <div class="nox-reveal-body space-y-2">
+                <p class="nox-auth-note">Anyone with this key can post as you.</p>
+                <label for="private-key-input" class="sr-only">Secret key</label>
+                <div class="flex flex-col sm:flex-row gap-2">
+                  <input id="private-key-input" type="password" autocomplete="off" placeholder="nsec1… or 64-character hex"
+                    class="nox-input px-4 py-3 text-sm" />
+                  <button id="private-key-login"
+                    class="nox-secondary-button py-3 px-5 whitespace-nowrap">
+                    Use this key
+                  </button>
+                </div>
+                <p class="nox-auth-note">${storageNote}</p>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <nav class="nox-landing-foot" aria-label="About nox">
+          <a href="/about">About</a>
+          <a href="/terms">Terms</a>
+          <a href="/privacy">Privacy</a>
+        </nav>
       </section>
     `;
 
