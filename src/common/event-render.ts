@@ -487,7 +487,7 @@ async function fetchEventWithRetry(
   return null;
 }
 
-function closeReactionDetails(detailsContainer: HTMLElement): void {
+export function closeReactionDetails(detailsContainer: HTMLElement): void {
   detailsContainer.style.display = 'none';
   delete detailsContainer.dataset.reaction;
   detailsContainer.innerHTML = '';
@@ -635,6 +635,15 @@ export async function loadReactionsForEvent(
           return;
         }
 
+        // One list under a post at a time; the reposters' would run into it.
+        const reposts: HTMLElement | null | undefined =
+          eventCard?.querySelector<HTMLElement>('.nox-repost-list');
+        if (reposts && !reposts.hidden) {
+          reposts.hidden = true;
+          eventCard
+            ?.querySelector('.nox-repost-count')
+            ?.setAttribute('aria-expanded', 'false');
+        }
         detailsContainer.style.display = '';
         loadReactionDetails(eventId, nextState.reactionKey, detailsContainer);
         // Below every badge, which may be a long way down once all are shown.
