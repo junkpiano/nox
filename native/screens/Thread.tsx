@@ -72,6 +72,7 @@ import {
   reactWith,
   replyToEvent,
   repostEvent,
+  undoRepost,
 } from '../lib/interact';
 import { useOwnReactions } from '../lib/use-own-reactions';
 import {
@@ -476,6 +477,37 @@ export default function Thread({ route }: { route: ThreadRoute }) {
     setReposting(false);
   };
 
+  // Asks the relays to delete your repost (NIP-09), after asking you.
+  const unrepost = (): void => {
+    Alert.alert('Undo repost?', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Undo repost',
+        style: 'destructive',
+        onPress: (): void => {
+          const by: PubkeyHex | null = getSession().pubkey;
+          if (!by) return;
+          setReposting(true);
+          void undoRepost(root)
+            .then(({ found, accepted }): void => {
+              if (found > 0 && accepted === 0) {
+                Alert.alert('Not sent', 'No relay accepted the request.');
+              } else {
+                own.unmark(root.id, 'repost', by);
+              }
+            })
+            .catch((e: unknown): void => {
+              Alert.alert(
+                'Could not undo repost',
+                String((e as Error)?.message ?? e),
+              );
+            })
+            .finally((): void => setReposting(false));
+        },
+      },
+    ]);
+  };
+
   const reply = async (): Promise<void> => {
     const content = draft.trim();
     if (!content) return;
@@ -599,9 +631,11 @@ export default function Thread({ route }: { route: ThreadRoute }) {
                   label="Repost"
                   done={reposted}
                   busy={reposting}
-                  disabled={reposted}
+                  disabled={reposting}
                   onPress={(): void => {
-                    if (guardWrite()) void repost();
+                    if (!guardWrite()) return;
+                    if (reposted) unrepost();
+                    else void repost();
                   }}
                 />
                 <ActionButton
