@@ -35,6 +35,7 @@ import {
   View,
 } from 'react-native';
 import { onAppEvent } from '../../src/common/app-events';
+import { getCachedDeletionStatus } from '../../src/common/deletion-gate';
 import { contentWarningSummary } from '../../src/common/content-warning';
 import { isMuted, isMutedContent } from '../../src/common/mute-state';
 import { newPostsLabel } from '../../src/common/new-posts';
@@ -638,13 +639,16 @@ export default function PostList({
   // after that, and a list that kept showing a muted author until the next
   // load would be a mute that did not take.
   const [muteVersion, setMuteVersion] = useState(0);
-  useEffect(
-    (): (() => void) =>
-      onAppEvent('mute-list-updated', (): void =>
-        setMuteVersion((v: number): number => v + 1),
-      ),
-    [],
-  );
+  useEffect((): (() => void) => {
+    const bump = (): void => setMuteVersion((v: number): number => v + 1);
+    const offMute = onAppEvent('mute-list-updated', bump);
+    // So does a repost you took back: its row goes with it.
+    const offReposts = onAppEvent('reposts-withdrawn', bump);
+    return (): void => {
+      offMute();
+      offReposts();
+    };
+  }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the mute version is what makes the filter run again
   const visible: TimelinePost[] = useMemo(
     (): TimelinePost[] =>
@@ -652,6 +656,8 @@ export default function PostList({
         (post: TimelinePost): boolean =>
           !isMuted(post.pubkey) &&
           !(post.repostedBy && isMuted(post.repostedBy.pubkey)) &&
+          // A repost row's key is the repost itself.
+          !(post.repostedBy && getCachedDeletionStatus(post.key) === true) &&
           !isMutedContent(post.content),
       ),
     [posts, muteVersion],

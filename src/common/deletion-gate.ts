@@ -54,6 +54,9 @@ export function cacheDeletionStatus(
   deleted: boolean,
   at: number = Date.now(),
 ): void {
+  // Nothing un-withdraws a post: a clearance asked before the withdrawal
+  // and answered after it must not write over it.
+  if (!deleted && known.get(eventId)?.deleted) return;
   known.set(eventId, { deleted, at });
 }
 
@@ -85,16 +88,22 @@ export async function findDeletedIds(
   }
   if (unknown.length === 0) return deleted;
 
-  let found: Set<string>;
+  let found: Set<string> | null = null;
   try {
     found = await fetch(relays, unknown);
   } catch {
-    return deleted;
+    // Nothing learned; what was withdrawn meanwhile is still checked below.
   }
-  for (const event of unknown) {
-    const gone: boolean = found.has(event.id);
-    cacheDeletionStatus(event.id, gone, now);
-    if (gone) deleted.add(event.id);
+  if (found) {
+    for (const event of unknown) {
+      cacheDeletionStatus(event.id, found.has(event.id), now);
+    }
+  }
+  // Read back for every event rather than taken from the answer: a
+  // withdrawal this app made while the relays were being asked outranks
+  // both what they said and what was remembered before.
+  for (const event of events) {
+    if (known.get(event.id)?.deleted) deleted.add(event.id);
   }
   return deleted;
 }

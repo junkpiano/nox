@@ -25,6 +25,8 @@ export type AppEventName =
   /** A note of the viewer's own reached a relay. */
   | 'note-published'
   | 'mute-list-updated'
+  /** The viewer took reposts back; lists drop their rows. */
+  | 'reposts-withdrawn'
   /** The viewer followed or unfollowed a hashtag: Home asks again. */
   | 'interests-updated'
   /** The viewer's follow list, found on the relays, differs from the one remembered. */
