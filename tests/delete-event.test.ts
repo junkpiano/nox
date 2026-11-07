@@ -9,6 +9,7 @@ import {
   requestDeletion,
   withdrawReposts,
 } from '../src/common/delete-event.js';
+import { getCachedDeletionStatus } from '../src/common/deletion-gate.js';
 import {
   endSession,
   ReadOnlySessionError,
@@ -93,6 +94,8 @@ test('undoing a repost names every repost of yours of that post, and only those'
     .map((tag: string[]): string => tag[1] ?? '')
     .sort();
   assert.deepEqual(named, [first.id, again.id].sort());
+  assert.equal(getCachedDeletionStatus(first.id), true);
+  assert.equal(getCachedDeletionStatus(elsewhere.id), undefined);
 });
 
 test('with no repost of yours there is nothing to sign', async () => {

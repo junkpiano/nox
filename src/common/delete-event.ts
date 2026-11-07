@@ -16,6 +16,8 @@ import { signWithSession } from './signer.js';
 
 import type { NostrEvent, PubkeyHex } from '../../types/nostr';
 import { withClientTag } from './client-tag.js';
+import { emitAppEvent } from './app-events.js';
+import { cacheDeletionStatus } from './deletion-gate.js';
 import { kvGet } from './kv.js';
 import { publishAndCount, publishEventToRelays } from './publish-event.js';
 import { NoRelayAnsweredError, queryRelaysDetailed } from './relay-query.js';
@@ -124,5 +126,12 @@ export async function withdrawReposts(
   if (signed.pubkey !== viewer) {
     throw new Error('The session changed. Try again.');
   }
-  return { found: ids.length, accepted: await publishAndCount(signed, relays) };
+  const accepted: number = await publishAndCount(signed, relays);
+  // Remembered as withdrawn, so the next list drawn from the cache leaves
+  // the repost out instead of waiting for the relays to say so.
+  if (accepted > 0) {
+    for (const id of ids) cacheDeletionStatus(id, true);
+    emitAppEvent('reposts-withdrawn');
+  }
+  return { found: ids.length, accepted };
 }
