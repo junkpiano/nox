@@ -49,6 +49,7 @@ import {
   quickReaction,
   reactWith,
   repostEvent,
+  undoRepost,
 } from '../lib/interact';
 import {
   type OwnReactionState,
@@ -313,6 +314,30 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
       .finally((): void => setBusy(null));
   };
 
+  // Asks the relays to delete your repost (NIP-09). Done once one has the
+  // request, or when they had no repost of yours to delete.
+  const undo = (): void => {
+    if (!guardWrite()) return;
+    const by: PubkeyHex | null = getSession().pubkey;
+    if (!by) return;
+    setBusy('repost');
+    void undoRepost(post.event)
+      .then(({ found, accepted }): void => {
+        if (found > 0 && accepted === 0) {
+          Alert.alert('Could not undo repost', 'No relay accepted it.');
+        } else {
+          own.unmark(post.id, 'repost', by);
+        }
+      })
+      .catch((error: unknown): void => {
+        Alert.alert(
+          'Could not undo repost',
+          String((error as Error)?.message ?? error),
+        );
+      })
+      .finally((): void => setBusy(null));
+  };
+
   return (
     <View style={[styles.actions, !writable && styles.actionsOff]}>
       <PostMenu
@@ -335,12 +360,18 @@ function Actions({ post, own }: { post: TimelinePost; own: OwnReactionState }) {
         busy={busy === 'repost'}
         disabled={busy !== null}
         // Repost as it is, or quote it with words of one's own (NIP-18).
-        // Already reposted, quoting is still open; reposting again is not.
+        // Already reposted, it can be undone or quoted, not reposted again.
         onPress={(): void => {
           if (!guardWrite()) return;
           Alert.alert('Repost', undefined, [
             ...(reposted
-              ? []
+              ? [
+                  {
+                    text: 'Undo repost',
+                    style: 'destructive' as const,
+                    onPress: undo,
+                  },
+                ]
               : [
                   {
                     text: 'Repost',

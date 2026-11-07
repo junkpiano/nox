@@ -20,6 +20,10 @@ import {
 import { finalizeEvent } from 'nostr-tools';
 import { withClientTag } from '../../src/common/client-tag';
 import {
+  type RepostWithdrawal,
+  withdrawReposts,
+} from '../../src/common/delete-event';
+import {
   fetchLatestFollowListEvent,
   lookupFollowList,
 } from '../../src/common/events-queries';
@@ -165,6 +169,18 @@ export async function repostEvent(target: NostrEvent): Promise<PublishResult> {
   ) as unknown as NostrEvent;
 
   return publishSigned(signed);
+}
+
+/**
+ * Takes back your reposts of an event: one NIP-09 request naming each.
+ * Throws `NoRelayAnsweredError` when no relay could say whether there were any.
+ */
+export async function undoRepost(
+  target: NostrEvent,
+): Promise<RepostWithdrawal> {
+  const me: PubkeyHex | null = getSession().pubkey;
+  if (!me) throw new NotSignedInError();
+  return withdrawReposts(me, target.id, getRelays());
 }
 
 export interface FollowOutcome {

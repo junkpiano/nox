@@ -45,6 +45,8 @@ export interface OwnReactionState extends OwnReactions {
    * the relays, and a result for a key no longer signed in is dropped.
    */
   mark(id: string, reaction: Reaction, by: PubkeyHex): void;
+  /** Takes one back, for every screen at once, on the same terms. */
+  unmark(id: string, reaction: Reaction, by: PubkeyHex): void;
 }
 
 export function useOwnReactions(ids: ReadonlyArray<string>): OwnReactionState {
@@ -89,6 +91,16 @@ export function useOwnReactions(ids: ReadonlyArray<string>): OwnReactionState {
     [],
   );
 
+  const unmark = useCallback(
+    (id: string, reaction: Reaction, by: PubkeyHex): void => {
+      const me: PubkeyHex | null = viewer();
+      if (!me || me !== by || !canWrite()) return;
+      book.unmark(me, id, reaction);
+      announce();
+    },
+    [],
+  );
+
   // The same object until something in it changes. A row takes it as a
   // prop, and a new one on every render drew every row again.
   return useMemo(
@@ -96,7 +108,8 @@ export function useOwnReactions(ids: ReadonlyArray<string>): OwnReactionState {
       liked: state.liked,
       reposted: state.reposted,
       mark,
+      unmark,
     }),
-    [state, mark],
+    [state, mark, unmark],
   );
 }
