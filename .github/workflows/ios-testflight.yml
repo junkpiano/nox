@@ -28,7 +28,7 @@ jobs:
       PROFILE_NAME: nox App Store
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The newest Xcode on the image: an older one can lack the iOS SDK that
       # App Store Connect currently requires.
@@ -42,7 +42,7 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -131,7 +131,7 @@ jobs:
 
       - name: Keep the build log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: xcodebuild-log
           path: ${{ runner.temp }}/xcodebuild.log
@@ -188,7 +188,7 @@ jobs:
       # hashFiles cannot see outside the workspace, so the upload itself
       # decides: an upload to TestFlight leaves no IPA behind.
       - name: Keep the IPA as an artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nox-ios
           path: ${{ runner.temp }}/export/*.ipa
