@@ -256,3 +256,31 @@ test('deletion: after the clearance expires the relays are asked again, and a ne
     true,
   );
 });
+
+test('deletion: a clearance answered after a withdrawal does not undo it', () => {
+  cacheDeletionStatus('withdrawn-then-cleared', true);
+  cacheDeletionStatus('withdrawn-then-cleared', false);
+  assert.equal(getCachedDeletionStatus('withdrawn-then-cleared'), true);
+});
+
+test('deletion: a withdrawal made while the relays are asked is in the answer', async () => {
+  const event = { id: 'withdrawn-mid-flight' } as NostrEvent;
+  const fetch: DeletedIdsFetcher = async (): Promise<Set<string>> => {
+    cacheDeletionStatus(event.id, true);
+    return new Set();
+  };
+  const deleted = await findDeletedIds(['wss://mid.flight'], [event], fetch);
+  assert.ok(deleted.has(event.id));
+});
+
+test('deletion: an event cleared earlier and withdrawn mid-question is in the answer', async () => {
+  const cleared = { id: 'cleared-then-withdrawn' } as NostrEvent;
+  const asked = { id: 'asked-meanwhile' } as NostrEvent;
+  cacheDeletionStatus(cleared.id, false);
+  const fetch: DeletedIdsFetcher = async (): Promise<Set<string>> => {
+    cacheDeletionStatus(cleared.id, true);
+    throw new Error('no relay');
+  };
+  const deleted = await findDeletedIds(['wss://x'], [cleared, asked], fetch);
+  assert.deepEqual(Array.from(deleted), [cleared.id]);
+});
