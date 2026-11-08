@@ -9,6 +9,10 @@ updates:
       web:
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      # Tailwind 4 changes what border, shadow, rounded and ring draw and drops browsers before Safari 16.4; moving to it is a migration, not a bump.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
 
   # Expo pins its packages to the SDK; an SDK upgrade is done by hand with `npx expo install --fix`.
   - package-ecosystem: npm
