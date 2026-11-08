@@ -19,27 +19,27 @@
     "tauri:build": "tauri build"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.15",
-    "@tauri-apps/cli": "^2.11.4",
+    "@biomejs/biome": "^2.6.5",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^26.6.6",
     "@types/qrcode": "^1.5.6",
-    "autoprefixer": "^10.4.23",
-    "fake-indexeddb": "^6.2.5",
-    "postcss": "^8.5.6",
+    "autoprefixer": "^10.6.2",
+    "fake-indexeddb": "^6.2.7",
+    "postcss": "^8.5.32",
     "tailwindcss": "^3.4.19",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
-    "wrangler": "^4.110.0"
+    "wrangler": "^4.158.0"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-http": "^2.5.9",
-    "baseline-browser-mapping": "^2.10.42",
-    "caniuse-lite": "^1.0.30001802",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-http": "^2.8.3",
+    "baseline-browser-mapping": "^2.11.35",
+    "caniuse-lite": "^1.0.30001822",
     "emoji-dictionary": "^1.0.12",
-    "nostr-tools": "^2.23.0",
+    "nostr-tools": "^2.25.5",
     "qrcode": "^1.5.4",
-    "rx-nostr": "^3.6.2",
+    "rx-nostr": "^3.7.8",
     "rxjs": "^7.8.2"
   }
 }
