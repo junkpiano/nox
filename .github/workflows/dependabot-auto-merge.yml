@@ -1,0 +1,34 @@
+name: Dependabot auto-merge
+
+# A Dependabot update to the web app or its Docker image is merged by
+# itself once the required checks on main pass. Those checks build and test
+# the web app only, so updates to the phone app, the desktop shell and the
+# workflows are still merged by hand.
+#
+# The merge uses AUTOMERGE_TOKEN, a Dependabot secret: a merge made with the
+# default GITHUB_TOKEN does not start the workflows on main, so nox.garden
+# and the app builds would never see the update.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  enable:
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      (startsWith(github.head_ref, 'dependabot/bun/') ||
+       startsWith(github.head_ref, 'dependabot/docker/'))
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::AUTOMERGE_TOKEN is not set as a Dependabot secret."
+            exit 1
+          fi
+          gh pr merge --auto --squash "$PR_URL"

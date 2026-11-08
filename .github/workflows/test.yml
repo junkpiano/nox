@@ -1,0 +1,30 @@
+name: Test
+
+# The checks deploy-web runs before deploying, run on every pull request
+# so a change is known to pass them before it reaches main.
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      # Built before the tests: some read the stylesheet the build produces.
+      - run: bun run build
+
+      - run: bun run test
