@@ -398,5 +398,4 @@ wrap), NIP-65 (relay list), NIP-89 (client tag), NIP-92 (`imeta`, read only)
 - `module`: ESNext
 - `moduleResolution`: bundler
 - `lib`: ES2020, DOM, DOM.Iterable
-- `baseUrl`: `.`
 - Path aliases: `@/` → `src/`, `@types/` → `types/`
