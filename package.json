@@ -19,7 +19,7 @@
     "tauri:build": "tauri build"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.5",
+    "@biomejs/biome": "^2.6.6",
     "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^26.6.6",
     "@types/qrcode": "^1.5.6",
@@ -35,9 +35,9 @@
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-http": "^2.8.3",
     "baseline-browser-mapping": "^2.11.35",
-    "caniuse-lite": "^1.0.30001822",
+    "caniuse-lite": "^1.0.30001823",
     "emoji-dictionary": "^1.0.12",
-    "nostr-tools": "^2.25.5",
+    "nostr-tools": "^2.26.0",
     "qrcode": "^1.5.4",
     "rx-nostr": "^3.7.8",
     "rxjs": "^7.8.2"
