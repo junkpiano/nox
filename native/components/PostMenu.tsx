@@ -27,6 +27,7 @@ import {
 } from 'react-native';
 
 import { kvGet } from '../../src/common/kv';
+import { hidesPostZap } from '../../src/common/platform';
 import { getRelays } from '../../src/features/relays/relays';
 import type { PubkeyHex } from '../../types/nostr';
 import type { TimelinePost } from '../lib/home-timeline';
@@ -144,7 +145,7 @@ export default function PostMenu({ post, visible, onClose }: PostMenuProps) {
             </Pressable>
           ) : null}
 
-          {viewer && !mine && writable ? (
+          {viewer && !mine && writable && !hidesPostZap() ? (
             <Pressable
               onPress={(): void => setZapping(true)}
               style={styles.row}

@@ -10,7 +10,11 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { detectPlatform } from '../src/common/platform.js';
+import {
+  detectPlatform,
+  hidesPostZap,
+  setPlatform,
+} from '../src/common/platform.js';
 
 const IOS =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
@@ -44,4 +48,13 @@ test('a native shell that is neither is not guessed at', () => {
   // android because the check fell through would be worse than saying so.
   assert.equal(detectPlatform(MAC, true), 'other');
   assert.equal(detectPlatform('', true), 'other');
+});
+
+test('only the App Store build drops the zap on a post', () => {
+  setPlatform('ios');
+  assert.equal(hidesPostZap(), true);
+  for (const platform of ['android', 'web', 'other'] as const) {
+    setPlatform(platform);
+    assert.equal(hidesPostZap(), false);
+  }
 });

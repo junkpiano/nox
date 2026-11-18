@@ -82,3 +82,15 @@ const WALLET_HIDDEN_ON: ReadonlySet<Platform> = new Set<Platform>();
 export function hidesWallet(): boolean {
   return WALLET_HIDDEN_ON.has(currentPlatform());
 }
+
+/**
+ * True where zapping a single post must not be offered.
+ *
+ * App Review has treated a zap on a post as buying that post - digital
+ * content, which must go through in-app purchase - while a zap on a profile
+ * is a tip to a person and is allowed. So on iOS the profile keeps its zap
+ * and the post menu loses its own.
+ */
+export function hidesPostZap(): boolean {
+  return currentPlatform() === 'ios';
+}
