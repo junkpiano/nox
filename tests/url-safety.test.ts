@@ -37,6 +37,50 @@ test('url safety: the loopback, private ranges and link-local are not', () => {
   }
 });
 
+test('url safety: IPv6 ranges that carry or stand for a private network are refused', () => {
+  for (const url of [
+    'http://[::]/',
+    'http://[0:0:0:0:0:0:0:1]/',
+    'http://[::ffff:7f00:1]/',
+    'http://[::192.168.1.1]/',
+    'http://[fec0::1]/',
+    'http://[fe9f::1]/',
+    'http://[fc00::1]/',
+    'http://[ff02::1]/',
+    'http://[64:ff9b::192.168.1.1]/',
+    'http://[64:ff9b::a00:1]/',
+    'http://[64:ff9b:1::1]/',
+    'http://[2002:c0a8:101::1]/',
+    'http://[2002:7f00:1::]/',
+    'http://[2001::1]/',
+    'http://[2001:db8::1]/',
+    'http://[100::1]/',
+    'http://[::ffff:0:7f00:1]/',
+    'http://[::ffff:0:c0a8:101]/',
+    'http://[2001:2::1]/',
+    'http://[2001:10::1]/',
+    'http://[2001:20::1]/',
+    'http://[3fff::1]/',
+    'http://[5f00::1]/',
+  ]) {
+    assert.equal(isPublicWebUrl(url), false, url);
+  }
+});
+
+test('url safety: public IPv6 addresses, including NAT64 and 6to4 of a public IPv4, are allowed', () => {
+  for (const url of [
+    'https://[2606:4700::1111]/',
+    'https://[2a00:1450:4001:80b::200e]/',
+    'https://[64:ff9b::808:808]/',
+    'https://[2002:808:808::1]/',
+    'https://[::ffff:8.8.8.8]/',
+    'https://[3ff0::1]/',
+    'https://[3fff:1000::1]/',
+  ]) {
+    assert.equal(isPublicWebUrl(url), true, url);
+  }
+});
+
 test('url safety: names that only mean something on the local network, and odd spellings', () => {
   for (const url of [
     'http://nas/',
