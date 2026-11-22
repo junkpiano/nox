@@ -54,5 +54,10 @@
     "iOS": {
       "minimumSystemVersion": "15.0"
     }
+  },
+  "plugins": {
+    "http": {
+      "scopeRedirects": true
+    }
   }
 }
