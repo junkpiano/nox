@@ -44,3 +44,41 @@ export function setAvatar(
   };
   img.src = avatarUrlFor(pubkey, profile, pageImagePolicy());
 }
+
+/** The parts of an `<img>` the failure handler touches. */
+interface FailedImage {
+  tagName: string;
+  src: string;
+  dataset: Record<string, string | undefined>;
+  parentElement: { classList: { add(name: string): void } } | null;
+  remove(): void;
+}
+
+/**
+ * Handles a failed `<img>` load anywhere in the page, in place of inline
+ * `onerror` attributes, which the Content-Security-Policy forbids.
+ *
+ * - `data-fallback-src`: load that URL instead, once.
+ * - `data-error-parent-class`: add that class to the parent and drop the image.
+ */
+export function handleImageError(event: { target: unknown }): void {
+  const img = event.target as FailedImage | null;
+  if (!img || img.tagName !== 'IMG') return;
+  const fallback: string | undefined = img.dataset.fallbackSrc;
+  if (fallback) {
+    delete img.dataset.fallbackSrc;
+    // Already the stand-in: it failed too, and asking again would fail again.
+    if (img.src !== fallback) img.src = fallback;
+    return;
+  }
+  const parentClass: string | undefined = img.dataset.errorParentClass;
+  if (parentClass) {
+    img.parentElement?.classList.add(parentClass);
+    img.remove();
+  }
+}
+
+/** Listens for every failed image, in the capture phase: `error` does not bubble. */
+export function installImageFallbacks(): void {
+  document.addEventListener('error', handleImageError, true);
+}

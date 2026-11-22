@@ -1160,11 +1160,14 @@ async function startApp(
         <div class="text-center py-8">
           <p class="text-red-600 mb-4">Failed to load profile.</p>
           <p class="text-gray-600 text-sm">${escapeHtml(message)}</p>
-          <button onclick="window.location.reload()" class="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+          <button data-action="reload" class="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
             Retry
           </button>
         </div>
       `;
+      output
+        .querySelector('[data-action="reload"]')
+        ?.addEventListener('click', (): void => window.location.reload());
     }
   }
 }

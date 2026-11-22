@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  avatarErrorAttribute,
+  avatarFallbackAttribute,
   avatarUrlFor,
   fallbackAvatarUrl,
   loadableImageUrl,
 } from '../src/common/avatar.js';
+import { handleImageError } from '../src/common/avatar-dom.js';
 
 const PUBKEY = 'a'.repeat(64);
 const secure = { secureOnly: true };
@@ -75,12 +76,77 @@ test('avatar: the stand-in is the pubkey robot, and the person gets it when thei
   );
 });
 
-test('avatar: the failure handler disarms itself before swapping', () => {
-  const attribute = avatarErrorAttribute(PUBKEY);
-  assert.ok(attribute.startsWith('this.onerror=null;'), attribute);
-  assert.ok(attribute.includes(fallbackAvatarUrl(PUBKEY)));
-  assert.ok(
-    !attribute.includes('"'),
-    'must be safe inside a double-quoted attribute',
-  );
+test('avatar: the fallback attribute is a data attribute safe in HTML', () => {
+  const attribute = avatarFallbackAttribute(PUBKEY);
+  assert.equal(attribute, `data-fallback-src="${fallbackAvatarUrl(PUBKEY)}"`);
+  assert.ok(!fallbackAvatarUrl(PUBKEY).includes('"'));
+});
+
+function failedImage(dataset: Record<string, string>): {
+  tagName: string;
+  src: string;
+  dataset: Record<string, string | undefined>;
+  parentElement: { classList: { add(name: string): void } };
+  parentClasses: string[];
+  removed: boolean;
+  remove(): void;
+} {
+  const parentClasses: string[] = [];
+  const img = {
+    tagName: 'IMG',
+    src: 'https://cdn.example/broken.jpg',
+    dataset: { ...dataset } as Record<string, string | undefined>,
+    parentElement: {
+      classList: { add: (name: string): number => parentClasses.push(name) },
+    },
+    parentClasses,
+    removed: false,
+    remove(): void {
+      img.removed = true;
+    },
+  };
+  return img;
+}
+
+test('avatar: a failed picture swaps to its stand-in once, then stays failed', () => {
+  const img = failedImage({ fallbackSrc: fallbackAvatarUrl(PUBKEY) });
+  handleImageError({ target: img });
+  assert.equal(img.src, fallbackAvatarUrl(PUBKEY));
+  assert.equal(img.dataset.fallbackSrc, undefined);
+  img.src = 'still-broken';
+  handleImageError({ target: img });
+  assert.equal(img.src, 'still-broken');
+  assert.equal(img.removed, false);
+});
+
+test('avatar: a failed banner marks its parent and is removed', () => {
+  const img = failedImage({ errorParentClass: 'nox-profile-banner-blank' });
+  handleImageError({ target: img });
+  assert.deepEqual(img.parentClasses, ['nox-profile-banner-blank']);
+  assert.equal(img.removed, true);
+});
+
+test('avatar: a stand-in that fails is not requested again', () => {
+  const img = failedImage({ fallbackSrc: fallbackAvatarUrl(PUBKEY) });
+  img.src = fallbackAvatarUrl(PUBKEY);
+  let sets = 0;
+  Object.defineProperty(img, 'src', {
+    get: (): string => fallbackAvatarUrl(PUBKEY),
+    set: (): void => {
+      sets++;
+    },
+  });
+  handleImageError({ target: img });
+  assert.equal(sets, 0);
+  assert.equal(img.dataset.fallbackSrc, undefined);
+});
+
+test('avatar: errors from anything but an image, or an image without a fallback, are left alone', () => {
+  const script = { ...failedImage({ fallbackSrc: 'x' }), tagName: 'SCRIPT' };
+  handleImageError({ target: script });
+  assert.equal(script.src, 'https://cdn.example/broken.jpg');
+  const plain = failedImage({});
+  handleImageError({ target: plain });
+  assert.equal(plain.removed, false);
+  handleImageError({ target: null });
 });

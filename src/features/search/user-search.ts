@@ -1,5 +1,5 @@
 import type { NostrProfile } from '../../../types/nostr';
-import { avatarErrorAttribute } from '../../common/avatar.js';
+import { avatarFallbackAttribute } from '../../common/avatar.js';
 import { getProfile, storeProfile } from '../../common/db/index.js';
 import { escapeHtml } from '../../common/escape-html.js';
 /**
@@ -68,7 +68,7 @@ function renderUserRow(result: UserSearchResult): string {
   return `
     <a href="/${safeNpub}" class="user-result flex items-start gap-3 py-3 rounded-lg hover:bg-gray-100 transition-colors" data-pubkey="${safePubkey}">
       <img src="${escapeHtml(avatar)}" alt="" class="w-10 h-10 rounded-full object-cover flex-shrink-0"
-           onerror="${avatarErrorAttribute(result.pubkey)}" />
+           ${avatarFallbackAttribute(result.pubkey)} />
       <div class="min-w-0 flex-1">
         <div class="font-semibold text-gray-800 text-sm truncate">${escapeHtml(name)}</div>
         <div class="text-xs text-gray-500 truncate">${escapeHtml(nip05 || shortenNpub(result.npub))}</div>

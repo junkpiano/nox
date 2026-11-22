@@ -6,7 +6,7 @@ import type {
   PubkeyHex,
 } from '../../../types/nostr';
 import {
-  avatarErrorAttribute,
+  avatarFallbackAttribute,
   fallbackAvatarUrl,
 } from '../../common/avatar.js';
 import { loadableOnThisPage } from '../../common/avatar-dom.js';
@@ -233,11 +233,11 @@ export function renderProfile(
   const avatarHtml: string = isEnergySavingMode
     ? `<div class="nox-profile-avatar nox-profile-avatar-blank" aria-hidden="true">👤</div>`
     : `<img src="${escapeHtml(avatar)}" alt="" class="nox-profile-avatar"
-            onerror="${avatarErrorAttribute(pubkey)}" />`;
+            ${avatarFallbackAttribute(pubkey)} />`;
 
   const bannerHtml: string =
     banner && !isEnergySavingMode
-      ? `<div class="nox-profile-banner"><img src="${escapeHtml(banner)}" alt="" onerror="this.parentElement.classList.add('nox-profile-banner-blank'); this.remove();" /></div>`
+      ? `<div class="nox-profile-banner"><img src="${escapeHtml(banner)}" alt="" data-error-parent-class="nox-profile-banner-blank" /></div>`
       : `<div class="nox-profile-banner nox-profile-banner-blank"></div>`;
 
   // The line under the name: where they can be reached, and how many they
