@@ -308,13 +308,89 @@ test('a reply that cannot be decrypted is reported as unreadable', async () => {
     setTimeout((): void => socket.receive('not json'), 0);
     reply(['EVENT', 'sub', { kind: 1, content: '' }]);
     reply(['EVENT', 'sub']);
-    reply(['EVENT', 'sub', { kind: 23195, content: 'garbage?iv=nope' }]);
+    const request = frame[1] as NostrEvent;
+    reply([
+      'EVENT',
+      'sub',
+      finalizeEvent(
+        {
+          kind: 23195,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [
+            ['p', request.pubkey],
+            ['e', request.id],
+          ],
+          content: 'garbage?iv=nope',
+        },
+        walletKey,
+      ),
+    ]);
   };
   await assert.rejects(
     getInfo(CONNECTION),
     (error: unknown): boolean =>
       error instanceof NwcError && error.code === 'DECRYPT_FAILED',
   );
+});
+
+test('only a reply signed by the wallet and naming this request is believed', async () => {
+  installFakeWebSocket();
+  FakeWebSocket.respond = (_socket, frame, reply): void => {
+    if (frame[0] !== 'EVENT') return;
+    const request = frame[1] as NostrEvent;
+    void (async (): Promise<void> => {
+      const answer = async (
+        key: Uint8Array,
+        requestId: string,
+        body: object,
+        client: string = request.pubkey,
+      ): Promise<NostrEvent> =>
+        finalizeEvent(
+          {
+            kind: 23195,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [
+              ['p', client],
+              ['e', requestId],
+            ],
+            content: await nip04.encrypt(
+              walletKey,
+              request.pubkey,
+              JSON.stringify(body),
+            ),
+          },
+          key,
+        ) as NostrEvent;
+      const refusal = { error: { code: 'OTHER', message: 'forged' } };
+      // Replayed from an earlier request: the wallet's own, but not this one.
+      reply([
+        'EVENT',
+        'sub',
+        await answer(walletKey, 'ff'.repeat(32), refusal),
+      ]);
+      // Right request, wrong signer.
+      reply([
+        'EVENT',
+        'sub',
+        await answer(generateSecretKey(), request.id, refusal),
+      ]);
+      // Right request and signer, but addressed to another client.
+      reply([
+        'EVENT',
+        'sub',
+        await answer(walletKey, request.id, refusal, WALLET),
+      ]);
+      // Right request and signer, but the signature no longer matches.
+      const tampered = await answer(walletKey, request.id, refusal);
+      reply(['EVENT', 'sub', { ...tampered, content: `${tampered.content} ` }]);
+      reply([
+        'EVENT',
+        'sub',
+        await answer(walletKey, request.id, { result: { balance: 5000 } }),
+      ]);
+    })();
+  };
+  assert.equal(await getBalance(CONNECTION), 5);
 });
 
 test('a relay that cannot be reached, or a relay URL that cannot be opened, is a relay error', async () => {

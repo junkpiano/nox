@@ -11,6 +11,7 @@
 
 import { finalizeEvent, getPublicKey, nip04 } from 'nostr-tools';
 import type { NostrEvent } from '../../../types/nostr';
+import { verifiedEvent } from '../../common/event-filter.js';
 
 const REQUEST_KIND: number = 23194;
 const RESPONSE_KIND: number = 23195;
@@ -127,6 +128,16 @@ async function request<T>(
     secretKey,
   ) as NostrEvent;
 
+  // The answer must be signed by the wallet and name this request. A relay
+  // may ignore the filter, and NIP-04 has no MAC, so a reply it replays from
+  // an earlier request would otherwise decrypt and be believed.
+  const responseFilter: Record<string, unknown> = {
+    kinds: [RESPONSE_KIND],
+    authors: [connection.walletPubkey],
+    '#p': [clientPubkey],
+    '#e': [event.id],
+  };
+
   return new Promise<T>((resolve, reject) => {
     let socket: WebSocket;
     try {
@@ -161,13 +172,7 @@ async function request<T>(
         JSON.stringify([
           'REQ',
           `nwc-${event.id.slice(0, 12)}`,
-          {
-            kinds: [RESPONSE_KIND],
-            authors: [connection.walletPubkey],
-            '#p': [clientPubkey],
-            '#e': [event.id],
-            limit: 1,
-          },
+          { ...responseFilter, limit: 1 },
         ]),
       );
       socket.send(JSON.stringify(['EVENT', event]));
@@ -200,8 +205,11 @@ async function request<T>(
           return;
         }
 
-        const response = frame[2] as NostrEvent | undefined;
-        if (!response || response.kind !== RESPONSE_KIND) {
+        const response: NostrEvent | null = verifiedEvent(
+          responseFilter,
+          frame[2],
+        );
+        if (!response) {
           return;
         }
 
