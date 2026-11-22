@@ -15,10 +15,12 @@ test('on desktop a redirect comes back to the caller, which refuses one into the
     __TAURI_INTERNALS__: {
       invoke: async (
         command: string,
-        args: { clientConfig?: Record<string, unknown> },
+        _args: unknown,
+        options?: { headers?: Record<string, string> },
       ): Promise<unknown> => {
         if (command === 'plugin:http|fetch') {
-          sent.push(args.clientConfig ?? {});
+          const config: string = options?.headers?.['client-config'] ?? '{}';
+          sent.push(JSON.parse(decodeURIComponent(config)));
           return 1;
         }
         if (command === 'plugin:http|fetch_send') {
