@@ -307,6 +307,12 @@ These were each found the hard way; the workaround is already in the code.
 - **`env(safe-area-inset-*)` is always 0 in Android's WebView**, even under
   edge-to-edge. `MainActivity` pads the content view from the real
   `WindowInsets` instead. The CSS is still correct for iOS and the web.
+- **The CSP lives in `tauri.conf.json`**, not in `public/_headers`, which
+  only the web servers read. The two policies are kept the same apart from
+  Tauri's IPC in `connect-src`. Tauri adds a nonce to every directive it
+  touches, and a nonce makes browsers ignore `'unsafe-inline'`, so
+  `style-src` is excluded with `dangerousDisableAssetCspModification` or
+  the `style="..."` attributes in `index.html` stop applying.
 - **Service workers cannot be registered** from the custom protocol origin, so
   background sync is web-only and skipped natively.
 - **CORS does not apply** to requests issued from Rust, so LNURL is fetched
