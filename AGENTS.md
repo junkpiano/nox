@@ -249,7 +249,10 @@ Netlify picks one by detection, and it carries the SPA redirect that
 The OGP proxy (a separate Worker, `junkpiano/nostr-proxy`) answers with a CORS
 header only for origins it knows. `nox.garden`, the preview site and its
 `<alias>--` namespace are allowed there; a new deploy origin needs a change in
-that repository or every link card on it fails silently.
+that repository or every link card on it fails silently. The desktop app
+reaches it through Tauri's HTTP client, which CORS does not bind, so its
+origin needs no entry - but a worker that refused unknown origins outright,
+rather than only withholding the header, would break its link cards too.
 
 ## Platforms
 
@@ -306,8 +309,10 @@ These were each found the hard way; the workaround is already in the code.
   `WindowInsets` instead. The CSS is still correct for iOS and the web.
 - **Service workers cannot be registered** from the custom protocol origin, so
   background sync is web-only and skipped natively.
-- **CORS does not apply** to requests issued from Rust, so OGP, oEmbed and LNURL
-  are fetched directly on native and through the proxy worker on web.
+- **CORS does not apply** to requests issued from Rust, so LNURL is fetched
+  directly on native. Link cards (OGP) still go through the proxy worker on
+  every platform: a URL from somebody else's post, fetched by the reader's own
+  device, could reach the reader's own network.
 - **Tauri does not populate `ndk_context`**, which the Android keyring backend
   needs, and that backend *panics* rather than returning an error when it is
   missing. `secret_store.rs` defers store creation and wraps it in

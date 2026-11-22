@@ -1,12 +1,10 @@
 /**
  * Cross-origin HTTP helpers.
  *
- * On the web, cross-origin metadata fetches (OGP, oEmbed, LNURL) are subject to
- * CORS, so the app routes them through the proxy worker. Inside the Tauri shell
- * the request is issued from Rust instead of the WebView, so CORS does not
- * apply and the origin can be contacted directly.
- *
- * The web path is unchanged; only the native runtime takes the direct route.
+ * Inside the Tauri shell the request is issued from Rust instead of the
+ * WebView, so CORS does not apply: LNURL endpoints are contacted directly,
+ * and the OGP proxy is reached without the webview's origin. On the web this
+ * is the browser's own fetch.
  */
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
