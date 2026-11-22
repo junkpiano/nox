@@ -7,7 +7,17 @@
     "core:default",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://*" }, { "url": "https://*:*" }]
+      "allow": [{ "url": "https://*" }, { "url": "https://*:*" }],
+      "deny": [
+        { "url": "https://([^.]+\\.?)" },
+        { "url": "https://([^.]+\\.?):*" },
+        { "url": "https://(.+\\.(?:localhost|local|internal)\\.?)" },
+        { "url": "https://(.+\\.(?:localhost|local|internal)\\.?):*" },
+        { "url": "https://(\\d+\\.\\d+\\.\\d+\\.\\d+)" },
+        { "url": "https://(\\d+\\.\\d+\\.\\d+\\.\\d+):*" },
+        { "url": "https://(\\[.*\\])" },
+        { "url": "https://(\\[.*\\]):*" }
+      ]
     }
   ]
 }

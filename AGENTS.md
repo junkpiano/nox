@@ -319,6 +319,16 @@ These were each found the hard way; the workaround is already in the code.
   directly on native. Link cards (OGP) still go through the proxy worker on
   every platform: a URL from somebody else's post, fetched by the reader's own
   device, could reach the reader's own network.
+- **The HTTP plugin refuses local hosts in Rust.** `capabilities/default.json`
+  denies the names `isPublicWebUrl` refuses (single-label, `.localhost`,
+  `.local`, `.internal`) and every IP literal, public ones too: a pattern
+  cannot tell ranges apart, and nothing nox fetches is a bare address.
+  `scopeRedirects` applies the
+  same list to any redirect the plugin follows itself, including one to
+  `http:`, which is refused. The plugin ignores `redirect: 'manual'`, so
+  `crossOriginFetch` turns it into `maxRedirections: 0` and `fetchPublic` sees
+  every hop. Each deny pattern needs a `:*` twin, or an explicit port slips
+  past it. `scopeRedirects` needs plugin 2.9; older ones refuse the config.
 - **Tauri does not populate `ndk_context`**, which the Android keyring backend
   needs, and that backend *panics* rather than returning an error when it is
   missing. `secret_store.rs` defers store creation and wraps it in

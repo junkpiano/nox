@@ -80,5 +80,10 @@ export async function crossOriginFetch(
   }
 
   const fetchImpl: FetchFn = await nativeFetch;
+  // The plugin ignores `redirect`; without this it follows redirects itself
+  // and the caller never sees a hop to check.
+  if (init?.redirect === 'manual') {
+    return fetchImpl(url, { ...init, maxRedirections: 0 } as RequestInit);
+  }
   return fetchImpl(url, init);
 }
