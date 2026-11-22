@@ -72,13 +72,13 @@ export function avatarUrlFor(
 }
 
 /**
- * The `onerror` attribute for an avatar `<img>` written into HTML.
+ * The attribute that gives an avatar `<img>` written into HTML its stand-in.
  *
- * Clears itself before swapping in the stand-in, so a stand-in that also
- * fails to load fails once and stays failed rather than reloading forever.
- * The stand-in URL contains only the pubkey (hex) and fixed text, so it is
- * safe inside a double-quoted attribute.
+ * `handleImageError` swaps it in when the picture fails, and removes the
+ * attribute first, so a stand-in that also fails stays failed rather than
+ * reloading forever. The stand-in URL contains only the pubkey (hex) and
+ * fixed text, so it is safe inside a double-quoted attribute.
  */
-export function avatarErrorAttribute(pubkey: PubkeyHex | string): string {
-  return `this.onerror=null;this.src='${fallbackAvatarUrl(pubkey)}';`;
+export function avatarFallbackAttribute(pubkey: PubkeyHex | string): string {
+  return `data-fallback-src="${fallbackAvatarUrl(pubkey)}"`;
 }

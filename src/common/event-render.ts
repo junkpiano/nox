@@ -18,7 +18,7 @@ import {
   getDisplayName,
   isTwitterURL,
 } from '../utils/utils.js';
-import { avatarErrorAttribute, fallbackAvatarUrl } from './avatar.js';
+import { avatarFallbackAttribute, fallbackAvatarUrl } from './avatar.js';
 import { loadableOnThisPage, setAvatar } from './avatar-dom.js';
 import { setCapped } from './capped-map.js';
 import { readClientName, withClientTag } from './client-tag.js';
@@ -1296,7 +1296,7 @@ export function renderEvent(
   const avatarHtml: string = isEnergySavingMode
     ? `<div class="w-12 h-12 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 text-xl">👤</div>`
     : `<img src="${escapeHtml(safeAvatar)}" alt="Avatar" class="event-avatar w-12 h-12 rounded-full object-cover cursor-pointer"
-         onerror="${avatarErrorAttribute(pubkey)}" />`;
+         ${avatarFallbackAttribute(pubkey)} />`;
 
   const repostedByHtml: string = reposted
     ? (() => {
@@ -2120,7 +2120,7 @@ async function renderReferencedEventCards(
             src="${escapeHtml(safeReferencedAvatar)}"
             alt="${safeReferencedName}"
             class="w-8 h-8 rounded-full object-cover flex-shrink-0"
-            onerror="${avatarErrorAttribute(referencedEvent.pubkey)}"
+            ${avatarFallbackAttribute(referencedEvent.pubkey)}
           />`;
 
       const referencedPreviewHtml: string = referencedContentWarning.hasWarning

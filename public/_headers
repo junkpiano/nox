@@ -3,3 +3,12 @@
 /.well-known/*
   Access-Control-Allow-Origin: *
   Content-Type: application/json
+
+# Scripts come only from this origin. A script injected into a page would
+# otherwise read a private key kept in localStorage. Relays, NIP-05, LNURL
+# and uploads live on any host, and media is whatever people post, so
+# connections and media stay open; only code is locked down. ws: is for a
+# relay on localhost: the browser refuses plain ws: to anywhere else.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; media-src * data: blob:; connect-src 'self' https: wss: ws:; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
