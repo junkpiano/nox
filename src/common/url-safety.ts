@@ -8,6 +8,11 @@
  * loopback, the private ranges, link-local, and bare names that only mean
  * something on the local network are not, and the same check is applied
  * to wherever the page redirects.
+ *
+ * Only the name is judged, never where it resolves: a public name pointing
+ * at 192.168.1.1 passes. Link cards therefore go through the proxy worker on
+ * every platform; what still uses this directly (LNURL, on a zap the user
+ * started) accepts that limit.
  */
 
 /** IPv4 blocks that never name a public site. */
@@ -47,26 +52,82 @@ function isPrivateV4(host: string): boolean {
   });
 }
 
+/** The eight 16-bit groups of an IPv6 address, or null if it is not one. */
+function ip6Groups(text: string): number[] | null {
+  let body: string = text;
+  // A trailing dotted IPv4 is two groups.
+  const tail: RegExpMatchArray | null = body.match(
+    /^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/,
+  );
+  if (tail?.[1] && tail[2]) {
+    const v4: number[] = tail[2].split('.').map(Number);
+    if (v4.some((part: number): boolean => part > 255)) return null;
+    const [a = 0, b = 0, c = 0, d = 0] = v4;
+    body = `${tail[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves: string[] = body.split('::');
+  if (halves.length > 2) return null;
+  const head: string[] = halves[0] ? halves[0].split(':') : [];
+  const rest: string[] = halves[1] ? halves[1].split(':') : [];
+  const missing: number = 8 - head.length - rest.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return null;
+  const parts: string[] = [...head, ...Array(missing).fill('0'), ...rest];
+  if (!parts.every((part: string): boolean => /^[0-9a-f]{1,4}$/.test(part))) {
+    return null;
+  }
+  return parts.map((part: string): number => Number.parseInt(part, 16));
+}
+
+function v4From(high: number, low: number): string {
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+}
+
 function isPrivateV6(host: string): boolean {
   const text: string = host.replace(/^\[|\]$/g, '').toLowerCase();
-  if (text === '::' || text === '::1') return true;
-  // Unique local (fc00::/7) and link-local (fe80::/10).
-  if (/^f[cd][0-9a-f]{2}:/.test(text)) return true;
-  if (/^fe[89ab][0-9a-f]:/.test(text)) return true;
-  // An IPv4 address wearing an IPv6 coat - dotted, or as the URL parser
-  // normalises it, two hex groups.
-  const dotted: RegExpMatchArray | null = text.match(
-    /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/,
-  );
-  if (dotted?.[1]) return isPrivateV4(dotted[1]);
-  const hex: RegExpMatchArray | null = text.match(
-    /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/,
-  );
-  if (hex?.[1] && hex[2]) {
-    const high: number = Number.parseInt(hex[1], 16);
-    const low: number = Number.parseInt(hex[2], 16);
-    return isPrivateV4(`${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`);
+  const g: number[] | null = ip6Groups(text);
+  // Not an address the parser would accept: nothing to fetch.
+  if (!g) return true;
+  const [g0 = 0, g1 = 0, g2 = 0, g3 = 0, g4 = 0, g5 = 0, g6 = 0, g7 = 0] = g;
+  const zeroTo = (n: number): boolean =>
+    g.slice(0, n).every((x: number): boolean => x === 0);
+
+  // Unspecified, loopback, and an IPv4 address in an IPv6 coat: mapped
+  // (::ffff:0:0/96) or the old compatible form (::/96).
+  if (zeroTo(5) && (g5 === 0xffff || g5 === 0)) {
+    if (g5 === 0 && g6 === 0 && g7 <= 1) return true;
+    return isPrivateV4(v4From(g6, g7));
   }
+  // IPv4-translated (::ffff:0:0:0/96, SIIT).
+  if (zeroTo(4) && g4 === 0xffff && g5 === 0) {
+    return isPrivateV4(v4From(g6, g7));
+  }
+  // NAT64 (64:ff9b::/96) carries an IPv4 address; its local-use block
+  // (64:ff9b:1::/48) is a private network by definition.
+  if (g0 === 0x64 && g1 === 0xff9b) {
+    if (g2 === 1) return true;
+    if (g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
+      return isPrivateV4(v4From(g6, g7));
+    }
+  }
+  // 6to4 (2002::/16) names an IPv4 address in its next two groups.
+  if (g0 === 0x2002) return isPrivateV4(v4From(g1, g2));
+  // Teredo (2001::/32), benchmarking (2001:2::/48), ORCHID (2001:10::/28,
+  // 2001:20::/28) and documentation (2001:db8::/32, 3fff::/20).
+  if (g0 === 0x2001) {
+    if (g1 === 0 || g1 === 0xdb8) return true;
+    if (g1 === 2 && g2 === 0) return true;
+    if ((g1 & 0xfff0) === 0x10 || (g1 & 0xfff0) === 0x20) return true;
+  }
+  if (g0 === 0x3fff && (g1 & 0xf000) === 0) return true;
+  // SRv6 segment identifiers (5f00::/16) name routers, not sites.
+  if (g0 === 0x5f00) return true;
+  // Discard-only (100::/64).
+  if (g0 === 0x100 && g1 === 0 && g2 === 0 && g3 === 0) return true;
+  // Unique local (fc00::/7), link-local (fe80::/10), site-local
+  // (fec0::/10, deprecated but still routed by some networks), multicast.
+  if ((g0 & 0xfe00) === 0xfc00) return true;
+  if ((g0 & 0xffc0) === 0xfe80 || (g0 & 0xffc0) === 0xfec0) return true;
+  if ((g0 & 0xff00) === 0xff00) return true;
   return false;
 }
 
