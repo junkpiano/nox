@@ -1,13 +1,11 @@
 /**
  * The native side of the cross-origin fetch seam.
  *
- * The web build routes OGP, oEmbed and LNURL lookups through a proxy worker
- * because a browser tab cannot read a cross-origin response. React Native has
- * no such restriction: requests go out below the browser's origin model, so
- * the origin can simply be asked.
- *
- * That makes the proxy not merely unnecessary here but wrong - it would send
- * every link the viewer opens through a third party for no benefit.
+ * React Native has no CORS: requests go out below the browser's origin
+ * model, so LNURL endpoints are asked directly. Link cards (OGP) still go
+ * through the proxy worker, as on every platform: a URL from somebody
+ * else's post, fetched by the reader's own phone, could reach the reader's
+ * own network.
  */
 
 import { setCrossOriginFetch } from '../../src/common/native-http';
