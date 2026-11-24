@@ -1,9 +1,10 @@
 /**
- * Finding a person, or a hashtag.
+ * Finding a person, a post, or a hashtag.
  *
  * With nothing typed, the hashtags you follow are listed: following one only
  * adds its posts to Home, and this is where they can be found again. `#word`
- * opens that hashtag.
+ * opens that hashtag. Words find people or posts, whichever tab is chosen;
+ * posts come from the same NIP-50 search relays the web app asks.
  *
  * The ranking is the web app's, unchanged - the same four tiers, with a
  * claimed NIP-05 breaking ties inside each. A pasted key skips the search
@@ -15,7 +16,7 @@
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { nip19 } from 'nostr-tools';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -44,13 +45,19 @@ import {
 } from '../../src/features/search/user-ranking';
 import type { PubkeyHex } from '../../types/nostr';
 import type { RootStackParamList } from '../App';
+import PostList from '../components/PostList';
 import { pictureUrl } from '../lib/avatar';
+import { searchPosts, type TimelinePost } from '../lib/home-timeline';
 import { searchUsers } from '../lib/user-search';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /** How many survive the ranking and reach the screen. */
 const SHOWN: number = 12;
+
+type Mode = 'people' | 'posts';
+const MODES: readonly Mode[] = ['people', 'posts'];
+const MODE_LABEL: Record<Mode, string> = { people: 'People', posts: 'Posts' };
 
 function readViewer(): PubkeyHex | null {
   const stored = kvGet('nostr_pubkey');
@@ -62,8 +69,12 @@ function readViewer(): PubkeyHex | null {
 export default function Search() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<UserSearchResult[]>([]);
+  const [posts, setPosts] = useState<TimelinePost[]>([]);
+  const [mode, setMode] = useState<Mode>('people');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
+  /** Only the latest search may write its answer; an earlier, slower one is dropped. */
+  const latest = useRef(0);
   const navigation = useNavigation<Nav>();
   const focused: boolean = useIsFocused();
   const [hashtags, setHashtags] = useState<string[]>((): string[] =>
@@ -92,44 +103,60 @@ export default function Search() {
     };
   }, [focused]);
 
-  const run = useCallback(async (): Promise<void> => {
-    const trimmed = query.trim();
-    if (!trimmed) return;
+  const run = useCallback(
+    async (searchMode: Mode): Promise<void> => {
+      const trimmed = query.trim();
+      if (!trimmed) return;
 
-    const tag: string | null = hashtagQuery(trimmed);
-    if (tag) {
-      navigation.navigate('Hashtag', { tag });
-      return;
-    }
+      const tag: string | null = hashtagQuery(trimmed);
+      if (tag) {
+        navigation.navigate('Hashtag', { tag });
+        return;
+      }
 
-    // A pasted key names one person exactly. Handing it to a search relay as
-    // text gets it ignored as an unmatched term, and the relay answers with
-    // whatever is recent - a hundred strangers under a header naming the key.
-    const pasted = decodePubkeyQuery(trimmed);
-    if (pasted) {
-      navigation.navigate('Profile', { pubkey: pasted });
-      return;
-    }
+      // A pasted key names one person exactly. Handing it to a search relay as
+      // text gets it ignored as an unmatched term, and the relay answers with
+      // whatever is recent - a hundred strangers under a header naming the key.
+      const pasted = decodePubkeyQuery(trimmed);
+      if (pasted) {
+        navigation.navigate('Profile', { pubkey: pasted });
+        return;
+      }
 
-    setBusy(true);
-    setNote('');
-    try {
-      const outcome = await searchUsers(trimmed, readViewer());
-      setResults(outcome.results.slice(0, SHOWN));
-      setNote(
-        outcome.results.length === 0
-          ? 'Nobody found on the search relays.'
-          : // Timings are for development builds; the list speaks for itself.
-            __DEV__
-            ? `${outcome.results.length} found in ${(outcome.ms / 1000).toFixed(1)}s, best ${Math.min(SHOWN, outcome.results.length)} shown`
-            : '',
-      );
-    } catch (e: any) {
-      setNote(String(e?.message ?? e));
-    } finally {
-      setBusy(false);
-    }
-  }, [query, navigation]);
+      const ticket: number = ++latest.current;
+      const current = (): boolean => ticket === latest.current;
+      setBusy(true);
+      setNote('');
+      // The last query's rows must not stand under the new one, nor under its error.
+      setPosts([]);
+      setResults([]);
+      try {
+        if (searchMode === 'posts') {
+          const found: TimelinePost[] = await searchPosts(trimmed);
+          if (!current()) return;
+          setPosts(found);
+          setNote(found.length === 0 ? 'No posts found.' : '');
+          return;
+        }
+        const outcome = await searchUsers(trimmed, readViewer());
+        if (!current()) return;
+        setResults(outcome.results.slice(0, SHOWN));
+        setNote(
+          outcome.results.length === 0
+            ? 'Nobody found on the search relays.'
+            : // Timings are for development builds; the list speaks for itself.
+              __DEV__
+              ? `${outcome.results.length} found in ${(outcome.ms / 1000).toFixed(1)}s, best ${Math.min(SHOWN, outcome.results.length)} shown`
+              : '',
+        );
+      } catch (e: any) {
+        if (current()) setNote(String(e?.message ?? e));
+      } finally {
+        if (current()) setBusy(false);
+      }
+    },
+    [query, navigation],
+  );
 
   return (
     <View style={styles.screen}>
@@ -137,18 +164,42 @@ export default function Search() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="name, npub or #hashtag"
+          placeholder="name, words, npub or #hashtag"
           placeholderTextColor="#5b6b88"
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
-          onSubmitEditing={run}
+          onSubmitEditing={(): void => void run(mode)}
           style={styles.input}
         />
-        <Pressable onPress={run} style={styles.button}>
+        <Pressable onPress={(): void => void run(mode)} style={styles.button}>
           <Text style={styles.buttonText}>Find</Text>
         </Pressable>
       </View>
+      {/* A #tag or a key goes straight to its screen; People or Posts would mean nothing. */}
+      {query.trim() &&
+      !hashtagQuery(query.trim()) &&
+      !decodePubkeyQuery(query.trim()) ? (
+        <View style={styles.modes} accessibilityRole="tablist">
+          {MODES.map((m: Mode) => (
+            <Pressable
+              key={m}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: m === mode }}
+              onPress={(): void => {
+                if (m === mode) return;
+                setMode(m);
+                void run(m);
+              }}
+              hitSlop={8}
+            >
+              <Text style={m === mode ? styles.modeOn : styles.modeOff}>
+                {MODE_LABEL[m]}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       {note && query.trim() ? <Text style={styles.note}>{note}</Text> : null}
 
       {busy ? (
@@ -190,6 +241,17 @@ export default function Search() {
               <Text style={styles.chevron}>›</Text>
             </Pressable>
           )}
+        />
+      ) : mode === 'posts' ? (
+        <PostList
+          posts={posts}
+          loading={busy}
+          emptyMessage=""
+          stats=""
+          stage=""
+          error={null}
+          refreshing={false}
+          onRefresh={(): void => void run('posts')}
         />
       ) : (
         <FlatList
@@ -270,6 +332,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
+  modes: {
+    flexDirection: 'row',
+    gap: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  modeOn: { color: '#89a8ff', fontSize: 14, fontWeight: '700' },
+  modeOff: { color: '#5b6b88', fontSize: 14, fontWeight: '600' },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   row: {
     flexDirection: 'row',
