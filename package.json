@@ -19,25 +19,25 @@
     "tauri:build": "tauri build"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.7",
-    "@tauri-apps/cli": "^2.12.4",
+    "@biomejs/biome": "^2.6.8",
+    "@tauri-apps/cli": "^2.12.6",
     "@types/node": "^26.6.6",
     "@types/qrcode": "^1.5.6",
-    "autoprefixer": "^10.6.2",
+    "autoprefixer": "^10.7.0",
     "fake-indexeddb": "^6.2.8",
     "postcss": "^8.5.33",
     "tailwindcss": "^3.4.19",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
-    "wrangler": "^4.162.0"
+    "wrangler": "^4.166.0"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-http": "^2.9.0",
-    "baseline-browser-mapping": "^2.11.37",
+    "baseline-browser-mapping": "^2.11.39",
     "caniuse-lite": "^1.0.30001826",
     "emoji-dictionary": "^1.0.12",
-    "nostr-tools": "^2.26.0",
+    "nostr-tools": "^2.26.1",
     "qrcode": "^1.5.4",
     "rx-nostr": "^3.7.8",
     "rxjs": "^7.8.2"
