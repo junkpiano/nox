@@ -228,6 +228,7 @@ export default function EditProfile({
       style={styles.screen}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
     >
       <View style={styles.preview}>
         {picture ? (
