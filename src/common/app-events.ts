@@ -31,6 +31,8 @@ export type AppEventName =
   | 'interests-updated'
   /** The viewer's follow list, found on the relays, differs from the one remembered. */
   | 'follows-updated'
+  /** The viewer published a new profile (kind 0): their profile screen shows it as published. */
+  | 'profile-updated'
   | 'dm-messages-updated'
   | 'wallet-connection-changed'
   | 'relays-updated'

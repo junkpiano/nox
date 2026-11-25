@@ -28,6 +28,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { onAppEvent } from '../../src/common/app-events';
 import type { TimelineKey } from '../../src/common/db/types';
 import { kvGet } from '../../src/common/kv';
 import { isMuted } from '../../src/common/mute-state';
@@ -57,7 +58,12 @@ import {
   setFollowing,
   UnknownFollowListError,
 } from '../lib/interact';
-import { loadProfile, type Profile as ProfileData } from '../lib/profile';
+import {
+  loadProfile,
+  type Profile as ProfileData,
+  parseProfile,
+} from '../lib/profile';
+import type { ProfileUpdate } from '../lib/profile-edit';
 import { useOlderPosts } from '../lib/use-older-posts';
 import { useOwnReactions } from '../lib/use-own-reactions';
 import { useUserStatus, useUserStatuses } from '../lib/use-user-statuses';
@@ -79,6 +85,23 @@ function viewerPubkey(): PubkeyHex | null {
  * would show the wrong verb for a second and invite a tap that undoes what the
  * person already has.
  */
+/** On your own profile, where Follow would be: the way to change it. */
+function EditProfileButton({ target }: { target: PubkeyHex }) {
+  const viewer = viewerPubkey();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  if (!viewer || viewer !== target || !canWrite()) return null;
+  return (
+    <Pressable
+      onPress={(): void => navigation.navigate('EditProfile')}
+      style={styles.follow}
+      accessibilityRole="button"
+    >
+      <Text style={styles.followText}>Edit profile</Text>
+    </Pressable>
+  );
+}
+
 function FollowButton({ target }: { target: PubkeyHex }) {
   const viewer = viewerPubkey();
   const [following, setFollowingState] = useState<boolean | null>(null);
@@ -463,6 +486,7 @@ function Header({ profile }: { profile: ProfileData }) {
         ) : null}
 
         <FollowButton target={profile.pubkey} />
+        <EditProfileButton target={profile.pubkey} />
         <View style={styles.quietActions}>
           <ZapLink target={profile.pubkey} />
           <MuteButton target={profile.pubkey} />
@@ -569,6 +593,26 @@ export function ProfileView({ pubkey }: { pubkey: PubkeyHex }) {
     (post: TimelinePost): void =>
       navigation.push('Profile', { pubkey: post.pubkey }),
     [navigation],
+  );
+
+  // A profile you just published is shown as published. Not read back from
+  // the relays: one that refused it still holds the old copy and may answer
+  // first.
+  useEffect(
+    (): (() => void) =>
+      onAppEvent('profile-updated', (detail: unknown): void => {
+        const update = detail as ProfileUpdate | undefined;
+        if (update?.pubkey !== pubkey) return;
+        setData((previous) =>
+          previous
+            ? {
+                ...previous,
+                profile: parseProfile(pubkey, update.content, update.tags),
+              }
+            : previous,
+        );
+      }),
+    [pubkey],
   );
 
   useEffect(() => {

@@ -49,6 +49,7 @@ import { navigationRef } from './lib/navigation';
 import About from './screens/About';
 import Chat from './screens/Chat';
 import Compose from './screens/Compose';
+import EditProfile from './screens/EditProfile';
 import Feed from './screens/Feed';
 import Hashtag from './screens/Hashtag';
 import Likes from './screens/Likes';
@@ -97,6 +98,7 @@ export type RootStackParamList = {
   };
   Likes: undefined;
   About: undefined;
+  EditProfile: undefined;
 };
 
 /**
@@ -493,6 +495,11 @@ export default function App() {
             name="Likes"
             component={Likes}
             options={{ title: 'Likes' }}
+          />
+          <Stack.Screen
+            name="EditProfile"
+            component={EditProfile}
+            options={{ title: 'Edit profile' }}
           />
           <Stack.Screen
             name="About"
