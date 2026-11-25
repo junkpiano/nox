@@ -62,6 +62,7 @@ import {
 } from '../../src/common/repost';
 import { oldestOf, PAGE_LIMIT } from '../../src/common/timeline-paging';
 import { getRelays } from '../../src/features/relays/relays';
+import { SEARCH_RELAYS } from '../../src/features/search/user-ranking';
 import type { NostrEvent, NostrProfile, PubkeyHex } from '../../types/nostr';
 import { customEmojiOf, pictureUrl } from './avatar';
 
@@ -739,6 +740,26 @@ export async function loadHashtagTimeline(
       muted: events.length - filterMutedEvents(events).length,
     },
   };
+}
+
+/**
+ * Posts matching a text search, from the NIP-50 search relays.
+ *
+ * Asked once: the search relays are not the user's relays, so there is no
+ * paging and no poll for newer posts. Muted and withdrawn posts leave in
+ * `decorateEvents`, as on every timeline - asked of the search relays too,
+ * as the web's search page does: a stranger's deletion may never have
+ * reached the user's own relays.
+ */
+export async function searchPosts(query: string): Promise<TimelinePost[]> {
+  const events: NostrEvent[] = await queryRelays([...SEARCH_RELAYS], {
+    kinds: [1],
+    search: query,
+    limit: POST_LIMIT,
+  });
+  const relays: string[] = [...new Set([...getRelays(), ...SEARCH_RELAYS])];
+  const decorated: Decorated = await decorateEvents(relays, events);
+  return decorated.posts;
 }
 
 /**
