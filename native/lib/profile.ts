@@ -54,7 +54,7 @@ export interface ProfileResult {
  * Reads a kind 0. The content is a JSON object its owner wrote, so every
  * field is checked for being a string rather than trusted to be one.
  */
-function parseProfile(
+export function parseProfile(
   pubkey: PubkeyHex,
   meta: unknown,
   tags: string[][] = [],
