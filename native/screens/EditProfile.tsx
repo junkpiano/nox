@@ -22,6 +22,7 @@ import {
   Alert,
   Image,
   type KeyboardTypeOptions,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -44,6 +45,7 @@ import {
   NotAcceptedError,
   saveOwnMetadata,
 } from '../lib/profile-edit';
+import { useKeyboardHeight } from '../lib/use-keyboard-height';
 
 type Values = Record<EditableProfileField, string>;
 
@@ -120,6 +122,8 @@ export default function EditProfile({
   const [values, setValues] = useState<Values | null>(null);
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  // iOS insets the scroll view itself; edge-to-edge Android needs the room added by hand.
+  const keyboard: number = useKeyboardHeight();
   // Two taps can land before `saving` re-renders the button disabled.
   const inFlight = useRef(false);
 
@@ -225,7 +229,11 @@ export default function EditProfile({
 
   return (
     <ScrollView
-      style={styles.screen}
+      // Shrinking the frame, not padding the content, lets Android scroll the focused field into view.
+      style={[
+        styles.screen,
+        Platform.OS === 'android' && { marginBottom: keyboard },
+      ]}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
       automaticallyAdjustKeyboardInsets
