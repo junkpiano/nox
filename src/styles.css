@@ -648,6 +648,15 @@ body:has(.nox-landing) .nox-feed-panel {
   line-height: 1.6;
 }
 
+.nox-landing-source a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.nox-landing-source a:hover {
+  color: var(--nox-text-muted);
+}
+
 .nox-landing-cta {
   width: 100%;
   justify-content: center;
