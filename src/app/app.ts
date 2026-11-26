@@ -331,7 +331,9 @@ function boot(): void {
     if (
       !anchor ||
       anchor.target === '_blank' ||
-      anchor.hasAttribute('download')
+      anchor.hasAttribute('download') ||
+      // A static page served next to the app, such as /apps.
+      anchor.hasAttribute('data-full-load')
     ) {
       return;
     }

@@ -22,8 +22,7 @@ The page shows, in this order:
 6. "Already on Nostr?" with the existing sign-in choices, unchanged.
 7. The footer: About, Terms, Privacy.
 
-On a wide screen the wordmark and the proof of speed sit on the left, and the
-actions on the right.
+On a wide screen the wordmark sits on the left, and the rest on the right.
 
 A link to nox.garden shared anywhere (Nostr, X, Slack, iMessage) unfurls into a
 card with a picture, the name and the promise, not a bare URL.
@@ -37,10 +36,11 @@ card with a picture, the name and the promise, not a bare URL.
   and what it was measured on, with the same figures as `/apps`.
 - LANDING-3: "Start reading" is the only primary button. A "Get the app" link
   leads to `/apps`, and is not shown inside the desktop or phone app.
-- LANDING-4: `/` serves Open Graph and Twitter card tags with an absolute
-  `og:url` (`https://nox.garden/`), a description matching the page's
-  promise, and a 1200x630 `og:image`, with `twitter:card` set to
-  `summary_large_image`.
+- LANDING-4: `/` serves Open Graph and Twitter card tags with a description
+  matching the page's promise and a 1200x630 `og:image`, with `twitter:card`
+  set to `summary_large_image`, and no `og:url`: the same HTML is served for
+  every route, so one URL there would point every shared post and profile at
+  the home page.
 - LANDING-5: The page works at 360px wide with no horizontal scroll, keeps
   visible keyboard focus, and the moon does not animate under
   `prefers-reduced-motion`.
@@ -58,6 +58,7 @@ card with a picture, the name and the promise, not a bare URL.
 ## Open
 
 - Is 0.4 s (cold start, Android, release build) still the figure to quote, or
-  is there a newer measurement?
+  is there a newer measurement? Both pages quote it, and a test keeps them
+  equal.
 - Should the desktop layout also show a picture of the phone app? It needs a
   real screenshot with posts you are happy to show.

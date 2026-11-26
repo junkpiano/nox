@@ -648,6 +648,58 @@ body:has(.nox-landing) .nox-feed-panel {
   line-height: 1.6;
 }
 
+/* The claim the page rests on, set as a reading rather than a slogan. */
+.nox-landing-speed {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0 0 0.5rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--nox-border);
+  border-radius: 14px;
+}
+
+.nox-landing-speed-figure {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #f4c56b;
+}
+
+.nox-landing-speed-figure span {
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: var(--nox-text-muted);
+}
+
+.nox-landing-speed-label {
+  margin: 0;
+  color: var(--nox-text);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.nox-landing-speed-label span {
+  color: var(--nox-text-dim);
+  font-size: 0.75rem;
+}
+
+body.theme-nox .nox-landing-apps {
+  align-self: center;
+  padding: 0.25rem 0.5rem;
+  color: var(--nox-text-muted);
+  font-size: 0.95rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+body.theme-nox .nox-landing-apps:hover {
+  color: var(--nox-text);
+}
+
 .nox-landing-source a {
   text-decoration: underline;
   text-underline-offset: 2px;
