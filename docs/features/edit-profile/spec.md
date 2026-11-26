@@ -45,6 +45,8 @@ to fix their own profile.
 - PROFILE-EDIT-8: After a save that at least one relay accepted, your profile
   screen and the cache show the new values, as published rather than read
   back from relays that may still hold the old copy.
+- PROFILE-EDIT-9: With the keyboard open, every field can be scrolled into
+  view above it, and the field being typed in stays visible.
 
 ## Not doing
 
