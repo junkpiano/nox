@@ -61,6 +61,10 @@ export function setEventMeta(
   upsertMetaTag('og:description', description || `Event by ${npub}`);
   upsertMetaTag('og:type', 'article');
   upsertMetaTag('og:url', window.location.href);
+  // The home card's size and description do not belong to this post's image.
+  removeMetaTag('og:image:width');
+  removeMetaTag('og:image:height');
+  removeMetaTag('og:image:alt');
   if (imageUrl) {
     upsertMetaTag('og:image', imageUrl);
   } else {

@@ -666,6 +666,8 @@ body:has(.nox-landing) .nox-feed-panel {
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
   color: #f4c56b;
 }
 

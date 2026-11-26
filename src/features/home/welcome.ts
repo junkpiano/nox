@@ -68,7 +68,7 @@ export async function showInputForm(
 
           <div class="nox-landing-speed">
             <p class="nox-landing-speed-figure">0.4<span> s</span></p>
-            <p class="nox-landing-speed-label">from tap to timeline<br /><span>Cold start, Android phone, release build</span></p>
+            <p class="nox-landing-speed-label">from tap to timeline<br /><span>Android app, cold start, shown from its cache</span></p>
           </div>
 
           <button id="welcome-global" class="nox-primary-button nox-landing-cta">Start reading</button>
