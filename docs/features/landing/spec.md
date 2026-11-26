@@ -57,8 +57,9 @@ card with a picture, the name and the promise, not a bare URL.
 
 ## Open
 
-- Is 0.4 s (cold start, Android, release build) still the figure to quote, or
-  is there a newer measurement? Both pages quote it, and a test keeps them
-  equal.
+- Is 0.4 s (the Android app's cached timeline after a cold start, release
+  build) still the figure to quote, or is there a newer measurement? The
+  landing page, `/apps` and the share card quote it, and a test keeps the
+  landing figure equal to `/apps`.
 - Should the desktop layout also show a picture of the phone app? It needs a
   real screenshot with posts you are happy to show.
