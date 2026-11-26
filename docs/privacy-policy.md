@@ -63,8 +63,9 @@ act on.
 | A NIP-05 provider's domain | Verifying a `name@domain` identifier | The name being verified |
 | Your Lightning wallet's relay | You connect a wallet or send a zap | The payment request |
 
-The web version and the apps all read link previews through this proxy, so
-the linked site sees the proxy rather than your device.
+The web version and the apps all read the linked page through this proxy. The
+preview's image is then loaded from wherever it is hosted, like any other
+picture.
 
 ## Children
 
