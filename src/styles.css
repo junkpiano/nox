@@ -648,6 +648,19 @@ body:has(.nox-landing) .nox-feed-panel {
   line-height: 1.6;
 }
 
+body.theme-nox .nox-landing-apps {
+  align-self: center;
+  padding: 0.25rem 0.5rem;
+  color: var(--nox-text-muted);
+  font-size: 0.95rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+body.theme-nox .nox-landing-apps:hover {
+  color: var(--nox-text);
+}
+
 .nox-landing-source a {
   text-decoration: underline;
   text-underline-offset: 2px;

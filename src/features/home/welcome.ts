@@ -50,6 +50,12 @@ export async function showInputForm(
     ? 'Stored on this device. Signing out deletes it.'
     : 'Stored in this browser only, which is less secure than an extension. Signing out deletes it.';
 
+  // The apps page is for people who reached nox in a browser; inside the
+  // desktop app it would only offer what they already have.
+  const appsLink: string = isNativeRuntime()
+    ? ''
+    : '<a href="/apps" data-full-load class="nox-landing-apps">Get the app</a>';
+
   options.output.innerHTML = `
       <section class="nox-landing" aria-labelledby="landing-title">
         <div class="nox-landing-brand">
@@ -58,9 +64,11 @@ export async function showInputForm(
 
         <div class="nox-landing-body">
           <h1 id="landing-title" class="nox-landing-title">Start reading in one tap.</h1>
-          <p class="nox-landing-lede">nox opens Nostr, the open social network. No account, no email.</p>
+          <p class="nox-landing-lede">A fast client for Nostr, the open social network. No account, no email.</p>
+
 
           <button id="welcome-global" class="nox-primary-button nox-landing-cta">Start reading</button>
+          ${appsLink}
           <p class="nox-auth-note nox-landing-source">
             nox has no server that stores your data. Link previews pass through a proxy.
             Both are open source:
