@@ -1,6 +1,6 @@
 # Privacy Policy for nox
 
-Last updated: 15 October 2026
+Last updated: 26 November 2026
 
 nox is a client for the Nostr network. It has no backend of its own and no user
 accounts. This policy describes what the app does with your information, which
@@ -55,7 +55,7 @@ act on.
 
 | Service | When it is contacted | What it receives |
 |---|---|---|
-| `nostr-proxy-worker.junkpiano.workers.dev` | Web version only, to read link previews | The URL being previewed, and your IP address |
+| `nostr-proxy-worker.junkpiano.workers.dev` | A post links to a web page, to read its link preview | The URL being previewed, and your IP address |
 | `publish.twitter.com`, `platform.twitter.com` | A post links to X/Twitter | The linked post, and your IP address |
 | `robohash.org` | A profile has no picture | A hash of that profile's public key |
 | `nostrcheck.me` | You upload an image | The image, and your IP address |
@@ -63,8 +63,8 @@ act on.
 | A NIP-05 provider's domain | Verifying a `name@domain` identifier | The name being verified |
 | Your Lightning wallet's relay | You connect a wallet or send a zap | The payment request |
 
-The native app fetches link previews directly rather than through the proxy, so
-that hop does not exist there.
+The web version and the apps all read link previews through this proxy, so
+the linked site sees the proxy rather than your device.
 
 ## Children
 

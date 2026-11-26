@@ -62,7 +62,7 @@ export async function showInputForm(
 
           <button id="welcome-global" class="nox-primary-button nox-landing-cta">Start reading</button>
           <p class="nox-auth-note nox-landing-source">
-            nox has no server that stores your data. On the web, link previews pass through a proxy.
+            nox has no server that stores your data. Link previews pass through a proxy.
             Both are open source:
             <a href="https://github.com/junkpiano/nox" target="_blank" rel="noopener noreferrer">nox</a>,
             <a href="https://github.com/junkpiano/nostr-proxy" target="_blank" rel="noopener noreferrer">proxy</a>.
