@@ -13,14 +13,12 @@ The page shows, in this order:
 1. The wordmark with the waxing moon.
 2. The promise: what nox is (a fast client for Nostr, the open social
    network), and that there is no account and no email.
-3. The proof of speed: the measured time from tap to timeline, with what it
-   was measured on.
-4. "Start reading" as the one primary action, and "Get the app" as a quiet
+3. "Start reading" as the one primary action, and "Get the app" as a quiet
    second one that leads to `/apps`.
-5. Under them, one note on data: nox has no server that stores your data,
+4. Under them, one note on data: nox has no server that stores your data,
    link previews pass through a proxy, and both are open source.
-6. "Already on Nostr?" with the existing sign-in choices, unchanged.
-7. The footer: About, Terms, Privacy.
+5. "Already on Nostr?" with the existing sign-in choices, unchanged.
+6. The footer: About, Terms, Privacy.
 
 On a wide screen the wordmark sits on the left, and the rest on the right.
 
@@ -32,8 +30,9 @@ card with a picture, the name and the promise, not a bare URL.
 - LANDING-1: The landing page says nox has no server that stores your data,
   says link previews pass through a proxy, and links to the source of nox
   (github.com/junkpiano/nox) and of the proxy (github.com/junkpiano/nostr-proxy).
-- LANDING-2: The landing page states the measured time from tap to timeline
-  and what it was measured on, with the same figures as `/apps`.
+- ~~LANDING-2: The landing page states the measured time from tap to timeline
+  and what it was measured on, with the same figures as `/apps`.~~ Dropped:
+  load time depends on the device, network and relays, and is not guaranteed.
 - LANDING-3: "Start reading" is the only primary button. A "Get the app" link
   leads to `/apps`, and is not shown inside the desktop or phone app.
 - LANDING-4: `/` serves Open Graph and Twitter card tags with a description
@@ -52,14 +51,13 @@ card with a picture, the name and the promise, not a bare URL.
   wrong first impression to leave to chance.
 - App Store and Google Play badges. The apps are not public yet; `/apps` says
   where each one stands. Add badges when a store listing is live.
+- Load-time figures. They depend on the device, the network and the relays,
+  so no number is a promise nox can keep.
 - Analytics, sign-up counters or testimonials. nox has no server to count
   with, and invented praise is worse than none.
 
 ## Open
 
-- Is 0.4 s (the Android app's cached timeline after a cold start, release
-  build) still the figure to quote, or is there a newer measurement? The
-  landing page, `/apps` and the share card quote it, and a test keeps the
-  landing figure equal to `/apps`.
+- `/apps` still quotes a measured 0.4 s. Keep it there, or drop it too?
 - Should the desktop layout also show a picture of the phone app? It needs a
   real screenshot with posts you are happy to show.

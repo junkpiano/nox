@@ -15,10 +15,6 @@ const welcome: string = readFileSync(
   join(root, 'src/features/home/welcome.ts'),
   'utf8',
 );
-const appsPage: string = readFileSync(
-  join(root, 'public/apps/index.html'),
-  'utf8',
-);
 
 function meta(attr: 'property' | 'name', key: string): string | null {
   const match: RegExpMatchArray | null = indexHtml.match(
@@ -26,14 +22,6 @@ function meta(attr: 'property' | 'name', key: string): string | null {
   );
   return match?.[1] ?? null;
 }
-
-test('LANDING-2: the landing page quotes the same tap-to-timeline time as /apps', (): void => {
-  const figure: RegExpMatchArray | null = welcome.match(
-    /nox-landing-speed-figure">([\d.]+)</,
-  );
-  assert.ok(figure, 'the landing page shows a speed figure');
-  assert.match(appsPage, new RegExp(`${figure[1]} s</b>`));
-});
 
 test('LANDING-3: Get the app leads to /apps as a full page load', (): void => {
   assert.match(
