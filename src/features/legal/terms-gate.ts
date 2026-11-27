@@ -1,11 +1,12 @@
 /**
  * The gate, on the web.
  *
- * A full-screen overlay appended to `<body>` and, crucially, the thing that
- * stops the rest of the boot: `showTermsGate` resolves only once somebody has
- * agreed, and the caller awaits it before wiring routes, opening sockets or
- * fetching anything. Rendering it *over* a running app would leave the global
- * timeline loading behind it and reachable the moment a stylesheet failed.
+ * A full-screen overlay appended to `<body>`, shown by the router in front of
+ * any route that shows the network's content. `showTermsGate` resolves only
+ * once somebody has agreed, and the router awaits it before loading that
+ * route; boot work that opens sockets waits on `termsAccepted`. Rendering it
+ * *over* a running route would leave the global timeline loading behind it and
+ * reachable the moment a stylesheet failed.
  *
  * The documents are rendered inside it rather than linked. Linking would have
  * pointed at /terms, which is behind this gate - so the one place you could go
@@ -28,6 +29,25 @@ import { renderMarkdown } from './render-markdown.js';
 
 const GATE_ID: string = 'terms-gate';
 
+let markAccepted: () => void = (): void => {};
+const accepted: Promise<void> = new Promise<void>((resolve): void => {
+  markAccepted = resolve;
+});
+
+/** Resolves once the terms are accepted on this device, now or later. */
+export function termsAccepted(): Promise<void> {
+  return hasAcceptedTerms() ? Promise.resolve() : accepted;
+}
+
+/**
+ * Takes the gate down without agreeing, as going Back to an open page does.
+ * Whatever waited on that gate never runs; the next route asks again.
+ */
+export function hideTermsGate(): void {
+  document.getElementById(GATE_ID)?.remove();
+  document.body.classList.remove('overflow-hidden');
+}
+
 /**
  * Resolves once the terms have been accepted, immediately if they already
  * were. Awaiting this is what makes it a gate rather than a banner.
@@ -37,6 +57,8 @@ export function showTermsGate(): Promise<void> {
     return Promise.resolve();
   }
 
+  // One gate at a time; only the latest route continues after agreeing.
+  hideTermsGate();
   return new Promise<void>((resolve): void => {
     const points: string = TERMS_SUMMARY.map(
       (point: TermsPoint): string => `
@@ -101,8 +123,8 @@ export function showTermsGate(): Promise<void> {
 
     accept?.addEventListener('click', (): void => {
       acceptTerms();
-      gate.remove();
-      document.body.classList.remove('overflow-hidden');
+      hideTermsGate();
+      markAccepted();
       resolve();
     });
   });

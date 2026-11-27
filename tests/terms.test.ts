@@ -15,6 +15,8 @@ import {
   acceptTerms,
   clearTermsAcceptance,
   hasAcceptedTerms,
+  isOpenBeforeTerms,
+  needsTermsGate,
   TERMS_SUMMARY,
   TERMS_VERSION,
 } from '../src/common/terms.js';
@@ -100,4 +102,47 @@ test('terms: the version looks like the date on the document', () => {
   // Bumping the documents without bumping this is the failure mode, and the
   // two are meant to be compared by eye.
   assert.match(TERMS_VERSION, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("TERMS-GATE-1: nox's own pages are open before agreeing", () => {
+  for (const path of ['/', '', '/signin', '/about', '/terms', '/privacy']) {
+    assert.equal(isOpenBeforeTerms(path, false), true, path);
+  }
+});
+
+test("TERMS-GATE-2: the network's content is not", () => {
+  for (const path of [
+    '/home',
+    '/global',
+    '/t/nostr',
+    '/search',
+    '/npub1x',
+    '/nevent1x',
+    '/notifications',
+  ]) {
+    assert.equal(isOpenBeforeTerms(path, false), false, path);
+  }
+  // Signed in, the landing and sign-in pages go on to Home.
+  assert.equal(isOpenBeforeTerms('/', true), false);
+  assert.equal(isOpenBeforeTerms('/signin', true), false);
+  assert.equal(isOpenBeforeTerms('/about', true), true);
+});
+
+test('TERMS-GATE-1: signed in, only About, Terms and Privacy stay open', () => {
+  for (const path of ['/about', '/terms', '/privacy']) {
+    assert.equal(isOpenBeforeTerms(path, true), true, path);
+  }
+  assert.equal(isOpenBeforeTerms('', true), false);
+  assert.equal(isOpenBeforeTerms('/about/', false), false);
+  assert.equal(isOpenBeforeTerms('/post', false), false);
+});
+
+test('TERMS-GATE-2/4: the gate shows only for closed routes, and only until accepted', () => {
+  installMemoryStore();
+  assert.equal(needsTermsGate('/global', false), true);
+  assert.equal(needsTermsGate('/', true), true);
+  assert.equal(needsTermsGate('/', false), false);
+  acceptTerms();
+  assert.equal(needsTermsGate('/global', false), false);
+  assert.equal(needsTermsGate('/', true), false);
 });

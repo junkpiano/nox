@@ -30,9 +30,8 @@ import {
   registerServiceWorker,
   startPeriodicSync,
 } from '../common/sync/service-worker-manager.js';
-import { hasAcceptedTerms } from '../common/terms.js';
 import { setupZapOverlay } from '../common/zap.js';
-import { showTermsGate } from '../features/legal/terms-gate.js';
+import { termsAccepted } from '../features/legal/terms-gate.js';
 import { clearMessages } from '../features/messages/messages-store.js';
 import { stopMessageSync } from '../features/messages/messages-sync.js';
 import { migrateLegacyMessageCache } from '../features/messages/plaintext-cache-migration.js';
@@ -158,10 +157,9 @@ document.addEventListener('DOMContentLoaded', (): void => {
   // Before anything renders, so the safe-area rules apply to the first paint.
   applyPlatformClass();
 
-  // Nothing else starts until this resolves. The global timeline has no
-  // filter, so an app that boots first and asks afterwards has already shown a
-  // stranger's post to somebody who was never told what this is.
-  void showTermsGate().then(boot);
+  // The router shows the terms before any route with the network's content;
+  // boot work that reaches relays waits for them below.
+  boot();
 });
 
 function boot(): void {
@@ -209,7 +207,8 @@ function boot(): void {
   }
 
   // Register service worker for background sync
-  registerServiceWorker()
+  termsAccepted()
+    .then(registerServiceWorker)
     .then((success: boolean): void => {
       if (success) {
         console.log('[App] Service worker registered successfully');
@@ -271,7 +270,7 @@ function boot(): void {
   });
 
   // If the user hasn't customized relays yet, try to discover their NIP-65 relay list.
-  void maybeSyncRelaysFromNip65OnLogin();
+  void termsAccepted().then(maybeSyncRelaysFromNip65OnLogin);
 
   // Setup image overlay
   setupImageOverlay();
@@ -374,16 +373,18 @@ function boot(): void {
     .finally((): void => {
       updateLogoutButton(composeButton);
       handleRoute();
-      // Refreshed in the background: the cached list already filters the first
-      // render, and a relay round-trip should not delay it.
-      void refreshMuteListFromRelays(appState.relays);
-      // The ♡'s reaction, as the account last chose it on any device.
-      const viewer: string | null = localStorage.getItem('nostr_pubkey');
-      if (viewer) {
-        void refreshQuickReaction(viewer as PubkeyHex, appState.relays).catch(
-          (): void => {},
-        );
-      }
+      void termsAccepted().then((): void => {
+        // Refreshed in the background: the cached list already filters the
+        // first render, and a relay round-trip should not delay it.
+        void refreshMuteListFromRelays(appState.relays);
+        // The ♡'s reaction, as the account last chose it on any device.
+        const viewer: string | null = localStorage.getItem('nostr_pubkey');
+        if (viewer) {
+          void refreshQuickReaction(viewer as PubkeyHex, appState.relays).catch(
+            (): void => {},
+          );
+        }
+      });
     });
 }
 
@@ -409,11 +410,6 @@ onAppEvent('follows-updated', (): void => {
 });
 
 window.addEventListener('popstate', (event: PopStateEvent): void => {
-  // Not while the gate is up. The overlay covers the page, but a route run
-  // behind it would still open sockets and fetch posts - and "covered" is a
-  // stylesheet away from "shown".
-  if (!hasAcceptedTerms()) {
-    return;
-  }
+  // The router decides whether the terms come first.
   handleRoute(event.state);
 });
