@@ -24,7 +24,7 @@ import {
   takeShareDraft,
 } from '../common/share-draft.js';
 import { canWrite } from '../common/signer.js';
-import { hasAcceptedTerms, isOpenBeforeTerms } from '../common/terms.js';
+import { hasAcceptedTerms, needsTermsGate } from '../common/terms.js';
 import { hideTermsGate, showTermsGate } from '../features/legal/terms-gate.js';
 import { profileName } from '../features/profile/profile.js';
 import { loadReactionsPage } from '../features/reactions/reactions-page.js';
@@ -289,8 +289,7 @@ export function handleRoute(scrollRestoreState?: unknown): void {
   }
   // The network's content waits for the terms; nox's own pages do not.
   if (
-    !hasAcceptedTerms() &&
-    !isOpenBeforeTerms(
+    needsTermsGate(
       window.location.pathname,
       localStorage.getItem('nostr_pubkey') !== null,
     )
@@ -304,6 +303,9 @@ export function handleRoute(scrollRestoreState?: unknown): void {
   const path: string = url.pathname;
   const searchQuery: string = (url.searchParams.get('q') || '').trim();
   updateLogoutButton(composeButton);
+  // Posting reaches relays, so a signed-in visitor on an open page agrees first.
+  const termsOk: boolean = hasAcceptedTerms();
+  if (!termsOk && composeButton) composeButton.style.display = 'none';
   // Every route change runs through here, including the one right after
   // signing in, which is the moment tabs that depend on a session need to
   // refresh. pushState alone would miss it.
@@ -327,7 +329,7 @@ export function handleRoute(scrollRestoreState?: unknown): void {
   const storedPubkey: string | null = localStorage.getItem('nostr_pubkey');
   // Signed in and able to post: a waiting shared text opens the composer.
   // Signed out, it keeps waiting; the route after sign-in comes back here.
-  if (canWrite()) {
+  if (termsOk && canWrite()) {
     const draft: string | null = takeShareDraft();
     if (draft && !composeWithText(draft)) keepShareDraft(draft);
   }

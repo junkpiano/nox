@@ -22,7 +22,8 @@ going to, not on the landing page.
 
 Signing in works before agreeing; the gate then shows on the way to Home.
 Connecting a key reads nothing from relays, though a remote signer talks to its
-own relay to connect.
+own relay to connect. Signed in on an open page before agreeing, the compose
+button is hidden.
 
 Going Back from the gate to one of the open pages takes the gate down without
 agreeing; the next route that needs it asks again.
@@ -53,7 +54,8 @@ stateDiagram-v2
 - TERMS-GATE-4: Once accepted, the terms screen does not appear again until
   `TERMS_VERSION` changes, as before.
 - TERMS-GATE-5: Before acceptance, no relay WebSocket is opened (except a
-  remote signer's, when the visitor connects one) and no
+  remote signer's own, when the visitor connects or is signed in with one),
+  nothing is published, and no
   background post fetch or service-worker sync of posts starts.
 
 ## Not doing

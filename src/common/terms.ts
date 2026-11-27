@@ -102,6 +102,11 @@ export function isOpenBeforeTerms(path: string, signedIn: boolean): boolean {
   return !signedIn && ['/', '', '/signin'].includes(path);
 }
 
+/** True when `path` must show the terms before anything on it loads. */
+export function needsTermsGate(path: string, signedIn: boolean): boolean {
+  return !hasAcceptedTerms() && !isOpenBeforeTerms(path, signedIn);
+}
+
 export function acceptTerms(): void {
   kvSet(ACCEPTED_KEY, TERMS_VERSION);
 }

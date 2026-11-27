@@ -16,6 +16,7 @@ import {
   clearTermsAcceptance,
   hasAcceptedTerms,
   isOpenBeforeTerms,
+  needsTermsGate,
   TERMS_SUMMARY,
   TERMS_VERSION,
 } from '../src/common/terms.js';
@@ -125,4 +126,23 @@ test("TERMS-GATE-2: the network's content is not", () => {
   assert.equal(isOpenBeforeTerms('/', true), false);
   assert.equal(isOpenBeforeTerms('/signin', true), false);
   assert.equal(isOpenBeforeTerms('/about', true), true);
+});
+
+test('TERMS-GATE-1: signed in, only About, Terms and Privacy stay open', () => {
+  for (const path of ['/about', '/terms', '/privacy']) {
+    assert.equal(isOpenBeforeTerms(path, true), true, path);
+  }
+  assert.equal(isOpenBeforeTerms('', true), false);
+  assert.equal(isOpenBeforeTerms('/about/', false), false);
+  assert.equal(isOpenBeforeTerms('/post', false), false);
+});
+
+test('TERMS-GATE-2/4: the gate shows only for closed routes, and only until accepted', () => {
+  installMemoryStore();
+  assert.equal(needsTermsGate('/global', false), true);
+  assert.equal(needsTermsGate('/', true), true);
+  assert.equal(needsTermsGate('/', false), false);
+  acceptTerms();
+  assert.equal(needsTermsGate('/global', false), false);
+  assert.equal(needsTermsGate('/', true), false);
 });
