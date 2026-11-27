@@ -24,6 +24,8 @@ import {
   takeShareDraft,
 } from '../common/share-draft.js';
 import { canWrite } from '../common/signer.js';
+import { hasAcceptedTerms, isOpenBeforeTerms } from '../common/terms.js';
+import { hideTermsGate, showTermsGate } from '../features/legal/terms-gate.js';
 import { profileName } from '../features/profile/profile.js';
 import { loadReactionsPage } from '../features/reactions/reactions-page.js';
 import {
@@ -285,6 +287,18 @@ export function handleRoute(scrollRestoreState?: unknown): void {
     if (shared) keepShareDraft(shared);
     replaceAppHistoryPath('/');
   }
+  // The network's content waits for the terms; nox's own pages do not.
+  if (
+    !hasAcceptedTerms() &&
+    !isOpenBeforeTerms(
+      window.location.pathname,
+      localStorage.getItem('nostr_pubkey') !== null,
+    )
+  ) {
+    void showTermsGate().then((): void => handleRoute(scrollRestoreState));
+    return;
+  }
+  hideTermsGate();
   const isRouteActive: () => boolean = createRouteGuard();
   const url: URL = new URL(window.location.href);
   const path: string = url.pathname;

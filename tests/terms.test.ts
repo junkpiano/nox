@@ -15,6 +15,7 @@ import {
   acceptTerms,
   clearTermsAcceptance,
   hasAcceptedTerms,
+  isOpenBeforeTerms,
   TERMS_SUMMARY,
   TERMS_VERSION,
 } from '../src/common/terms.js';
@@ -100,4 +101,28 @@ test('terms: the version looks like the date on the document', () => {
   // Bumping the documents without bumping this is the failure mode, and the
   // two are meant to be compared by eye.
   assert.match(TERMS_VERSION, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("TERMS-GATE-1: nox's own pages are open before agreeing", () => {
+  for (const path of ['/', '', '/signin', '/about', '/terms', '/privacy']) {
+    assert.equal(isOpenBeforeTerms(path, false), true, path);
+  }
+});
+
+test("TERMS-GATE-2: the network's content is not", () => {
+  for (const path of [
+    '/home',
+    '/global',
+    '/t/nostr',
+    '/search',
+    '/npub1x',
+    '/nevent1x',
+    '/notifications',
+  ]) {
+    assert.equal(isOpenBeforeTerms(path, false), false, path);
+  }
+  // Signed in, the landing and sign-in pages go on to Home.
+  assert.equal(isOpenBeforeTerms('/', true), false);
+  assert.equal(isOpenBeforeTerms('/signin', true), false);
+  assert.equal(isOpenBeforeTerms('/about', true), true);
 });

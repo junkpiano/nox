@@ -20,8 +20,15 @@ on About, the navigation bar, a shared link opened directly, and Back or
 Forward. After "Agree and continue" the visitor lands on the route they were
 going to, not on the landing page.
 
-Until the terms are accepted, no relay connection is opened and no background
-fetch of posts starts.
+Signing in works before agreeing; the gate then shows on the way to Home.
+Connecting a key reads nothing from relays, though a remote signer talks to its
+own relay to connect.
+
+Going Back from the gate to one of the open pages takes the gate down without
+agreeing; the next route that needs it asks again.
+
+Until the terms are accepted, no relay connection is opened for posts and no
+background fetch of posts starts.
 
 ```mermaid
 stateDiagram-v2
@@ -45,7 +52,8 @@ stateDiagram-v2
 - TERMS-GATE-3: Agreeing continues to the route the visitor was going to.
 - TERMS-GATE-4: Once accepted, the terms screen does not appear again until
   `TERMS_VERSION` changes, as before.
-- TERMS-GATE-5: Before acceptance, no relay WebSocket is opened and no
+- TERMS-GATE-5: Before acceptance, no relay WebSocket is opened (except a
+  remote signer's, when the visitor connects one) and no
   background post fetch or service-worker sync of posts starts.
 
 ## Not doing
@@ -54,9 +62,3 @@ stateDiagram-v2
   screen.
 - A "decline" path. Leaving the gate without agreeing is closing the tab or
   going Back to one of the open pages.
-
-## Open
-
-- Should signing in (connecting an extension, a signer or a key) be possible
-  before agreeing, with the gate shown on the way to Home? This spec says yes:
-  connecting a key reads nothing from relays.

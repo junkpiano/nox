@@ -862,6 +862,11 @@ body.theme-nox .nox-landing-foot a:hover {
   background: var(--nox-panel) !important;
 }
 
+/* The landing page is rendered behind the terms; the panel colour lets it show through. */
+.theme-nox #terms-gate {
+  background: var(--nox-bg-0) !important;
+}
+
 .theme-nox .bg-gray-50,
 .theme-nox .bg-slate-50 {
   background: rgba(15, 23, 42, 0.68) !important;

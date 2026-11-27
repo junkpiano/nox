@@ -92,6 +92,16 @@ export function hasAcceptedTerms(): boolean {
   return kvGet(ACCEPTED_KEY) === TERMS_VERSION;
 }
 
+/**
+ * True for the pages that carry only nox's own words, which a visitor can read
+ * before agreeing. `/` and `/signin` count only signed out: signed in, both
+ * go on to Home, which is the network's content.
+ */
+export function isOpenBeforeTerms(path: string, signedIn: boolean): boolean {
+  if (['/about', '/terms', '/privacy'].includes(path)) return true;
+  return !signedIn && ['/', '', '/signin'].includes(path);
+}
+
 export function acceptTerms(): void {
   kvSet(ACCEPTED_KEY, TERMS_VERSION);
 }
